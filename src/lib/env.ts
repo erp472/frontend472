@@ -30,11 +30,10 @@ function parseEnv() {
 export const env = parseEnv()
 
 export function assertHttps(url: string): void {
-  if (
-    import.meta.env.PROD &&
-    !url.startsWith('https://') &&
-    !url.startsWith('wss://')
-  ) {
+  if (!import.meta.env.PROD) return
+  // Tauri desktop app: el backend corre localmente, HTTP a localhost es seguro
+  if (url.startsWith('http://localhost') || url.startsWith('ws://localhost')) return
+  if (!url.startsWith('https://') && !url.startsWith('wss://')) {
     throw new Error(`[security] URL insegura en producción: ${url}`)
   }
 }

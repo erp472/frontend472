@@ -20,6 +20,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -79,8 +80,12 @@ const rolLabels: Record<string, string> = {
   ADMIN_SISTEMA: 'Admin Sistema',
 }
 
-export function AppSidebar() {
+export { navMain, rolLabels }
+
+export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
   const { pathname } = useLocation()
+  const { state } = useSidebar()
+  const collapsed = state === 'collapsed'
   const user = useSessionStore((s) => s.user)
   const clearSession = useSessionStore((s) => s.clearSession)
 
@@ -92,19 +97,23 @@ export function AppSidebar() {
     .toUpperCase() ?? '?'
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" side={side}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
+            <SidebarMenuButton
+              size="lg"
+              asChild
+              className="bg-white/95 hover:bg-white active:bg-white data-active:bg-white"
+            >
               <Link to="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
-                  472
-                </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="font-semibold text-sm">4-72 Admin</span>
-                  <span className="text-xs text-muted-foreground">Servicios Postales</span>
-                </div>
+                {collapsed ? (
+                  <div className="flex size-8 items-center justify-center rounded-md bg-[#0039a6] text-white text-xs font-bold shrink-0">
+                    472
+                  </div>
+                ) : (
+                  <img src="/logo.png" alt="4-72" className="h-7 w-auto" />
+                )}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

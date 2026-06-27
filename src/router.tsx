@@ -10,6 +10,7 @@ import { useSessionStore, type RolUsuario } from '@/stores/useSessionStore'
 
 // ── Lazy pages ────────────────────────────────────────────────────────────────
 const Dashboard    = lazy(() => import('@/pages/Dashboard'))
+const Login        = lazy(() => import('@/pages/Login'))
 
 // Páginas placeholder — se implementan en fases 4-7
 const Placeholder  = lazy(() => Promise.resolve({
@@ -66,7 +67,7 @@ function AuthGuard() {
 
   if (status === 'loading') return <PageLoader />
   if (status === 'unauthenticated') {
-    return <Navigate to="/unauthorized" state={{ from: location }} replace />
+    return <Navigate to="/login" state={{ from: location }} replace />
   }
   return <Outlet />
 }
@@ -90,51 +91,60 @@ function lazySuspense(Component: React.LazyExoticComponent<() => React.ReactElem
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
-export const router = createBrowserRouter([
-  // Rutas protegidas por autenticación
+export const router = createBrowserRouter(
+  [
+    // Rutas protegidas por autenticación
+    {
+      element: <AuthGuard />,
+      children: [
+        {
+          element: <AdminLayout />,
+          children: [
+            { path: '/',                element: lazySuspense(Dashboard) },
+
+            // Gestión de usuarios — ADMIN_NACIONAL, ADMIN_SISTEMA, SUPERVISOR_REGIONAL, ADMINISTRATIVO
+            {
+              element: (
+                <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO']} />
+              ),
+              children: [
+                { path: '/admin/users', element: lazySuspense(Placeholder) },
+              ],
+            },
+
+            // Equipos — ADMIN_SISTEMA, ADMIN_NACIONAL
+            {
+              element: (
+                <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />
+              ),
+              children: [
+                { path: '/admin/devices',   element: lazySuspense(Placeholder) },
+                { path: '/admin/branches',  element: lazySuspense(Placeholder) },
+              ],
+            },
+
+            // Sistema — solo ADMIN_SISTEMA
+            {
+              element: <RoleGuard roles={['ADMIN_SISTEMA']} />,
+              children: [
+                { path: '/admin/audit',    element: lazySuspense(Placeholder) },
+                { path: '/admin/settings', element: lazySuspense(Placeholder) },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+
+    // Rutas públicas
+    { path: '/login', element: lazySuspense(Login) },
+    { path: '/unauthorized', element: <Unauthorized /> },
+    { path: '*', element: <Navigate to="/" replace /> },
+  ],
   {
-    element: <AuthGuard />,
-    children: [
-      {
-        element: <AdminLayout />,
-        children: [
-          { path: '/',                element: lazySuspense(Dashboard) },
-
-          // Gestión de usuarios — ADMIN_NACIONAL, ADMIN_SISTEMA, SUPERVISOR_REGIONAL, ADMINISTRATIVO
-          {
-            element: (
-              <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO']} />
-            ),
-            children: [
-              { path: '/admin/users', element: lazySuspense(Placeholder) },
-            ],
-          },
-
-          // Equipos — ADMIN_SISTEMA, ADMIN_NACIONAL
-          {
-            element: (
-              <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />
-            ),
-            children: [
-              { path: '/admin/devices',   element: lazySuspense(Placeholder) },
-              { path: '/admin/branches',  element: lazySuspense(Placeholder) },
-            ],
-          },
-
-          // Sistema — solo ADMIN_SISTEMA
-          {
-            element: <RoleGuard roles={['ADMIN_SISTEMA']} />,
-            children: [
-              { path: '/admin/audit',    element: lazySuspense(Placeholder) },
-              { path: '/admin/settings', element: lazySuspense(Placeholder) },
-            ],
-          },
-        ],
-      },
-    ],
+    future: {
+      v7_startTransition: true,
+      v7_relativeSplatPath: true,
+    },
   },
-
-  // Rutas públicas
-  { path: '/unauthorized', element: <Unauthorized /> },
-  { path: '*', element: <Navigate to="/" replace /> },
-])
+)
