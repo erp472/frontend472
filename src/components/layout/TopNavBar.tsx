@@ -68,7 +68,7 @@ export function TopNavBar() {
       {isTauri() && (
         <button
           onClick={() => import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().close())}
-          className="ml-1 flex size-7 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-[#da001c] hover:text-white transition-colors"
+          className="ml-1 flex size-7 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-destructive hover:text-white transition-colors"
           title="Cerrar"
         >
           <X className="size-4" />

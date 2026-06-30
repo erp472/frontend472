@@ -21,7 +21,8 @@ registerTokenProvider(() => useSessionStore.getState().token)
 
 async function bootstrap() {
   // DEV-only mock: permite navegar el admin sin un JWT real del backend
-  if (import.meta.env.DEV && !readTokenFromUrl()) {
+  // Solo activa si no hay token real almacenado (permitir login real en dev)
+  if (import.meta.env.DEV && !readTokenFromUrl() && !useSessionStore.getState().token) {
     useSessionStore.getState().setUser({
       id: '00000000-0000-0000-0000-000000000001',
       nombre: 'Dev Admin',

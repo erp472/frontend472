@@ -11,8 +11,11 @@ import { useSessionStore, type RolUsuario } from '@/stores/useSessionStore'
 // ── Lazy pages ────────────────────────────────────────────────────────────────
 const Dashboard    = lazy(() => import('@/pages/Dashboard'))
 const Login        = lazy(() => import('@/pages/Login'))
+const Lab          = lazy(() => import('@/pages/Lab'))
+const UsersPage    = lazy(() => import('@/pages/admin/Users'))
+const PermisosPage = lazy(() => import('@/pages/admin/Permisos'))
 
-// Páginas placeholder — se implementan en fases 4-7
+// Páginas placeholder — se implementan en fases siguientes
 const Placeholder  = lazy(() => Promise.resolve({
   default: () => (
     <div className="p-8 text-muted-foreground">
@@ -108,7 +111,7 @@ export const router = createBrowserRouter(
                 <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO']} />
               ),
               children: [
-                { path: '/admin/users', element: lazySuspense(Placeholder) },
+                { path: '/admin/users', element: lazySuspense(UsersPage) },
               ],
             },
 
@@ -127,8 +130,9 @@ export const router = createBrowserRouter(
             {
               element: <RoleGuard roles={['ADMIN_SISTEMA']} />,
               children: [
-                { path: '/admin/audit',    element: lazySuspense(Placeholder) },
-                { path: '/admin/settings', element: lazySuspense(Placeholder) },
+                { path: '/admin/audit',     element: lazySuspense(Placeholder) },
+                { path: '/admin/settings',  element: lazySuspense(Placeholder) },
+                { path: '/admin/permisos',  element: lazySuspense(PermisosPage) },
               ],
             },
           ],
@@ -139,6 +143,10 @@ export const router = createBrowserRouter(
     // Rutas públicas
     { path: '/login', element: lazySuspense(Login) },
     { path: '/unauthorized', element: <Unauthorized /> },
+    // Workbench — solo en desarrollo
+    ...(import.meta.env.DEV
+      ? [{ path: '/lab', element: lazySuspense(Lab) }]
+      : []),
     { path: '*', element: <Navigate to="/" replace /> },
   ],
   {

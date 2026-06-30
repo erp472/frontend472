@@ -5,6 +5,7 @@ import {
   Building2,
   ScrollText,
   Settings,
+  ShieldCheck,
   ChevronDown,
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
@@ -64,8 +65,9 @@ const navMain: NavGroup[] = [
   {
     label: 'Sistema',
     items: [
-      { title: 'Auditoría', url: '/admin/audit', icon: ScrollText, roles: ['ADMIN_SISTEMA'] },
-      { title: 'Configuración', url: '/admin/settings', icon: Settings, roles: ['ADMIN_SISTEMA'] },
+      { title: 'Permisos',      url: '/admin/permisos',  icon: ShieldCheck, roles: ['ADMIN_SISTEMA'] },
+      { title: 'Auditoría',     url: '/admin/audit',     icon: ScrollText,  roles: ['ADMIN_SISTEMA'] },
+      { title: 'Configuración', url: '/admin/settings',  icon: Settings,    roles: ['ADMIN_SISTEMA'] },
     ],
   },
 ]
@@ -104,11 +106,11 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
             <SidebarMenuButton
               size="lg"
               asChild
-              className="bg-white/95 hover:bg-white active:bg-white data-active:bg-white"
+              className="justify-center bg-white/95 hover:bg-white active:bg-white data-active:bg-white"
             >
               <Link to="/">
                 {collapsed ? (
-                  <div className="flex size-8 items-center justify-center rounded-md bg-[#0039a6] text-white text-xs font-bold shrink-0">
+                  <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold shrink-0">
                     472
                   </div>
                 ) : (

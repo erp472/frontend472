@@ -96,7 +96,6 @@ export default function Login() {
             className="w-full"
             onClick={handleSubmit}
             disabled={isPending}
-            style={{ background: '#0039a6' }}
           >
             {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
             Ingresar
