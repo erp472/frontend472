@@ -6,6 +6,8 @@ import {
   ScrollText,
   Settings,
   ChevronDown,
+  ShieldCheck,
+  ToggleLeft,
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import {
@@ -30,14 +32,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { useSessionStore } from '@/stores/useSessionStore'
+import { useSessionStore, type RolUsuario } from '@/stores/useSessionStore'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
   title: string
   url: string
   icon: React.ElementType
-  roles?: string[]
+  roles?: RolUsuario[]
 }
 
 interface NavGroup {
@@ -55,16 +57,17 @@ const navMain: NavGroup[] = [
   {
     label: 'Gestión',
     items: [
-      { title: 'Usuarios', url: '/admin/users', icon: Users, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'] },
-      { title: 'Equipos', url: '/admin/devices', icon: Monitor, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+      { title: 'Usuarios',   url: '/admin/users',    icon: Users,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'] },
+      { title: 'Equipos',    url: '/admin/devices',  icon: Monitor,   roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
       { title: 'Sucursales', url: '/admin/branches', icon: Building2, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
     ],
   },
   {
     label: 'Sistema',
     items: [
-      { title: 'Auditoría', url: '/admin/audit', icon: ScrollText, roles: ['ADMIN_SISTEMA'] },
-      { title: 'Configuración', url: '/admin/settings', icon: Settings, roles: ['ADMIN_SISTEMA'] },
+      { title: 'Permisos',      url: '/admin/permisos',       icon: ShieldCheck, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+      { title: 'Auditoría',     url: '/admin/audit',          icon: ScrollText,  roles: ['ADMIN_SISTEMA'] },
+      { title: 'Configuración', url: '/admin/settings',       icon: Settings,    roles: ['ADMIN_SISTEMA'] },
     ],
   },
 ]
@@ -79,17 +82,72 @@ const rolLabels: Record<string, string> = {
   ADMIN_SISTEMA: 'Admin Sistema',
 }
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  /** Modo Tauri: sin header/footer propios y con offset del TopHeader (h-14) */
+  compact?: boolean
+}
+
+export function AppSidebar({ compact = false }: AppSidebarProps) {
   const { pathname } = useLocation()
   const user = useSessionStore((s) => s.user)
   const clearSession = useSessionStore((s) => s.clearSession)
 
-  const initials = user?.nombre
-    .split(' ')
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase() ?? '?'
+  const initials =
+    user?.nombre
+      .split(' ')
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase() ?? '?'
+
+  const navContent = (
+    <SidebarContent>
+      {navMain.map((group) => {
+        const visibleItems = group.items.filter(
+          (item) => !item.roles || (user && item.roles.includes(user.rol)),
+        )
+        if (visibleItems.length === 0) return null
+
+        return (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visibleItems.map((item) => (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={pathname === item.url}
+                      tooltip={item.title}
+                    >
+                      <Link
+                        to={item.url}
+                        className={cn(pathname === item.url && 'font-medium')}
+                      >
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )
+      })}
+    </SidebarContent>
+  )
+
+  if (compact) {
+    return (
+      <Sidebar
+        collapsible="icon"
+        className="[&>div:last-child]:top-14 [&>div:last-child]:h-[calc(100svh-3.5rem)]"
+      >
+        {navContent}
+      </Sidebar>
+    )
+  }
 
   return (
     <Sidebar collapsible="icon">
@@ -111,45 +169,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent>
-        {navMain.map((group) => {
-          const visibleItems = group.items.filter(
-            (item) =>
-              !item.roles ||
-              (user && item.roles.includes(user.rol)),
-          )
-          if (visibleItems.length === 0) return null
-
-          return (
-            <SidebarGroup key={group.label}>
-              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {visibleItems.map((item) => (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={pathname === item.url}
-                        tooltip={item.title}
-                      >
-                        <Link
-                          to={item.url}
-                          className={cn(
-                            pathname === item.url && 'font-medium',
-                          )}
-                        >
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          )
-        })}
-      </SidebarContent>
+      {navContent}
 
       <SidebarSeparator />
 
@@ -178,11 +198,7 @@ export function AppSidebar() {
                   <ChevronDown className="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="end"
-                className="w-56"
-              >
+              <DropdownMenuContent side="top" align="end" className="w-56">
                 <DropdownMenuItem disabled>
                   <span className="text-xs text-muted-foreground truncate">
                     {user?.email}
