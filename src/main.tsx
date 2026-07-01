@@ -63,7 +63,7 @@ createRoot(root).render(
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={300}>
           <RouterProvider router={router} />
-          <Toaster richColors position="top-right" />
+          <Toaster position="top-right" />
         </TooltipProvider>
         {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
       </QueryClientProvider>
