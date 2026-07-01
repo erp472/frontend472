@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
@@ -8,31 +9,28 @@ import {
   BreadcrumbPage,
 } from '@/components/ui/breadcrumb'
 import { AppSidebar } from '@/components/layout/AppSidebar'
-import { TopHeader } from '@/components/layout/TopHeader'
+import { TopNavBar } from '@/components/layout/TopNavBar'
 import { useUIStore } from '@/stores/useUIStore'
-import { isTauri } from '@/lib/is-tauri'
+import { isTauri } from '@/lib/tauri'
 
 export function AdminLayout() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
 
-  if (isTauri) {
+  useEffect(() => {
+    if (isTauri()) {
+      import('@/lib/tauri-menu').then((m) => m.setupNativeMenu())
+    }
+  }, [])
+
+  if (isTauri()) {
     return (
-      <SidebarProvider
-        open={sidebarOpen}
-        onOpenChange={setSidebarOpen}
-        className="flex-col h-svh"
-      >
-        <TopHeader />
-        <div className="flex flex-1 min-h-0">
-          <AppSidebar compact />
-          <SidebarInset className="min-h-0 overflow-auto">
-            <div className="flex flex-1 flex-col gap-4 p-4">
-              <Outlet />
-            </div>
-          </SidebarInset>
-        </div>
-      </SidebarProvider>
+      <div className="flex h-screen flex-col">
+        <TopNavBar />
+        <main className="flex flex-1 flex-col gap-4 overflow-auto p-4">
+          <Outlet />
+        </main>
+      </div>
     )
   }
 

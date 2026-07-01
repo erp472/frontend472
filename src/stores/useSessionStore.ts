@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { devtools } from 'zustand/middleware'
+import { devtools, persist } from 'zustand/middleware'
 import { z } from 'zod'
 
 export const RolUsuario = z.enum([
@@ -39,16 +39,22 @@ interface SessionState {
 
 export const useSessionStore = create<SessionState>()(
   devtools(
-    (set) => ({
-      token: null,
-      user: null,
-      status: 'loading',
-      setToken: (token) => set({ token }),
-      setUser: (user) => set({ user, status: 'authenticated' }),
-      setStatus: (status) => set({ status }),
-      clearSession: () =>
-        set({ token: null, user: null, status: 'unauthenticated' }),
-    }),
+    persist(
+      (set) => ({
+        token: null,
+        user: null,
+        status: 'loading',
+        setToken: (token) => set({ token }),
+        setUser: (user) => set({ user, status: 'authenticated' }),
+        setStatus: (status) => set({ status }),
+        clearSession: () =>
+          set({ token: null, user: null, status: 'unauthenticated' }),
+      }),
+      {
+        name: 'session-472',
+        partialize: (s: SessionState) => ({ token: s.token, user: s.user }),
+      },
+    ),
     { name: 'SessionStore' },
   ),
 )

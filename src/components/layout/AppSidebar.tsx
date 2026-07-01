@@ -5,9 +5,8 @@ import {
   Building2,
   ScrollText,
   Settings,
-  ChevronDown,
   ShieldCheck,
-  ToggleLeft,
+  ChevronDown,
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import {
@@ -22,6 +21,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import {
   DropdownMenu,
@@ -32,14 +32,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { useSessionStore, type RolUsuario } from '@/stores/useSessionStore'
+import { useSessionStore } from '@/stores/useSessionStore'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
   title: string
   url: string
   icon: React.ElementType
-  roles?: RolUsuario[]
+  roles?: string[]
 }
 
 interface NavGroup {
@@ -57,17 +57,17 @@ const navMain: NavGroup[] = [
   {
     label: 'Gestión',
     items: [
-      { title: 'Usuarios',   url: '/admin/users',    icon: Users,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'] },
-      { title: 'Equipos',    url: '/admin/devices',  icon: Monitor,   roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+      { title: 'Usuarios', url: '/admin/users', icon: Users, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'] },
+      { title: 'Equipos', url: '/admin/devices', icon: Monitor, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
       { title: 'Sucursales', url: '/admin/branches', icon: Building2, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
     ],
   },
   {
     label: 'Sistema',
     items: [
-      { title: 'Permisos',      url: '/admin/permisos',       icon: ShieldCheck, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
-      { title: 'Auditoría',     url: '/admin/audit',          icon: ScrollText,  roles: ['ADMIN_SISTEMA'] },
-      { title: 'Configuración', url: '/admin/settings',       icon: Settings,    roles: ['ADMIN_SISTEMA'] },
+      { title: 'Permisos',      url: '/admin/permisos',  icon: ShieldCheck, roles: ['ADMIN_SISTEMA'] },
+      { title: 'Auditoría',     url: '/admin/audit',     icon: ScrollText,  roles: ['ADMIN_SISTEMA'] },
+      { title: 'Configuración', url: '/admin/settings',  icon: Settings,    roles: ['ADMIN_SISTEMA'] },
     ],
   },
 ]
@@ -82,94 +82,85 @@ const rolLabels: Record<string, string> = {
   ADMIN_SISTEMA: 'Admin Sistema',
 }
 
-interface AppSidebarProps {
-  /** Modo Tauri: sin header/footer propios y con offset del TopHeader (h-14) */
-  compact?: boolean
-}
+export { navMain, rolLabels }
 
-export function AppSidebar({ compact = false }: AppSidebarProps) {
+export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
   const { pathname } = useLocation()
+  const { state } = useSidebar()
+  const collapsed = state === 'collapsed'
   const user = useSessionStore((s) => s.user)
   const clearSession = useSessionStore((s) => s.clearSession)
 
-  const initials =
-    user?.nombre
-      .split(' ')
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() ?? '?'
-
-  const navContent = (
-    <SidebarContent>
-      {navMain.map((group) => {
-        const visibleItems = group.items.filter(
-          (item) => !item.roles || (user && item.roles.includes(user.rol)),
-        )
-        if (visibleItems.length === 0) return null
-
-        return (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {visibleItems.map((item) => (
-                  <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={pathname === item.url}
-                      tooltip={item.title}
-                    >
-                      <Link
-                        to={item.url}
-                        className={cn(pathname === item.url && 'font-medium')}
-                      >
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )
-      })}
-    </SidebarContent>
-  )
-
-  if (compact) {
-    return (
-      <Sidebar
-        collapsible="icon"
-        className="[&>div:last-child]:top-14 [&>div:last-child]:h-[calc(100svh-3.5rem)]"
-      >
-        {navContent}
-      </Sidebar>
-    )
-  }
+  const initials = user?.nombre
+    .split(' ')
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() ?? '?'
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" side={side}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
+            <SidebarMenuButton
+              size="lg"
+              asChild
+              className="justify-center bg-white/95 hover:bg-white active:bg-white data-active:bg-white"
+            >
               <Link to="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">
-                  472
-                </div>
-                <div className="flex flex-col leading-tight">
-                  <span className="font-semibold text-sm">4-72 Admin</span>
-                  <span className="text-xs text-muted-foreground">Servicios Postales</span>
-                </div>
+                {collapsed ? (
+                  <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold shrink-0">
+                    472
+                  </div>
+                ) : (
+                  <img src="/logo.png" alt="4-72" className="h-7 w-auto" />
+                )}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
 
-      {navContent}
+      <SidebarContent>
+        {navMain.map((group) => {
+          const visibleItems = group.items.filter(
+            (item) =>
+              !item.roles ||
+              (user && item.roles.includes(user.rol)),
+          )
+          if (visibleItems.length === 0) return null
+
+          return (
+            <SidebarGroup key={group.label}>
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {visibleItems.map((item) => (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={pathname === item.url}
+                        tooltip={item.title}
+                      >
+                        <Link
+                          to={item.url}
+                          className={cn(
+                            pathname === item.url && 'font-medium',
+                          )}
+                        >
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )
+        })}
+      </SidebarContent>
 
       <SidebarSeparator />
 
@@ -198,7 +189,11 @@ export function AppSidebar({ compact = false }: AppSidebarProps) {
                   <ChevronDown className="ml-auto size-4" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end" className="w-56">
+              <DropdownMenuContent
+                side="top"
+                align="end"
+                className="w-56"
+              >
                 <DropdownMenuItem disabled>
                   <span className="text-xs text-muted-foreground truncate">
                     {user?.email}
