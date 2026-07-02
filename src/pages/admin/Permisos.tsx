@@ -205,7 +205,7 @@ export default function Permisos() {
             <Skeleton key={i} className="h-20 w-44 rounded-xl shrink-0" />
           ))}
         </div>
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))' }}>
+        <div className="grid w-full gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))' }}>
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-48 rounded-xl" />
           ))}
@@ -259,7 +259,7 @@ export default function Permisos() {
             </p>
           ) : (
             <div
-              className="grid gap-4"
+              className="grid w-full min-w-0 gap-4"
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))' }}
             >
               {matrix.modulos.map((modulo) => (
