@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -23,6 +23,22 @@ import {
   Building2,
   Mail,
   User,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  GripVertical,
+  CalendarIcon,
+  Search,
+  LayoutDashboard,
+  Users,
+  Package,
+  Settings,
+  FileText,
+  Trash2,
+  AlertTriangle,
+  ChevronsUpDown,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -107,6 +123,109 @@ import {
 } from '@/components/ui/toolbar'
 import { PasswordInput } from '@/components/ui/password-input'
 import { toast } from 'sonner'
+// ── New packages ──
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  flexRender,
+  type ColumnDef,
+  type SortingState,
+  type ColumnFiltersState,
+  type VisibilityState,
+} from '@tanstack/react-table'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig,
+} from '@/components/ui/chart'
+import { Calendar } from '@/components/ui/calendar'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
+import type { DateRange } from 'react-day-picker'
+import {
+  Command,
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandSeparator,
+  CommandShortcut,
+} from '@/components/ui/command'
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable'
+import { Slider } from '@/components/ui/slider'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from '@/components/ui/accordion'
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarBadge,
+} from '@/components/ui/avatar'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // ── Color swatches ─────────────────────────────────────────────────────────────
 
@@ -217,6 +336,95 @@ const tableRows = [
 ]
 
 const ROWS_PER_PAGE = 3
+
+// ── TanStack Table data (300 rows) ─────────────────────────────────────────────
+const ROLES = ['CAJERO','ADMINISTRATIVO','TESORERIA','INVENTARIOS','SUPERVISOR_REGIONAL','ADMIN_NACIONAL','ADMIN_SISTEMA'] as const
+const SUCURSALES = ['Bogotá Centro','Medellín Norte','Cali Sur','Barranquilla','Bucaramanga','Pereira','Manizales','Cartagena','Cúcuta','Ibagué'] as const
+const NOMBRES = ['Ana García','Luis Pérez','María Rodríguez','Carlos Martínez','Laura Sánchez','Diego Vargas','Camila Torres','Andrés Morales','Valentina Cruz','Juan Ramírez','Sofia López','Miguel Herrera','Isabella Gómez','Daniel Castro','Natalia Reyes']
+type UsuarioRow = { id: string; nombre: string; rol: string; estado: string; sucursal: string; fechaCreacion: string }
+const bigTableRows: UsuarioRow[] = Array.from({ length: 300 }, (_, i) => ({
+  id: `US-${String(i + 1).padStart(4, '0')}`,
+  nombre: NOMBRES[i % NOMBRES.length],
+  rol: ROLES[i % ROLES.length],
+  estado: i % 5 === 0 ? 'Inactivo' : 'Activo',
+  sucursal: SUCURSALES[i % SUCURSALES.length],
+  fechaCreacion: new Date(2024, i % 12, (i % 28) + 1).toLocaleDateString('es-CO'),
+}))
+
+// ── Chart data ─────────────────────────────────────────────────────────────────
+const barData = [
+  { sucursal: 'Bogotá',       envios: 4200, ingresos: 38500 },
+  { sucursal: 'Medellín',     envios: 3100, ingresos: 28200 },
+  { sucursal: 'Cali',         envios: 2400, ingresos: 21800 },
+  { sucursal: 'Barranquilla', envios: 1800, ingresos: 16400 },
+  { sucursal: 'Bucaramanga',  envios: 1200, ingresos: 10900 },
+  { sucursal: 'Pereira',      envios:  900, ingresos:  8200 },
+  { sucursal: 'Manizales',    envios:  650, ingresos:  5900 },
+]
+const lineData = [
+  { dia: 'Lun', activos: 812 },
+  { dia: 'Mar', activos: 934 },
+  { dia: 'Mié', activos: 876 },
+  { dia: 'Jue', activos: 1043 },
+  { dia: 'Vie', activos: 1124 },
+  { dia: 'Sáb', activos: 621 },
+  { dia: 'Dom', activos: 389 },
+]
+const pieData = [
+  { name: 'Cajero',          value: 38 },
+  { name: 'Administrativo',  value: 22 },
+  { name: 'Tesorería',       value: 14 },
+  { name: 'Inventarios',     value: 11 },
+  { name: 'Sup. Regional',   value: 9  },
+  { name: 'Admin Nacional',  value: 4  },
+  { name: 'Admin Sistema',   value: 2  },
+]
+const barChartConfig: ChartConfig = {
+  envios:   { label: 'Envíos',   color: 'var(--chart-1)' },
+  ingresos: { label: 'Ingresos (K)', color: 'var(--chart-2)' },
+}
+const lineChartConfig: ChartConfig = {
+  activos: { label: 'Usuarios activos', color: 'var(--chart-1)' },
+}
+const PIE_COLORS = ['var(--chart-1)','var(--chart-2)','var(--chart-3)','var(--chart-4)','var(--chart-5)','#6366f1','#8b5cf6']
+
+// ── DnD data ───────────────────────────────────────────────────────────────────
+type TareaItem = { id: string; titulo: string; prioridad: 'alta' | 'media' | 'baja'; rol: string }
+const tareasIniciales: TareaItem[] = [
+  { id: '1', titulo: 'Revisar permisos de cajeros en Bogotá',       prioridad: 'alta',  rol: 'ADMIN_SISTEMA' },
+  { id: '2', titulo: 'Autorizar dispositivos nuevos en Medellín',    prioridad: 'alta',  rol: 'ADMIN_NACIONAL' },
+  { id: '3', titulo: 'Exportar reporte mensual de tesorería',        prioridad: 'media', rol: 'TESORERIA' },
+  { id: '4', titulo: 'Actualizar inventario de sucursal Cali',       prioridad: 'media', rol: 'INVENTARIOS' },
+  { id: '5', titulo: 'Verificar logs de auditoría semanal',          prioridad: 'baja',  rol: 'SUPERVISOR_REGIONAL' },
+  { id: '6', titulo: 'Sincronizar catálogo de productos',            prioridad: 'baja',  rol: 'ADMINISTRATIVO' },
+]
+const prioridadColor: Record<string, string> = { alta: '#E51937', media: '#FDC52F', baja: '#1E4093' }
+
+function SortableItem({ item }: { item: TareaItem }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5 ${isDragging ? 'opacity-50 shadow-lg' : ''}`}
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+        aria-label="Arrastrar"
+      >
+        <GripVertical className="size-4" />
+      </button>
+      <span
+        className="inline-block w-2 h-2 rounded-full shrink-0"
+        style={{ background: prioridadColor[item.prioridad] }}
+      />
+      <span className="flex-1 text-sm">{item.titulo}</span>
+      <Badge variant="outline" className="text-[10px] font-mono shrink-0">{item.rol}</Badge>
+    </div>
+  )
+}
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
@@ -455,6 +663,215 @@ const scrollItems = [
   { code: 'IBA-01', nombre: 'Ibagué El Centro',      ciudad: 'Ibagué',        activa: true },
 ]
 
+// ── TanStack Table + Virtual component ────────────────────────────────────────
+
+function TablaVirtual() {
+  const [sorting, setSorting] = useState<SortingState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const columns: ColumnDef<UsuarioRow>[] = [
+    {
+      accessorKey: 'id',
+      header: 'ID',
+      cell: ({ getValue }) => (
+        <span className="font-mono text-[11px] text-muted-foreground">{getValue<string>()}</span>
+      ),
+      size: 90,
+    },
+    {
+      accessorKey: 'nombre',
+      header: ({ column }) => (
+        <button
+          className="flex items-center gap-1 hover:text-foreground"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+        >
+          Nombre
+          {column.getIsSorted() === 'asc'  ? <ArrowUp className="size-3" /> :
+           column.getIsSorted() === 'desc' ? <ArrowDown className="size-3" /> :
+           <ArrowUpDown className="size-3 opacity-40" />}
+        </button>
+      ),
+      cell: ({ getValue }) => <span className="font-medium">{getValue<string>()}</span>,
+    },
+    {
+      accessorKey: 'rol',
+      header: ({ column }) => (
+        <button
+          className="flex items-center gap-1 hover:text-foreground"
+          onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+        >
+          Rol
+          {column.getIsSorted() === 'asc'  ? <ArrowUp className="size-3" /> :
+           column.getIsSorted() === 'desc' ? <ArrowDown className="size-3" /> :
+           <ArrowUpDown className="size-3 opacity-40" />}
+        </button>
+      ),
+      cell: ({ getValue }) => (
+        <Badge variant="outline" className="text-[10px] font-mono">{getValue<string>()}</Badge>
+      ),
+    },
+    {
+      accessorKey: 'sucursal',
+      header: 'Sucursal',
+      cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>()}</span>,
+    },
+    {
+      accessorKey: 'fechaCreacion',
+      header: 'Creado',
+      cell: ({ getValue }) => <span className="text-muted-foreground text-xs">{getValue<string>()}</span>,
+    },
+    {
+      accessorKey: 'estado',
+      header: 'Estado',
+      cell: ({ getValue }) => (
+        <Badge variant={getValue<string>() === 'Activo' ? 'default' : 'secondary'}>
+          {getValue<string>()}
+        </Badge>
+      ),
+    },
+  ]
+
+  const table = useReactTable({
+    data: bigTableRows,
+    columns,
+    state: { sorting, columnFilters, columnVisibility },
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  })
+
+  const { rows } = table.getRowModel()
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 40,
+    overscan: 8,
+  })
+
+  const vItems = virtualizer.getVirtualItems()
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Input
+          placeholder="Filtrar por nombre…"
+          value={(table.getColumn('nombre')?.getFilterValue() as string) ?? ''}
+          onChange={e => table.getColumn('nombre')?.setFilterValue(e.target.value)}
+          className="max-w-xs"
+        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="ml-auto">
+              <ChevronsUpDown className="size-3.5 mr-1.5" />Columnas
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {table.getAllColumns().filter(c => c.getCanHide()).map(col => (
+              <DropdownMenuCheckboxItem
+                key={col.id}
+                checked={col.getIsVisible()}
+                onCheckedChange={v => col.toggleVisibility(v)}
+                className="capitalize"
+              >
+                {col.id}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <div className="border rounded-xl overflow-hidden">
+        {/* sticky header */}
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map(hg => (
+              <TableRow key={hg.id}>
+                {hg.headers.map(h => (
+                  <TableHead key={h.id} style={{ width: h.getSize() }}>
+                    {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+        </Table>
+
+        {/* virtual scroll body */}
+        <div ref={containerRef} style={{ height: 360, overflow: 'auto' }}>
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+            {vItems.map(vRow => {
+              const row = rows[vRow.index]
+              return (
+                <div
+                  key={row.id}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    transform: `translateY(${vRow.start}px)`,
+                    width: '100%',
+                    height: `${vRow.size}px`,
+                  }}
+                  className="flex items-center border-b px-2 text-sm hover:bg-muted/40 transition-colors"
+                >
+                  {row.getVisibleCells().map(cell => (
+                    <div
+                      key={cell.id}
+                      style={{ width: cell.column.getSize() === 150 ? undefined : cell.column.getSize(), flex: cell.column.getSize() === 150 ? 1 : undefined }}
+                      className="px-2 py-1 overflow-hidden"
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        {rows.length} de {bigTableRows.length} registros
+        {' · '}virtualización activa — renderizando {vItems.length} filas visibles
+      </p>
+    </div>
+  )
+}
+
+// ── DnD Sortable component ─────────────────────────────────────────────────────
+
+function DnDSortable() {
+  const [items, setItems] = useState(tareasIniciales)
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor),
+  )
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setItems(prev => {
+        const oldIdx = prev.findIndex(i => i.id === active.id)
+        const newIdx = prev.findIndex(i => i.id === over.id)
+        return arrayMove(prev, oldIdx, newIdx)
+      })
+    }
+  }, [])
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2">
+          {items.map(item => <SortableItem key={item.id} item={item} />)}
+        </div>
+      </SortableContext>
+    </DndContext>
+  )
+}
+
 // ── Lab page ───────────────────────────────────────────────────────────────────
 
 export default function Lab() {
@@ -465,6 +882,23 @@ export default function Lab() {
   })
   const [dataPage, setDataPage] = useState(1)
   const dataTotalPages = Math.ceil(tableRows.length / ROWS_PER_PAGE)
+  // ── new state ──
+  const [calDate, setCalDate] = useState<Date | undefined>(new Date())
+  const [calRange, setCalRange] = useState<DateRange | undefined>()
+  const [sliderVal, setSliderVal] = useState([40])
+  const [sliderRange, setSliderRange] = useState([20, 75])
+  const [cmdOpen, setCmdOpen] = useState(false)
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setCmdOpen(prev => !prev)
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [])
 
   const toggleDark = () => {
     document.documentElement.classList.toggle('dark')
@@ -504,6 +938,13 @@ export default function Lab() {
           <TabsTrigger value="feedback">Feedback</TabsTrigger>
           <TabsTrigger value="datos">Datos</TabsTrigger>
           <TabsTrigger value="overlays">Overlays</TabsTrigger>
+          <TabsTrigger value="tabla">Tabla TS</TabsTrigger>
+          <TabsTrigger value="graficas">Gráficas</TabsTrigger>
+          <TabsTrigger value="calendario">Calendario</TabsTrigger>
+          <TabsTrigger value="comando">Comando</TabsTrigger>
+          <TabsTrigger value="paneles">Paneles</TabsTrigger>
+          <TabsTrigger value="controles">Controles</TabsTrigger>
+          <TabsTrigger value="dnd">DnD</TabsTrigger>
         </TabsList>
 
         {/* ── DICCIONARIO ───────────────────────────────────────────────────── */}
@@ -1527,6 +1968,502 @@ export default function Lab() {
                 </SheetContent>
               </Sheet>
             </Section>
+          </div>
+        </TabsContent>
+
+        {/* ── TABLA TS ──────────────────────────────────────────────────────── */}
+        <TabsContent value="tabla" className="mt-6 space-y-6">
+          <Section title="TanStack Table v8 + Virtual — 300 filas" accent="blue">
+            <TablaVirtual />
+          </Section>
+          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground space-y-1">
+            <p><span className="font-semibold text-foreground">getCoreRowModel</span> · <span className="font-semibold text-foreground">getSortedRowModel</span> · <span className="font-semibold text-foreground">getFilteredRowModel</span> — modelos composables</p>
+            <p><span className="font-semibold text-foreground">useVirtualizer</span> — renderiza solo las filas visibles; el contenedor mide 360px y mantiene una lista virtual de altura total</p>
+          </div>
+        </TabsContent>
+
+        {/* ── GRÁFICAS ──────────────────────────────────────────────────────── */}
+        <TabsContent value="graficas" className="mt-6 space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Section title="Bar — Envíos e ingresos por sucursal" accent="blue">
+              <ChartContainer config={barChartConfig} className="h-64">
+                <BarChart data={barData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="sucursal" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Bar dataKey="envios"   fill="var(--chart-1)" radius={[4,4,0,0]} />
+                  <Bar dataKey="ingresos" fill="var(--chart-2)" radius={[4,4,0,0]} />
+                </BarChart>
+              </ChartContainer>
+            </Section>
+
+            <Section title="Line — Usuarios activos por día" accent="yellow">
+              <ChartContainer config={lineChartConfig} className="h-64">
+                <LineChart data={lineData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="dia" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line
+                    type="monotone"
+                    dataKey="activos"
+                    stroke="var(--chart-1)"
+                    strokeWidth={2}
+                    dot={{ fill: 'var(--chart-1)', r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            </Section>
+          </div>
+
+          <Section title="Pie — Distribución por rol" accent="red">
+            <div className="flex flex-col sm:flex-row items-center gap-6">
+              <ResponsiveContainer width={220} height={220}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {pieData.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(v, n) => [`${v}%`, n]}
+                    contentStyle={{ borderRadius: 8, fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
+                {pieData.map((d, i) => (
+                  <div key={d.name} className="flex items-center gap-2">
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                    <span className="text-xs text-muted-foreground">{d.name}</span>
+                    <span className="text-xs font-semibold ml-auto pl-2">{d.value}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Section>
+        </TabsContent>
+
+        {/* ── CALENDARIO ────────────────────────────────────────────────────── */}
+        <TabsContent value="calendario" className="mt-6 space-y-6">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Section title="Selección simple" accent="blue">
+              <Calendar
+                mode="single"
+                selected={calDate}
+                onSelect={setCalDate}
+                locale={es}
+                className="rounded-lg border w-fit"
+              />
+              <p className="text-xs text-muted-foreground mt-3">
+                {calDate ? format(calDate, "d 'de' MMMM 'de' yyyy", { locale: es }) : 'Sin fecha seleccionada'}
+              </p>
+            </Section>
+
+            <Section title="Rango de fechas" accent="yellow">
+              <Calendar
+                mode="range"
+                selected={calRange}
+                onSelect={setCalRange}
+                locale={es}
+                numberOfMonths={1}
+                className="rounded-lg border w-fit"
+              />
+              <p className="text-xs text-muted-foreground mt-3">
+                {calRange?.from
+                  ? calRange.to
+                    ? `${format(calRange.from, 'd MMM', { locale: es })} → ${format(calRange.to, 'd MMM yyyy', { locale: es })}`
+                    : format(calRange.from, "d 'de' MMMM", { locale: es })
+                  : 'Selecciona un rango'}
+              </p>
+            </Section>
+
+            <Section title="DatePicker — Popover trigger" accent="red">
+              <div className="space-y-2">
+                <Label className="text-xs">Fecha de reporte</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start gap-2 font-normal">
+                      <CalendarIcon className="size-4 text-muted-foreground" />
+                      {calDate
+                        ? format(calDate, "d MMM yyyy", { locale: es })
+                        : 'Seleccionar fecha…'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-auto" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={calDate}
+                      onSelect={setCalDate}
+                      locale={es}
+                    />
+                  </PopoverContent>
+                </Popover>
+                <p className="text-[11px] text-muted-foreground">Patrón: Popover + Calendar, usado en filtros de auditoría y reportes</p>
+              </div>
+            </Section>
+          </div>
+        </TabsContent>
+
+        {/* ── COMANDO ───────────────────────────────────────────────────────── */}
+        <TabsContent value="comando" className="mt-6 space-y-6">
+          <Section title="Command Palette — cmdk" accent="blue">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Button onClick={() => setCmdOpen(true)}>
+                  <Search className="size-4 mr-2" />
+                  Abrir paleta
+                </Button>
+                <kbd className="pointer-events-none inline-flex h-7 select-none items-center gap-1 rounded border bg-muted px-2 font-mono text-[11px] font-medium text-muted-foreground">
+                  <span className="text-xs">⌘</span>K
+                </kbd>
+                <span className="text-xs text-muted-foreground">o Ctrl+K</span>
+              </div>
+
+              {/* Inline Command (no dialog) */}
+              <Command className="rounded-lg border shadow-sm">
+                <CommandInput placeholder="Buscar módulo, usuario o acción…" />
+                <CommandList>
+                  <CommandEmpty>Sin resultados.</CommandEmpty>
+                  <CommandGroup heading="Módulos">
+                    <CommandItem><LayoutDashboard className="mr-2 size-4" />Dashboard</CommandItem>
+                    <CommandItem><Users className="mr-2 size-4" />Usuarios<CommandShortcut>⌘U</CommandShortcut></CommandItem>
+                    <CommandItem><Package className="mr-2 size-4" />Dispositivos</CommandItem>
+                    <CommandItem><FileText className="mr-2 size-4" />Auditoría</CommandItem>
+                  </CommandGroup>
+                  <CommandSeparator />
+                  <CommandGroup heading="Acciones rápidas">
+                    <CommandItem><User className="mr-2 size-4" />Crear usuario</CommandItem>
+                    <CommandItem><Settings className="mr-2 size-4" />Configuración del sistema</CommandItem>
+                  </CommandGroup>
+                  <CommandSeparator />
+                  <CommandGroup heading="Sucursales">
+                    {['Bogotá Centro','Medellín Norte','Cali Sur','Barranquilla'].map(s => (
+                      <CommandItem key={s}><Building2 className="mr-2 size-4" />{s}</CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </div>
+          </Section>
+
+          {/* Dialog variant */}
+          <CommandDialog open={cmdOpen} onOpenChange={setCmdOpen}>
+            <CommandInput placeholder="Buscar módulo, usuario o acción…" />
+            <CommandList>
+              <CommandEmpty>Sin resultados.</CommandEmpty>
+              <CommandGroup heading="Módulos">
+                <CommandItem onSelect={() => setCmdOpen(false)}><LayoutDashboard className="mr-2 size-4" />Dashboard</CommandItem>
+                <CommandItem onSelect={() => setCmdOpen(false)}><Users className="mr-2 size-4" />Usuarios<CommandShortcut>⌘U</CommandShortcut></CommandItem>
+                <CommandItem onSelect={() => setCmdOpen(false)}><Package className="mr-2 size-4" />Dispositivos</CommandItem>
+                <CommandItem onSelect={() => setCmdOpen(false)}><FileText className="mr-2 size-4" />Auditoría</CommandItem>
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup heading="Acciones rápidas">
+                <CommandItem onSelect={() => { setCmdOpen(false); toast.success('Crear usuario') }}><User className="mr-2 size-4" />Crear usuario</CommandItem>
+                <CommandItem onSelect={() => { setCmdOpen(false); toast.info('Configuración') }}><Settings className="mr-2 size-4" />Configuración del sistema</CommandItem>
+              </CommandGroup>
+            </CommandList>
+          </CommandDialog>
+        </TabsContent>
+
+        {/* ── PANELES ───────────────────────────────────────────────────────── */}
+        <TabsContent value="paneles" className="mt-6 space-y-6">
+          <Section title="Horizontal — Sidebar · Contenido · Detalle" accent="blue">
+            <ResizablePanelGroup direction="horizontal" className="h-72 rounded-lg border">
+              <ResizablePanel defaultSize={20} minSize={12}>
+                <div className="flex h-full flex-col p-3 gap-1">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Módulos</p>
+                  {[
+                    { icon: LayoutDashboard, label: 'Dashboard' },
+                    { icon: Users,           label: 'Usuarios' },
+                    { icon: Package,         label: 'Dispositivos' },
+                    { icon: FileText,        label: 'Auditoría' },
+                    { icon: Settings,        label: 'Configuración' },
+                  ].map(({ icon: Icon, label }) => (
+                    <button key={label} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-left w-full">
+                      <Icon className="size-3.5 shrink-0" />{label}
+                    </button>
+                  ))}
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={55} minSize={30}>
+                <div className="h-full p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Usuarios</p>
+                  {bigTableRows.slice(0, 6).map(r => (
+                    <div key={r.id} className="flex items-center justify-between px-3 py-2 rounded-md hover:bg-muted/50 transition-colors cursor-default">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar size="sm">
+                          <AvatarFallback>{r.nombre.split(' ').map(n=>n[0]).join('').slice(0,2)}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium truncate">{r.nombre}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono truncate">{r.rol}</p>
+                        </div>
+                      </div>
+                      <Badge variant={r.estado === 'Activo' ? 'default' : 'secondary'} className="text-[10px] shrink-0 ml-2">
+                        {r.estado}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={25} minSize={15}>
+                <div className="h-full p-4 space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Detalle</p>
+                  <div className="flex flex-col items-center gap-2 pt-4">
+                    <Avatar size="lg">
+                      <AvatarFallback className="text-base">AG</AvatarFallback>
+                    </Avatar>
+                    <p className="text-sm font-semibold">Ana García</p>
+                    <Badge variant="outline" className="text-[10px] font-mono">ADMIN_SISTEMA</Badge>
+                  </div>
+                  <Separator />
+                  <div className="space-y-2 text-xs text-muted-foreground">
+                    <div className="flex gap-2"><Mail className="size-3.5 shrink-0 mt-0.5" /><span>ana.garcia@4-72.com.co</span></div>
+                    <div className="flex gap-2"><Building2 className="size-3.5 shrink-0 mt-0.5" /><span>Bogotá Centro</span></div>
+                  </div>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </Section>
+
+          <Section title="Vertical — Header · Body · Footer" accent="yellow">
+            <ResizablePanelGroup direction="vertical" className="h-64 rounded-lg border">
+              <ResizablePanel defaultSize={20} minSize={10}>
+                <div className="flex h-full items-center px-4 gap-2">
+                  <p className="text-xs font-semibold">Encabezado del panel</p>
+                  <Badge variant="secondary" className="text-[10px]">Fijo</Badge>
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={60}>
+                <div className="h-full p-4 overflow-auto">
+                  <p className="text-xs text-muted-foreground">Área de contenido redimensionable — arrastrar el separador para cambiar proporciones.</p>
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={20} minSize={10}>
+                <div className="flex h-full items-center justify-end px-4 gap-2">
+                  <Button size="sm" variant="outline">Cancelar</Button>
+                  <Button size="sm">Guardar</Button>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </Section>
+        </TabsContent>
+
+        {/* ── CONTROLES ─────────────────────────────────────────────────────── */}
+        <TabsContent value="controles" className="mt-6 space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+
+            {/* Slider */}
+            <Section title="Slider" accent="blue">
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Umbral de alerta (%)</span>
+                    <span className="font-semibold tabular-nums text-foreground">{sliderVal[0]}%</span>
+                  </div>
+                  <Slider value={sliderVal} onValueChange={setSliderVal} min={0} max={100} step={1} />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Rango de ingresos (K COP)</span>
+                    <span className="font-semibold tabular-nums text-foreground">{sliderRange[0]}K – {sliderRange[1]}K</span>
+                  </div>
+                  <Slider value={sliderRange} onValueChange={setSliderRange} min={0} max={100} step={5} />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Deshabilitado</span>
+                    <span className="font-semibold tabular-nums text-foreground">60%</span>
+                  </div>
+                  <Slider defaultValue={[60]} disabled />
+                </div>
+              </div>
+            </Section>
+
+            {/* AlertDialog */}
+            <Section title="AlertDialog" accent="red">
+              <div className="space-y-3">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full">
+                      <Trash2 className="size-4 mr-2" />Eliminar usuario
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Eliminar usuario?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta acción es irreversible. <strong>Ana García</strong> perderá acceso inmediatamente
+                        y sus datos serán eliminados del sistema 4-72.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => toast.error('Usuario eliminado')}>
+                        Sí, eliminar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="w-full">
+                      <AlertTriangle className="size-4 mr-2 text-warning" />Revocar todos los dispositivos
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Revocar dispositivos autorizados</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Se desconectarán <strong>12 dispositivos</strong> activos en la sucursal Bogotá Centro.
+                        Los cajeros no podrán operar hasta re-autorización.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => toast.warning('Dispositivos revocados')}>
+                        Revocar todos
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="w-full">Confirmar sincronización</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Sincronizar datos</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Se enviarán los cambios pendientes al servidor central. La operación puede tomar unos minutos.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => toast.success('Sincronización iniciada')}>Sincronizar</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </Section>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Accordion */}
+            <Section title="Accordion — Permisos por módulo" accent="blue">
+              <Accordion type="single" collapsible className="w-full">
+                {[
+                  {
+                    id: 'usuarios',
+                    title: 'Gestión de Usuarios',
+                    content: 'Crear, editar y eliminar usuarios del sistema. Asignar roles y sucursales. Requiere rol ADMIN_SISTEMA o ADMIN_NACIONAL.',
+                  },
+                  {
+                    id: 'dispositivos',
+                    title: 'Dispositivos POS',
+                    content: 'Autorizar, revocar y monitorear dispositivos. Ver estado de heartbeat y última conexión. Disponible para ADMIN_SISTEMA y ADMIN_NACIONAL.',
+                  },
+                  {
+                    id: 'auditoria',
+                    title: 'Auditoría',
+                    content: 'Consultar logs de acceso y operaciones del sistema. Solo ADMIN_SISTEMA tiene acceso completo al historial.',
+                  },
+                  {
+                    id: 'reportes',
+                    title: 'Reportes Financieros',
+                    content: 'Exportar y visualizar reportes de ingresos, envíos y cierres de caja. Accesible para TESORERIA y superiores.',
+                  },
+                ].map(({ id, title, content }) => (
+                  <AccordionItem key={id} value={id}>
+                    <AccordionTrigger>{title}</AccordionTrigger>
+                    <AccordionContent>
+                      <p className="text-sm text-muted-foreground">{content}</p>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </Section>
+
+            {/* Avatar */}
+            <Section title="Avatar — Tamaños y grupo" accent="yellow">
+              <div className="space-y-5">
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-2 uppercase tracking-wider font-medium">Tamaños</p>
+                  <div className="flex items-end gap-3">
+                    {(['sm','default','lg'] as const).map(size => (
+                      <div key={size} className="flex flex-col items-center gap-1">
+                        <Avatar size={size}>
+                          <AvatarFallback>AG</AvatarFallback>
+                        </Avatar>
+                        <span className="text-[10px] text-muted-foreground">{size}</span>
+                      </div>
+                    ))}
+                    <div className="flex flex-col items-center gap-1">
+                      <Avatar size="lg">
+                        <AvatarFallback>LP</AvatarFallback>
+                        <AvatarBadge className="bg-green-500 border-background" />
+                      </Avatar>
+                      <span className="text-[10px] text-muted-foreground">badge</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground mb-2 uppercase tracking-wider font-medium">Grupo</p>
+                  <AvatarGroup>
+                    {bigTableRows.slice(0,5).map(r => (
+                      <Avatar key={r.id} size="sm">
+                        <AvatarFallback>{r.nombre.split(' ').map(n=>n[0]).join('').slice(0,2)}</AvatarFallback>
+                      </Avatar>
+                    ))}
+                    <AvatarGroupCount count={295} />
+                  </AvatarGroup>
+                  <p className="text-[11px] text-muted-foreground mt-2">5 avatares + overflow count</p>
+                </div>
+              </div>
+            </Section>
+          </div>
+        </TabsContent>
+
+        {/* ── DnD ───────────────────────────────────────────────────────────── */}
+        <TabsContent value="dnd" className="mt-6 space-y-6">
+          <Section title="@dnd-kit — Lista sortable de tareas" accent="blue">
+            <div className="space-y-1 mb-4">
+              <p className="text-xs text-muted-foreground">Arrastra por el ícono <GripVertical className="inline size-3.5 -mt-0.5" /> para reordenar. Compatible con mouse, touch y teclado.</p>
+            </div>
+            <DnDSortable />
+            <div className="mt-4 flex gap-2">
+              {Object.entries(prioridadColor).map(([p, color]) => (
+                <div key={p} className="flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
+                  <span className="text-[11px] text-muted-foreground capitalize">{p}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs text-muted-foreground space-y-1">
+            <p><span className="font-semibold text-foreground">DndContext</span> — proveedor; <span className="font-semibold text-foreground">SortableContext</span> — lista ordenable</p>
+            <p><span className="font-semibold text-foreground">useSortable</span> — hook por item; <span className="font-semibold text-foreground">arrayMove</span> — actualiza el orden en estado</p>
+            <p><span className="font-semibold text-foreground">PointerSensor</span> + <span className="font-semibold text-foreground">KeyboardSensor</span> — accesibilidad completa</p>
           </div>
         </TabsContent>
 

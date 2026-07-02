@@ -15,11 +15,11 @@ export type RolUsuario = z.infer<typeof RolUsuario>
 
 // Coincide con GET /auth/me del backend
 export const userSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
   nombre: z.string(),
   email: z.string().email(),
   rol: RolUsuario,
-  sucursal_id: z.string().uuid().nullable(),
+  sucursal_id: z.string().nullable(),
   activo: z.boolean(),
   ultimoLogin: z.string().nullable(),
 })

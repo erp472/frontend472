@@ -6,12 +6,14 @@ import {
   useLocation,
 } from 'react-router-dom'
 import { AdminLayout } from '@/components/layout/AdminLayout'
+import { LabGuard }    from '@/components/layout/LabGuard'
 import { useSessionStore, type RolUsuario } from '@/stores/useSessionStore'
 
 // ── Lazy pages ────────────────────────────────────────────────────────────────
 const Dashboard    = lazy(() => import('@/pages/Dashboard'))
 const Login        = lazy(() => import('@/pages/Login'))
 const Lab          = lazy(() => import('@/pages/Lab'))
+const Lab2         = lazy(() => import('@/pages/Lab2'))
 const UsersPage    = lazy(() => import('@/pages/admin/Users'))
 const PermisosPage = lazy(() => import('@/pages/admin/Permisos'))
 
@@ -145,7 +147,24 @@ export const router = createBrowserRouter(
     { path: '/unauthorized', element: <Unauthorized /> },
     // Workbench — solo en desarrollo
     ...(import.meta.env.DEV
-      ? [{ path: '/lab', element: lazySuspense(Lab) }]
+      ? [
+          {
+            path: '/lab',
+            element: (
+              <LabGuard>
+                <Suspense fallback={<PageLoader />}><Lab /></Suspense>
+              </LabGuard>
+            ),
+          },
+          {
+            path: '/lab2',
+            element: (
+              <LabGuard>
+                <Suspense fallback={<PageLoader />}><Lab2 /></Suspense>
+              </LabGuard>
+            ),
+          },
+        ]
       : []),
     { path: '*', element: <Navigate to="/" replace /> },
   ],

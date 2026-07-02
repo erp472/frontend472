@@ -20,9 +20,25 @@ import './index.css'
 registerTokenProvider(() => useSessionStore.getState().token)
 
 async function bootstrap() {
-  // DEV-only mock: permite navegar el admin sin un JWT real del backend
-  // Solo activa si no hay token real almacenado (permitir login real en dev)
+  // DEV-only: intenta login real para obtener JWT; si el backend no responde, usa mock
   if (import.meta.env.DEV && !readTokenFromUrl() && !useSessionStore.getState().token) {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/auth/login`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          email:    import.meta.env.VITE_LAB_EMAIL    ?? 'admin@4-72.com.co',
+          password: import.meta.env.VITE_LAB_PASSWORD ?? 'Admin@4-72!',
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json() as { access_token: string }
+        useSessionStore.getState().setToken(data.access_token)
+        // Deja que el flujo normal (abajo) obtenga el perfil via /auth/me
+        return bootstrap()
+      }
+    } catch { /* backend no disponible — usar mock */ }
+
     useSessionStore.getState().setUser({
       id: '00000000-0000-0000-0000-000000000001',
       nombre: 'Dev Admin',
