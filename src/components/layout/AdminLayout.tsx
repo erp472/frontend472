@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/breadcrumb'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopNavBar } from '@/components/layout/TopNavBar'
+import { useFeatureFlagsActivos } from '@/queries/feature-flags.queries'
+import { useFeatureFlagsStore } from '@/stores/useFeatureFlagsStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { isTauri } from '@/lib/tauri'
 
@@ -21,9 +23,19 @@ const tricolorBar = (
   />
 )
 
+const ENTORNO = import.meta.env.DEV ? 'dev' : 'prod'
+
 export function AdminLayout() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
+  const setFlags = useFeatureFlagsStore((s) => s.setFlags)
+
+  const plataforma = isTauri() ? 'tauri' : 'web'
+  const { data: flagsActivos } = useFeatureFlagsActivos({ entorno: ENTORNO, plataforma })
+
+  useEffect(() => {
+    if (flagsActivos) setFlags(flagsActivos.map((f) => f.codigo))
+  }, [flagsActivos, setFlags])
 
   useEffect(() => {
     if (isTauri()) {

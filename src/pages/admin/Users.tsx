@@ -42,11 +42,12 @@ import { ApiError } from '@/lib/api'
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ROL_VALUES = [
-  'CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS',
+  'USUARIO_POST', 'CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS',
   'SUPERVISOR_REGIONAL', 'ADMIN_NACIONAL', 'ADMIN_SISTEMA',
 ] as const
 
 const ROL_BADGE: Record<string, string> = {
+  USUARIO_POST:         'secondary',
   CAJERO:               'secondary',
   ADMINISTRATIVO:       'secondary',
   TESORERIA:            'secondary',
@@ -64,7 +65,10 @@ const baseSchema = z.object({
   nombre:      z.string().min(2, 'Mínimo 2 caracteres').max(200),
   email:       z.string().email('Correo inválido'),
   rol:         z.enum(ROL_VALUES),
-  sucursal_id: z.string().uuid('UUID inválido').nullable().optional(),
+  sucursal_id: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined) ? null : Number(v),
+    z.number().int().positive('Debe ser un número positivo').nullable()
+  ).optional(),
 })
 
 const createSchema = baseSchema.extend({
@@ -143,12 +147,9 @@ function UserForm({ user, open, onClose }: UserFormProps) {
       if (isEdit && user) {
         const patch = { ...values } as UpdateForm
         if (!patch.password) delete patch.password
-        if (patch.sucursal_id === '') patch.sucursal_id = null
         await updateMutation.mutateAsync({ id: user.id, data: patch })
       } else {
-        const body = { ...values } as CreateForm
-        if (body.sucursal_id === '') body.sucursal_id = null
-        await createMutation.mutateAsync(body)
+        await createMutation.mutateAsync(values as CreateForm)
       }
       onClose()
     } catch (e) {
@@ -233,10 +234,12 @@ function UserForm({ user, open, onClose }: UserFormProps) {
 
           {/* Sucursal ID */}
           <div className="space-y-1.5">
-            <Label htmlFor="u-suc">UUID de sucursal <span className="text-muted-foreground text-xs ml-1">(opcional)</span></Label>
+            <Label htmlFor="u-suc">ID de sucursal <span className="text-muted-foreground text-xs ml-1">(opcional)</span></Label>
             <Input
               id="u-suc"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              type="number"
+              min={1}
+              placeholder="1"
               {...form.register('sucursal_id')}
               aria-invalid={!!form.formState.errors.sucursal_id}
             />
@@ -431,7 +434,6 @@ export default function UsersPage() {
               <TableHead>Rol</TableHead>
               <TableHead>Sucursal</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Último ingreso</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -478,9 +480,6 @@ export default function UsersPage() {
                         <UserX className="size-3" />Inactivo
                       </Badge>
                     )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm tabular-nums">
-                    {formatDate(u.ultimoLogin)}
                   </TableCell>
                   <TableCell>
                     {(canEdit) && (

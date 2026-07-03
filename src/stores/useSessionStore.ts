@@ -1,8 +1,9 @@
 import { create } from 'zustand'
-import { devtools, persist } from 'zustand/middleware'
+import { devtools } from 'zustand/middleware'
 import { z } from 'zod'
 
 export const RolUsuario = z.enum([
+  'USUARIO_POST',
   'CAJERO',
   'ADMINISTRATIVO',
   'TESORERIA',
@@ -19,7 +20,7 @@ export const userSchema = z.object({
   nombre: z.string(),
   email: z.string().email(),
   rol: RolUsuario,
-  sucursal_id: z.string().nullable(),
+  sucursal_id: z.number().int().nullable(),
   activo: z.boolean(),
   ultimoLogin: z.string().nullable(),
 })
@@ -39,22 +40,16 @@ interface SessionState {
 
 export const useSessionStore = create<SessionState>()(
   devtools(
-    persist(
-      (set) => ({
-        token: null,
-        user: null,
-        status: 'loading',
-        setToken: (token) => set({ token }),
-        setUser: (user) => set({ user, status: 'authenticated' }),
-        setStatus: (status) => set({ status }),
-        clearSession: () =>
-          set({ token: null, user: null, status: 'unauthenticated' }),
-      }),
-      {
-        name: 'session-472',
-        partialize: (s: SessionState) => ({ token: s.token, user: s.user }),
-      },
-    ),
+    (set) => ({
+      token: null,
+      user: null,
+      status: 'loading',
+      setToken: (token) => set({ token }),
+      setUser: (user) => set({ user, status: 'authenticated' }),
+      setStatus: (status) => set({ status }),
+      clearSession: () =>
+        set({ token: null, user: null, status: 'unauthenticated' }),
+    }),
     { name: 'SessionStore' },
   ),
 )

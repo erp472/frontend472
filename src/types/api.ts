@@ -3,13 +3,13 @@ import type { RolUsuario } from '@/stores/useSessionStore'
 // ── Usuarios ─────────────────────────────────────────────────────────────────
 
 export interface UserResponse {
-  id: string
+  id: number
   nombre: string
   email: string
   rol: RolUsuario
   activo: boolean
   ultimoLogin: string | null
-  sucursal: { id: string; codigo: string; nombre: string; ciudad: string | null } | null
+  sucursal: { id: number; codigo: string; nombre: string; ciudad: string | null } | null
   createdAt: string
   updatedAt: string
 }
@@ -39,7 +39,7 @@ export interface CreateUserInput {
   email: string
   password: string
   rol: RolUsuario
-  sucursal_id?: string | null
+  sucursal_id?: number | null
 }
 
 export interface UpdateUserInput {
@@ -47,7 +47,7 @@ export interface UpdateUserInput {
   email?: string
   password?: string
   rol?: RolUsuario
-  sucursal_id?: string | null
+  sucursal_id?: number | null
   activo?: boolean
 }
 

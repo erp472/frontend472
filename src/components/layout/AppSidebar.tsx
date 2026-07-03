@@ -73,6 +73,7 @@ const navMain: NavGroup[] = [
 ]
 
 const rolLabels: Record<string, string> = {
+  USUARIO_POST: 'Usuario Post',
   CAJERO: 'Cajero',
   ADMINISTRATIVO: 'Administrativo',
   TESORERIA: 'Tesorería',

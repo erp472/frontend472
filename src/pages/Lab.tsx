@@ -520,7 +520,7 @@ function DemoFormSection() {
               <FormControl>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-                  <Input className="pl-9" type="email" placeholder="usuario@4-72.com.co" {...field} />
+                  <Input className="pl-9" type="email" placeholder="usuarioemail.com" {...field} />
                 </div>
               </FormControl>
               <FormDescription>Se usará para el acceso al sistema.</FormDescription>
@@ -1122,7 +1122,7 @@ export default function Lab() {
                       <div className="p-3 space-y-2 text-sm">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Mail className="size-3.5 shrink-0" />
-                          <span className="truncate">ana.garcia@4-72.com.co</span>
+                          <span className="truncate">ana.garciaemail.com</span>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Building2 className="size-3.5 shrink-0" />
@@ -1619,7 +1619,7 @@ export default function Lab() {
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="lab-email">Correo electrónico</Label>
-                  <Input id="lab-email" type="email" placeholder="usuario@4-72.com.co" />
+                  <Input id="lab-email" type="email" placeholder="usuarioemail.com" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="lab-pass">Contraseña</Label>
@@ -1961,7 +1961,7 @@ export default function Lab() {
                     </div>
                     <div className="space-y-1.5">
                       <Label>Correo</Label>
-                      <Input type="email" defaultValue="ana.garcia@4-72.com.co" />
+                      <Input type="email" defaultValue="ana.garciaemail.com" />
                     </div>
                     <Button className="w-full mt-2">Guardar cambios</Button>
                   </div>
@@ -2233,7 +2233,7 @@ export default function Lab() {
                   </div>
                   <Separator />
                   <div className="space-y-2 text-xs text-muted-foreground">
-                    <div className="flex gap-2"><Mail className="size-3.5 shrink-0 mt-0.5" /><span>ana.garcia@4-72.com.co</span></div>
+                    <div className="flex gap-2"><Mail className="size-3.5 shrink-0 mt-0.5" /><span>ana.garciaemail.com</span></div>
                     <div className="flex gap-2"><Building2 className="size-3.5 shrink-0 mt-0.5" /><span>Bogotá Centro</span></div>
                   </div>
                 </div>

@@ -419,7 +419,7 @@ function FormWizardPoc() {
                   <FormControl>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                      <Input className="pl-9" type="email" placeholder="usuario@4-72.com.co" {...field} />
+                      <Input className="pl-9" type="email" placeholder="usuarioemail.com" {...field} />
                     </div>
                   </FormControl>
                   <FormMessage />

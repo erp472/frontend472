@@ -15,9 +15,14 @@ export class ApiError extends Error {
 }
 
 let _getToken: (() => string | null) | null = null
+let _on401: (() => void) | null = null
 
 export function registerTokenProvider(fn: () => string | null) {
   _getToken = fn
+}
+
+export function registerOn401Handler(fn: () => void) {
+  _on401 = fn
 }
 
 async function fetchWithBackoff(
@@ -46,7 +51,7 @@ export async function apiFetch<T>(
 
   const token = _getToken?.()
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),
     ...(init.headers as Record<string, string>),
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -58,6 +63,9 @@ export async function apiFetch<T>(
     const body = secureJsonParse(raw, undefined, { protoAction: 'remove' })
     const msg =
       (body as { message?: string })?.message ?? `HTTP ${res.status}`
+    if (res.status === 401 && token) {
+      _on401?.()
+    }
     throw new ApiError(res.status, msg, body)
   }
 

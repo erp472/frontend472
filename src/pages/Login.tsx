@@ -57,7 +57,13 @@ export default function Login() {
         </div>
 
         {/* Card */}
-        <div className="rounded-xl bg-white p-8 shadow-2xl space-y-5">
+        <div className="shadow-2xl rounded-xl overflow-hidden">
+          <div className="flex h-1.5">
+            <div className="flex-[2] bg-[#FCD116]" />
+            <div className="flex-1 bg-[#003893]" />
+            <div className="flex-1 bg-[#CE1126]" />
+          </div>
+        <div className="bg-white p-8 space-y-5">
           {serverError && (
             <Alert variant="destructive">
               <AlertDescription>{serverError}</AlertDescription>
@@ -70,7 +76,7 @@ export default function Login() {
               id="email"
               type="email"
               autoComplete="email"
-              placeholder="usuario@4-72.com.co"
+              placeholder="Email"
               {...register('email')}
             />
             {errors.email && (
@@ -100,6 +106,7 @@ export default function Login() {
             {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
             Ingresar
           </Button>
+        </div>
         </div>
 
         <p className="text-center text-xs text-muted-foreground/60">

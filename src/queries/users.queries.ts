@@ -13,7 +13,7 @@ import type {
 export const USER_KEYS = {
   all:    ()       => ['users'] as const,
   list:   (p: UserQueryParams) => ['users', 'list', p] as const,
-  detail: (id: string) => ['users', id] as const,
+  detail: (id: number) => ['users', id] as const,
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ export function useUsers(params: UserQueryParams = {}) {
   })
 }
 
-export function useUser(id: string) {
+export function useUser(id: number) {
   return useQuery({
     queryKey: USER_KEYS.detail(id),
     queryFn:  () => apiFetch<UserResponse>(`/users/${id}`),
@@ -55,7 +55,7 @@ export function useCreateUser() {
 export function useUpdateUser() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateUserInput }) =>
+    mutationFn: ({ id, data }: { id: number; data: UpdateUserInput }) =>
       apiFetch<UserResponse>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: USER_KEYS.all() })
@@ -67,8 +67,8 @@ export function useUpdateUser() {
 export function useDeleteUser() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<{ id: string }>(`/users/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) =>
+      apiFetch<{ id: number }>(`/users/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: USER_KEYS.all() }),
   })
 }

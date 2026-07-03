@@ -15,14 +15,14 @@ import { Label }        from '@/components/ui/label'
 import { useSessionStore, userSchema } from '@/stores/useSessionStore'
 import { env } from '@/lib/env'
 
-const LAB_EMAIL    = import.meta.env.VITE_LAB_EMAIL    ?? 'admin@4-72.com.co'
-const LAB_PASSWORD = import.meta.env.VITE_LAB_PASSWORD ?? 'Admin@4-72!'
+const LAB_EMAIL    = import.meta.env.VITE_LAB_EMAIL    ?? 'Email'
+const LAB_PASSWORD = import.meta.env.VITE_LAB_PASSWORD ?? '*********'
 const SESSION_KEY  = 'lab:access'
 
 const LAB_DEV_USER = {
   id:          '00000000-0000-0000-0000-000000000099',
   nombre:      'Dev Admin (Lab)',
-  email:       'lab@4-72.test',
+  email:       'Email',
   rol:         'ADMIN_SISTEMA' as const,
   sucursal_id: null,
   activo:      true,

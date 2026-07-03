@@ -21,11 +21,12 @@ import { cn } from '@/lib/utils'
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ROLES = [
-  'CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS',
+  'USUARIO_POST', 'CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS',
   'SUPERVISOR_REGIONAL', 'ADMIN_NACIONAL', 'ADMIN_SISTEMA',
 ] as const
 
 const ROL_COLOR: Record<string, string> = {
+  USUARIO_POST:         'bg-yellow-100 text-yellow-800',
   CAJERO:               'bg-slate-100 text-slate-700',
   ADMINISTRATIVO:       'bg-blue-100 text-blue-700',
   TESORERIA:            'bg-amber-100 text-amber-700',
@@ -99,7 +100,7 @@ function UserForm({ open, onClose, editing }: UserFormProps) {
             <FormField control={form.control} name="nombre" render={({ field }) => (
               <FormItem>
                 <FormLabel>Nombre</FormLabel>
-                <FormControl><Input placeholder="Ana García" {...field} /></FormControl>
+                <FormControl><Input placeholder="Nombre completo" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />
@@ -107,7 +108,7 @@ function UserForm({ open, onClose, editing }: UserFormProps) {
             <FormField control={form.control} name="email" render={({ field }) => (
               <FormItem>
                 <FormLabel>Correo</FormLabel>
-                <FormControl><Input type="email" placeholder="ana@4-72.com.co" {...field} /></FormControl>
+                <FormControl><Input type="email" placeholder="Email" {...field} /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />

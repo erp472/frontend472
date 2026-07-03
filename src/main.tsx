@@ -6,7 +6,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { queryClient } from '@/lib/query-client'
-import { registerTokenProvider } from '@/lib/api'
+import { registerTokenProvider, registerOn401Handler } from '@/lib/api'
 import {
   useSessionStore,
   readTokenFromUrl,
@@ -18,17 +18,21 @@ import { router } from '@/router'
 import './index.css'
 
 registerTokenProvider(() => useSessionStore.getState().token)
+registerOn401Handler(() => useSessionStore.getState().clearSession())
+
+const isTauriEnv = '__TAURI_INTERNALS__' in window
 
 async function bootstrap() {
   // DEV-only: intenta login real para obtener JWT; si el backend no responde, usa mock
-  if (import.meta.env.DEV && !readTokenFromUrl() && !useSessionStore.getState().token) {
+  // En Tauri el token siempre llega vía ?token=<jwt> — nunca se auto-loguea
+  if (import.meta.env.DEV && !isTauriEnv && !readTokenFromUrl() && !useSessionStore.getState().token) {
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/auth/login`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          email:    import.meta.env.VITE_LAB_EMAIL    ?? 'admin@4-72.com.co',
-          password: import.meta.env.VITE_LAB_PASSWORD ?? 'Admin@4-72!',
+          email:    import.meta.env.VITE_LAB_EMAIL    ?? 'adminemail.com',
+          password: import.meta.env.VITE_LAB_PASSWORD ?? '*********',
         }),
       })
       if (res.ok) {
@@ -40,7 +44,7 @@ async function bootstrap() {
     } catch { /* backend no disponible — usar mock */ }
 
     useSessionStore.getState().setUser({
-      id: '00000000-0000-0000-0000-000000000001',
+      id: '1',
       nombre: 'Dev Admin',
       email: 'dev@4-72.test',
       rol: 'ADMIN_SISTEMA',
