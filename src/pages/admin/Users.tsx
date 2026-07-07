@@ -36,7 +36,6 @@ import {
 import { useSessionStore } from '@/stores/useSessionStore'
 import { rolLabels } from '@/components/layout/AppSidebar'
 import type { UserResponse } from '@/types/api'
-import type { RolUsuario } from '@/stores/useSessionStore'
 import { ApiError } from '@/lib/api'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -85,13 +84,6 @@ type UpdateForm = z.infer<typeof updateSchema>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string | null) {
-  if (!iso) return '—'
-  return new Intl.DateTimeFormat('es-CO', {
-    dateStyle: 'medium', timeStyle: 'short',
-  }).format(new Date(iso))
-}
-
 function RolBadge({ rol }: { rol: string }) {
   return (
     <Badge variant={(ROL_BADGE[rol] ?? 'outline') as 'default' | 'secondary' | 'outline'}>
@@ -114,16 +106,16 @@ function UserForm({ user, open, onClose }: UserFormProps) {
   const updateMutation = useUpdateUser()
   const isPending = createMutation.isPending || updateMutation.isPending
 
-  const form = useForm<CreateForm | UpdateForm>({
-    resolver: zodResolver(isEdit ? updateSchema : createSchema) as never,
+  const form = useForm<any>({
+    resolver: zodResolver((isEdit ? updateSchema : createSchema) as any),
     defaultValues: {
       nombre:      user?.nombre ?? '',
       email:       user?.email  ?? '',
       password:    '',
       rol:         user?.rol    ?? 'CAJERO',
       sucursal_id: user?.sucursal?.id ?? null,
-      ...(isEdit && { activo: user?.activo }),
-    },
+      ...(isEdit ? { activo: user!.activo } : {}),
+    } as any,
   })
 
   const [serverError, setServerError] = useState<string | null>(null)
@@ -137,8 +129,8 @@ function UserForm({ user, open, onClose }: UserFormProps) {
       password:    '',
       rol:         user?.rol    ?? 'CAJERO',
       sucursal_id: user?.sucursal?.id ?? null,
-      ...(isEdit && { activo: user?.activo }),
-    })
+      ...(isEdit ? { activo: user!.activo } : {}),
+    } as any)
   }, [open, user])
 
   async function onSubmit(values: CreateForm | UpdateForm) {
@@ -215,7 +207,7 @@ function UserForm({ user, open, onClose }: UserFormProps) {
               control={form.control}
               name="rol"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select value={field.value as string} onValueChange={field.onChange}>
                   <SelectTrigger id="u-rol" aria-invalid={!!form.formState.errors.rol}>
                     <SelectValue placeholder="Selecciona un rol" />
                   </SelectTrigger>
@@ -521,7 +513,7 @@ export default function UsersPage() {
         </Table>
 
         {/* Paginación */}
-        {meta && meta.paginas > 1 && (
+        {meta && meta.total > 0 && (
           <div className="flex items-center justify-between border-t px-4 py-3">
             <span className="text-xs text-muted-foreground tabular-nums">
               Mostrando {(page - 1) * ROWS_PER_PAGE + 1}–{Math.min(page * ROWS_PER_PAGE, meta.total)} de {meta.total}

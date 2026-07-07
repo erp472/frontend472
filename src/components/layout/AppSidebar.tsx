@@ -2,11 +2,15 @@ import {
   LayoutDashboard,
   Users,
   Monitor,
-  Building2,
-  ScrollText,
   Settings,
   ShieldCheck,
   ChevronDown,
+  MapPin,
+  Building,
+  Store,
+  Package,
+  Truck,
+  ToggleLeft,
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import {
@@ -33,6 +37,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { useSessionStore } from '@/stores/useSessionStore'
+import { useFeatureFlagsActivos } from '@/queries/feature-flags.queries'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
@@ -40,6 +45,7 @@ interface NavItem {
   url: string
   icon: React.ElementType
   roles?: string[]
+  flag?: string
 }
 
 interface NavGroup {
@@ -55,19 +61,28 @@ const navMain: NavGroup[] = [
     ],
   },
   {
-    label: 'Gestión',
+    label: 'Administración',
     items: [
-      { title: 'Usuarios', url: '/admin/users', icon: Users, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'] },
-      { title: 'Equipos', url: '/admin/devices', icon: Monitor, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
-      { title: 'Sucursales', url: '/admin/branches', icon: Building2, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+      { title: 'Usuarios',    url: '/admin/users',      icon: Users,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'], flag: 'modulo_usuarios' },
+      { title: 'Comercios',   url: '/admin/comercios',  icon: Building,  roles: ['ADMIN_SISTEMA'], flag: 'modulo_comercios' },
+      { title: 'Regionales',  url: '/admin/regionales', icon: MapPin,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_regionales' },
+      { title: 'Sucursales',  url: '/admin/branches',   icon: Store,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_sucursales' },
+      { title: 'Equipos',     url: '/admin/devices',    icon: Monitor,   roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_equipos' },
+    ],
+  },
+  {
+    label: 'Catálogo',
+    items: [
+      { title: 'Productos', url: '/admin/productos', icon: Package, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'CAJERO', 'TESORERIA', 'ADMINISTRATIVO'], flag: 'modulo_productos' },
+      { title: 'Servicios', url: '/admin/servicios', icon: Truck,   roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'CAJERO', 'TESORERIA', 'ADMINISTRATIVO'], flag: 'modulo_servicios' },
     ],
   },
   {
     label: 'Sistema',
     items: [
-      { title: 'Permisos',      url: '/admin/permisos',  icon: ShieldCheck, roles: ['ADMIN_SISTEMA'] },
-      { title: 'Auditoría',     url: '/admin/audit',     icon: ScrollText,  roles: ['ADMIN_SISTEMA'] },
-      { title: 'Configuración', url: '/admin/settings',  icon: Settings,    roles: ['ADMIN_SISTEMA'] },
+      { title: 'Permisos',       url: '/admin/permisos',       icon: ShieldCheck, roles: ['ADMIN_SISTEMA'] },
+      { title: 'Feature Flags',  url: '/admin/feature-flags',  icon: ToggleLeft,  roles: ['ADMIN_SISTEMA'] },
+      { title: 'Configuración',  url: '/admin/settings',       icon: Settings,    roles: ['ADMIN_SISTEMA'] },
     ],
   },
 ]
@@ -91,6 +106,9 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
   const collapsed = state === 'collapsed'
   const user = useSessionStore((s) => s.user)
   const clearSession = useSessionStore((s) => s.clearSession)
+
+  const entorno = import.meta.env.DEV ? 'dev' : import.meta.env.VITE_ENTORNO ?? 'prod'
+  const { data: activeFlags } = useFeatureFlagsActivos({ entorno, plataforma: 'web' })
 
   const initials = user?.nombre
     .split(' ')
@@ -126,11 +144,12 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
 
       <SidebarContent>
         {navMain.map((group) => {
-          const visibleItems = group.items.filter(
-            (item) =>
-              !item.roles ||
-              (user && item.roles.includes(user.rol)),
-          )
+          const visibleItems = group.items.filter((item) => {
+            const rolOk = !item.roles || (user && item.roles.includes(user.rol))
+            const isAdmin = user?.rol === 'ADMIN_SISTEMA'
+            const flagOk = !item.flag || isAdmin || activeFlags?.some((f) => f.codigo === item.flag)
+            return rolOk && flagOk
+          })
           if (visibleItems.length === 0) return null
 
           return (

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { toast } from 'sonner'
 import {
   useFeatureFlags,
@@ -23,6 +23,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Trash2, Plus } from 'lucide-react'
 
+const ROWS = 15
 const ENTORNOS: Entorno[] = ['all', 'dev', 'staging', 'prod']
 
 const entornoBadge: Record<Entorno, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -38,15 +39,22 @@ export default function FeatureFlags() {
   const create = useCreateFeatureFlag()
   const remove = useDeleteFeatureFlag()
 
+  const [page, setPage]           = useState(1)
   const [open, setOpen]           = useState(false)
   const [codigo, setCodigo]       = useState('')
   const [descripcion, setDesc]    = useState('')
   const [entorno, setEntorno]     = useState<Entorno>('all')
 
+  const totalPages = Math.max(1, Math.ceil((flags?.length ?? 0) / ROWS))
+  const pageFlags  = useMemo(
+    () => flags?.slice((page - 1) * ROWS, page * ROWS) ?? [],
+    [flags, page],
+  )
+
   function handleCreate() {
     if (!codigo.trim()) return
     create.mutate(
-      { codigo: codigo.trim(), descripcion: descripcion.trim() || undefined, entorno },
+      { codigo: codigo.trim(), ...(descripcion.trim() ? { descripcion: descripcion.trim() } : {}), entorno },
       {
         onSuccess: () => { setOpen(false); setCodigo(''); setDesc(''); setEntorno('all') },
         onError:   (e) => toast.error(e.message),
@@ -54,11 +62,11 @@ export default function FeatureFlags() {
     )
   }
 
-  function handleToggle(id: string, activo: boolean) {
+  function handleToggle(id: number, activo: boolean) {
     toggle.mutate({ id, activo }, { onError: (e) => toast.error(e.message) })
   }
 
-  function handleDelete(id: string, cod: string) {
+  function handleDelete(id: number, cod: string) {
     if (!confirm(`¿Eliminar el flag "${cod}"?`)) return
     remove.mutate(id, { onError: (e) => toast.error(e.message) })
   }
@@ -98,7 +106,7 @@ export default function FeatureFlags() {
                     ))}
                   </TableRow>
                 ))
-              : flags?.map((ff) => (
+              : pageFlags.map((ff) => (
                   <TableRow key={ff.id}>
                     <TableCell className="font-mono text-sm">{ff.codigo}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">
@@ -136,6 +144,23 @@ export default function FeatureFlags() {
             )}
           </TableBody>
         </Table>
+
+        {!isLoading && (flags?.length ?? 0) > 0 && (
+          <div className="flex items-center justify-between border-t px-4 py-3">
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {(page - 1) * ROWS + 1}–{Math.min(page * ROWS, flags!.length)} de {flags!.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+                Anterior
+              </Button>
+              <span className="text-sm px-3 tabular-nums">{page} / {totalPages}</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
