@@ -11,58 +11,34 @@ import {
   useSessionStore,
   readTokenFromUrl,
   userSchema,
+  INACTIVITY_MS,
 } from '@/stores/useSessionStore'
 import { apiFetch } from '@/lib/api'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { useInactivityWatcher } from '@/hooks/useInactivityWatcher'
 import { router } from '@/router'
 import './index.css'
 
 registerTokenProvider(() => useSessionStore.getState().token)
 registerOn401Handler(() => useSessionStore.getState().clearSession())
 
-const isTauriEnv = '__TAURI_INTERNALS__' in window
-
 async function bootstrap() {
-  // DEV-only: intenta login real para obtener JWT; si el backend no responde, usa mock
-  // En Tauri el token siempre llega vía ?token=<jwt> — nunca se auto-loguea
-  if (import.meta.env.DEV && !isTauriEnv && !readTokenFromUrl() && !useSessionStore.getState().token) {
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/auth/login`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          email:    import.meta.env.VITE_LAB_EMAIL    ?? 'adminemail.com',
-          password: import.meta.env.VITE_LAB_PASSWORD ?? '*********',
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json() as { access_token: string }
-        useSessionStore.getState().setToken(data.access_token)
-        // Deja que el flujo normal (abajo) obtenga el perfil via /auth/me
-        return bootstrap()
-      }
-    } catch { /* backend no disponible — usar mock */ }
+  const { token: storedToken, lastActivity } = useSessionStore.getState()
 
-    useSessionStore.getState().setUser({
-      id: '1',
-      nombre: 'Dev Admin',
-      email: 'dev@4-72.test',
-      rol: 'ADMIN_SISTEMA',
-      sucursal_id: null,
-      activo: true,
-      ultimoLogin: new Date().toISOString(),
-    })
+  // Si la sesión guardada ya venció por inactividad, limpiar antes de verificar
+  if (storedToken && lastActivity !== null && Date.now() - lastActivity > INACTIVITY_MS) {
+    useSessionStore.getState().clearSession()
     return
   }
 
-  const token = readTokenFromUrl() ?? useSessionStore.getState().token
+  const token = readTokenFromUrl() ?? storedToken
 
   if (!token) {
     useSessionStore.getState().setStatus('unauthenticated')
     return
   }
 
-  useSessionStore.getState().setToken(token)
+  if (!storedToken) useSessionStore.getState().setToken(token)
 
   try {
     const user = await apiFetch('/auth/me', {}, userSchema)
@@ -74,6 +50,11 @@ async function bootstrap() {
 
 bootstrap().catch(() => useSessionStore.getState().clearSession())
 
+function App() {
+  useInactivityWatcher()
+  return <RouterProvider router={router} />
+}
+
 const root = document.getElementById('root')
 if (!root) throw new Error('No se encontró #root en index.html')
 
@@ -82,7 +63,7 @@ createRoot(root).render(
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={300}>
-          <RouterProvider router={router} />
+          <App />
           <Toaster position="top-right" />
         </TooltipProvider>
         {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}

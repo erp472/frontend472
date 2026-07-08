@@ -174,7 +174,7 @@ export interface UpdateRegionalInput {
 
 // ── Sucursales ────────────────────────────────────────────────────────────────
 
-export type TipoSucursal = 'principal' | 'auxiliar' | 'movil'
+export type TipoSucursal = 'unipersonal' | 'multipuesto'
 
 export interface SucursalResponse {
   id:              number

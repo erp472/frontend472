@@ -30,9 +30,6 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle,
-} from '@/components/ui/card'
-import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -525,69 +522,6 @@ function FormWizardPoc() {
   )
 }
 
-// ── POC Plantilla ─────────────────────────────────────────────────────────────
-
-function PlantillaPoc() {
-  return (
-    <div className="space-y-4">
-      <PocSection title="Plantilla — copia esto para un nuevo POC">
-        <pre className="rounded-lg bg-muted p-4 text-xs font-mono overflow-x-auto whitespace-pre text-muted-foreground leading-relaxed">
-{`// 1. Define el componente del POC (con sus propios hooks y datos)
-function MiPoc() {
-  const [value, setValue] = useState(0)
-
-  return (
-    <div className="space-y-4">
-      <PocSection title="Mi POC" description="Descripción breve">
-        {/* contenido del POC */}
-      </PocSection>
-
-      {/* nota de referencia opcional */}
-      <div className="rounded-lg border bg-muted/30 px-4 py-3 text-xs
-                      text-muted-foreground">
-        Referencia → src/...
-      </div>
-    </div>
-  )
-}
-
-// 2. Agrega el TabsTrigger en el TabsList de Lab2
-<TabsTrigger value="mi-poc">Mi POC</TabsTrigger>
-
-// 3. Agrega el TabsContent dentro de <Tabs>
-<TabsContent value="mi-poc" className="mt-6">
-  <MiPoc />
-</TabsContent>`}
-        </pre>
-      </PocSection>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Ideas de próximos POCs</CardTitle>
-          <CardDescription className="text-xs">Backlog de pruebas de concepto pendientes</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            {[
-              { titulo: 'Infinite Scroll',         desc: 'useInfiniteQuery + IntersectionObserver para listas largas' },
-              { titulo: 'Exportar a Excel',         desc: 'xlsx: generar un .xlsx de tabla de usuarios desde el cliente' },
-              { titulo: 'PDF de reporte',           desc: 'jspdf + autotable: generar PDF de cierre de caja' },
-              { titulo: 'Notificaciones push',      desc: 'Bridge WS → toast: recibir eventos del servidor y mostrar toast' },
-              { titulo: 'Modo offline',             desc: 'TanStack Query staleTime + localStorage como caché de respaldo' },
-              { titulo: 'Impersonación de rol',     desc: 'Dev-only: cambiar el rol del usuario de prueba sin relogin' },
-            ].map(({ titulo, desc }) => (
-              <li key={titulo} className="flex gap-2.5">
-                <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
-                <span><span className="font-medium text-foreground">{titulo}</span> — {desc}</span>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
 // ── Lab 2 page ────────────────────────────────────────────────────────────────
 
 export default function Lab2() {
@@ -629,7 +563,6 @@ export default function Lab2() {
           <TabsTrigger value="ws-ping">WS Ping</TabsTrigger>
           <TabsTrigger value="optimistic">Optimistic UI</TabsTrigger>
           <TabsTrigger value="wizard">Form Wizard</TabsTrigger>
-          <TabsTrigger value="plantilla">+ Plantilla</TabsTrigger>
         </TabsList>
 
         {/* ── WS PING ────────────────────────────────────────────────────────── */}
@@ -645,11 +578,6 @@ export default function Lab2() {
         {/* ── FORM WIZARD ─────────────────────────────────────────────────────── */}
         <TabsContent value="wizard" className="mt-6">
           <FormWizardPoc />
-        </TabsContent>
-
-        {/* ── PLANTILLA ───────────────────────────────────────────────────────── */}
-        <TabsContent value="plantilla" className="mt-6">
-          <PlantillaPoc />
         </TabsContent>
 
       </Tabs>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -74,8 +74,12 @@ function RegionalForm({
   const schema = isEdit ? updateSchema : createSchema
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<CreateForm & UpdateForm>({
     resolver: zodResolver(schema as any),
-    values: regional ? { nombre: regional.nombre } as any : undefined,
   })
+
+  useEffect(() => {
+    if (!open) return
+    reset(regional ? { nombre: regional.nombre } as any : {})
+  }, [open, regional])
 
   async function onSubmit(data: CreateForm & UpdateForm) {
     try {
@@ -126,14 +130,14 @@ function RegionalForm({
           {!isEdit && (
             <div className="space-y-1.5">
               <Label>Código *</Label>
-              <Input {...register('codigo')} placeholder="REG-BOG" />
+              <Input {...register('codigo')} placeholder="REG-XXX" />
               {errors.codigo && <p className="text-xs text-destructive">{errors.codigo.message}</p>}
             </div>
           )}
 
           <div className="space-y-1.5">
             <Label>Nombre *</Label>
-            <Input {...register('nombre')} placeholder="Regional Bogotá" />
+            <Input {...register('nombre')} placeholder="Nombre de la regional" />
             {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
           </div>
 

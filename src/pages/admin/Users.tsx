@@ -157,7 +157,7 @@ function UserForm({ user, open, onClose }: UserFormProps) {
           <SheetTitle>{isEdit ? 'Editar usuario' : 'Nuevo usuario'}</SheetTitle>
           <SheetDescription>
             {isEdit
-              ? 'Modifica los datos del usuario. Deja la contraseña en blanco para no cambiarla.'
+              ? 'Modifica los datos del usuario.'
               : 'Completa el formulario para crear un nuevo usuario en el sistema.'}
           </SheetDescription>
         </SheetHeader>

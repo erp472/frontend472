@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -73,8 +73,12 @@ function ComercioForm({
   const schema = isEdit ? updateSchema : createSchema
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<CreateForm & UpdateForm>({
     resolver: zodResolver(schema as any),
-    values: comercio ? { nombre: comercio.nombre, activo: comercio.activo } as any : undefined,
   })
+
+  useEffect(() => {
+    if (!open) return
+    reset(comercio ? { nombre: comercio.nombre, activo: comercio.activo } as any : {})
+  }, [open, comercio])
 
   async function onSubmit(data: CreateForm & UpdateForm) {
     try {
@@ -113,7 +117,7 @@ function ComercioForm({
 
           <div className="space-y-1.5">
             <Label>Nombre *</Label>
-            <Input {...register('nombre')} placeholder="Servicios Postales Nacionales" />
+            <Input {...register('nombre')} placeholder="Nombre del comercio" />
             {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
           </div>
 

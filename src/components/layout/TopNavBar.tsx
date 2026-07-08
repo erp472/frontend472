@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { navMain, rolLabels } from '@/components/layout/AppSidebar'
+import { ProfileSheet } from '@/components/layout/ProfileSheet'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { cn } from '@/lib/utils'
 import { Separator } from '@/components/ui/separator'
@@ -12,13 +14,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown, X, User } from 'lucide-react'
 import { isTauri } from '@/lib/tauri'
 
 export function TopNavBar() {
   const { pathname } = useLocation()
   const user = useSessionStore((s) => s.user)
   const clearSession = useSessionStore((s) => s.clearSession)
+  const [profileOpen, setProfileOpen] = useState(false)
 
   const initials =
     user?.nombre
@@ -99,6 +102,11 @@ export function TopNavBar() {
             <span className="text-xs text-muted-foreground truncate">{user?.email}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setProfileOpen(true)}>
+            <User className="size-3.5 mr-2" />
+            Mi perfil
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={clearSession}
@@ -107,6 +115,8 @@ export function TopNavBar() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <ProfileSheet open={profileOpen} onOpenChange={setProfileOpen} />
     </header>
   )
 }

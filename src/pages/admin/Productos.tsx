@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -88,13 +88,17 @@ function ProductoForm({
   const schema = isEdit ? updateSchema : createSchema
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<CreateForm & UpdateForm>({
     resolver: zodResolver(schema as any),
-    defaultValues: isEdit ? {
+  })
+
+  useEffect(() => {
+    if (!open) return
+    reset(isEdit ? {
       nombre:         producto.nombre,
       descripcion:    producto.descripcion ?? '',
       precio:         producto.precio,
       porcentaje_tax: producto.porcentajeTax,
-    } : { tipo: 'estampilla', porcentaje_tax: 0 } as any,
-  })
+    } as any : { tipo: 'estampilla', porcentaje_tax: 0 } as any)
+  }, [open, producto])
 
   const tipoValue = watch('tipo')
 
@@ -129,7 +133,7 @@ function ProductoForm({
             <>
               <div className="space-y-1.5">
                 <Label>Código *</Label>
-                <Input {...register('codigo')} placeholder="EST-001" />
+                <Input {...register('codigo')} placeholder="COD-001" />
                 {errors.codigo && <p className="text-xs text-destructive">{errors.codigo.message}</p>}
               </div>
               <div className="space-y-1.5">
@@ -151,7 +155,7 @@ function ProductoForm({
 
           <div className="space-y-1.5">
             <Label>Nombre *</Label>
-            <Input {...register('nombre')} placeholder="Estampilla $20" />
+            <Input {...register('nombre')} placeholder="Nombre del producto" />
             {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
           </div>
 
@@ -163,12 +167,12 @@ function ProductoForm({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Precio (COP) *</Label>
-              <Input {...register('precio')} type="number" step="1" min="1" placeholder="11900" />
+              <Input {...register('precio')} type="number" step="1" min="1" placeholder="0" />
               {errors.precio && <p className="text-xs text-destructive">{errors.precio.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label>IVA (%)</Label>
-              <Input {...register('porcentaje_tax')} type="number" step="0.01" min="0" max="100" placeholder="19" />
+              <Input {...register('porcentaje_tax')} type="number" step="0.01" min="0" max="100" placeholder="0" />
             </div>
           </div>
 

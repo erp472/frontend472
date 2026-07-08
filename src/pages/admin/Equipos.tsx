@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -80,11 +80,15 @@ function EquipoForm({
   const schema = isEdit ? updateSchema : createSchema
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<CreateForm & UpdateForm>({
     resolver: zodResolver(schema as any),
-    defaultValues: (isEdit ? {
+  })
+
+  useEffect(() => {
+    if (!open) return
+    reset(isEdit ? {
       nombre:            equipo.nombre ?? '',
       sistema_operativo: equipo.sistemaOperativo ?? null,
-    } : undefined) as any,
-  })
+    } as any : {})
+  }, [open, equipo])
 
   const soValue = watch('sistema_operativo')
 
@@ -157,7 +161,7 @@ function EquipoForm({
 
           <div className="space-y-1.5">
             <Label>Nombre (opcional)</Label>
-            <Input {...register('nombre')} placeholder="PC Caja 1" />
+            <Input {...register('nombre')} placeholder="Nombre del equipo" />
           </div>
 
           <div className="space-y-1.5">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -41,16 +41,15 @@ import { ApiError } from '@/lib/api'
 const ROWS = 15
 
 const TIPO_LABELS: Record<TipoSucursal, string> = {
-  principal: 'Principal',
-  auxiliar:  'Auxiliar',
-  movil:     'Móvil',
+  unipersonal: 'Unipersonal',
+  multipuesto: 'Multipuesto',
 }
 
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
 
 const baseFields = z.object({
   nombre:           z.string().min(2, 'Mínimo 2 caracteres').max(200),
-  tipo:             z.enum(['principal', 'auxiliar', 'movil'] as const),
+  tipo:             z.enum(['unipersonal', 'multipuesto'] as const),
   direccion:        z.string().max(300).nullable().optional(),
   telefono:         z.string().max(20).nullable().optional(),
   email:            z.string().email('Correo inválido').nullable().optional().or(z.literal('')),
@@ -96,7 +95,13 @@ function SucursalForm({
     formState: { errors, isSubmitting },
   } = useForm<CreateForm & UpdateForm>({
     resolver: zodResolver(schema as any),
-    defaultValues: sucursal ? {
+  })
+
+  const [geo, setGeo] = useState<GeoValue>({ paisId: null, departamentoId: null, ciudadId: null })
+
+  useEffect(() => {
+    if (!open) return
+    const vals = sucursal ? {
       nombre:           sucursal.nombre,
       tipo:             sucursal.tipo,
       direccion:        sucursal.direccion ?? '',
@@ -107,14 +112,15 @@ function SucursalForm({
       pais_id:          sucursal.pais?.id ?? null,
       departamento_id:  sucursal.departamento?.id ?? null,
       ciudad_id:        sucursal.ciudad?.id ?? null,
-    } : { tipo: 'principal' },
-  })
-
-  const [geo, setGeo] = useState<GeoValue>({
-    paisId:         sucursal?.pais?.id ?? null,
-    departamentoId: sucursal?.departamento?.id ?? null,
-    ciudadId:       sucursal?.ciudad?.id ?? null,
-  })
+    } : { tipo: 'unipersonal' as const }
+    reset(vals as any)
+    const g = {
+      paisId:         sucursal?.pais?.id ?? null,
+      departamentoId: sucursal?.departamento?.id ?? null,
+      ciudadId:       sucursal?.ciudad?.id ?? null,
+    }
+    setGeo(g)
+  }, [open, sucursal])
 
   function handleGeoChange(v: GeoValue) {
     setGeo(v)
@@ -183,13 +189,13 @@ function SucursalForm({
             {!isEdit && (
               <div className="space-y-1.5">
                 <Label>Código *</Label>
-                <Input {...register('codigo')} placeholder="SUC-BOG-001" />
+                <Input {...register('codigo')} placeholder="SUC-XXX-001" />
                 {errors.codigo && <p className="text-xs text-destructive">{errors.codigo.message}</p>}
               </div>
             )}
             <div className={`space-y-1.5 ${isEdit ? 'col-span-2' : ''}`}>
               <Label>Nombre *</Label>
-              <Input {...register('nombre')} placeholder="Bogotá Centro" />
+              <Input {...register('nombre')} placeholder="Nombre de la sucursal" />
               {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
             </div>
           </div>
@@ -213,17 +219,17 @@ function SucursalForm({
 
           <div className="space-y-1.5">
             <Label>Dirección</Label>
-            <Input {...register('direccion')} placeholder="Calle 13 # 7-65" />
+            <Input {...register('direccion')} placeholder="Calle XX # XX-XX" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Teléfono</Label>
-              <Input {...register('telefono')} placeholder="601-2345678" />
+              <Input {...register('telefono')} placeholder="60X-XXXXXXX" />
             </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
-              <Input {...register('email')} type="email" placeholder="sucursal@4-72.com.co" />
+              <Input {...register('email')} type="email" placeholder="correo@dominio.com" />
               {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
             </div>
           </div>

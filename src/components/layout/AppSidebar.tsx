@@ -2,16 +2,19 @@ import {
   LayoutDashboard,
   Users,
   Monitor,
-  Settings,
   ShieldCheck,
   ChevronDown,
+  ChevronRight,
   MapPin,
   Building,
   Store,
   Package,
   Truck,
   ToggleLeft,
+  ScrollText,
+  Settings2,
 } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   Sidebar,
@@ -24,28 +27,34 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { useFeatureFlagsActivos } from '@/queries/feature-flags.queries'
+import { ProfileSheet } from './ProfileSheet'
 import { cn } from '@/lib/utils'
 
-interface NavItem {
-  title: string
-  url: string
-  icon: React.ElementType
+interface NavChild {
+  title:  string
+  url:    string
+  icon:   React.ElementType
   roles?: string[]
-  flag?: string
+  flag?:  string
+}
+
+interface NavItem {
+  title:       string
+  url?:        string
+  icon:        React.ElementType
+  roles?:      string[]
+  flag?:       string
+  children?:   NavChild[]
 }
 
 interface NavGroup {
@@ -80,9 +89,16 @@ const navMain: NavGroup[] = [
   {
     label: 'Sistema',
     items: [
-      { title: 'Permisos',       url: '/admin/permisos',       icon: ShieldCheck, roles: ['ADMIN_SISTEMA'] },
-      { title: 'Feature Flags',  url: '/admin/feature-flags',  icon: ToggleLeft,  roles: ['ADMIN_SISTEMA'] },
-      { title: 'Configuración',  url: '/admin/settings',       icon: Settings,    roles: ['ADMIN_SISTEMA'] },
+      { title: 'Permisos', url: '/admin/permisos', icon: ShieldCheck, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'sistema_permisos' },
+      {
+        title:    'Configuración',
+        icon:     Settings2,
+        roles:    ['ADMIN_SISTEMA'],
+        children: [
+          { title: 'Aperturas', url: '/admin/feature-flags', icon: ToggleLeft, roles: ['ADMIN_SISTEMA'], flag: 'sistema_aperturas' },
+          { title: 'Auditoría', url: '/admin/audit',         icon: ScrollText, roles: ['ADMIN_SISTEMA'], flag: 'sistema_auditoria' },
+        ],
+      },
     ],
   },
 ]
@@ -105,7 +121,11 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
   const { state } = useSidebar()
   const collapsed = state === 'collapsed'
   const user = useSessionStore((s) => s.user)
-  const clearSession = useSessionStore((s) => s.clearSession)
+  const [openItems, setOpenItems] = useState<Record<string, boolean>>({ 'Configuración': true })
+  const [profileOpen, setProfileOpen] = useState(false)
+
+  const toggleItem = (key: string) =>
+    setOpenItems((prev) => ({ ...prev, [key]: !prev[key] }))
 
   const entorno = import.meta.env.DEV ? 'dev' : import.meta.env.VITE_ENTORNO ?? 'prod'
   const { data: activeFlags } = useFeatureFlagsActivos({ entorno, plataforma: 'web' })
@@ -144,12 +164,19 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
 
       <SidebarContent>
         {navMain.map((group) => {
-          const visibleItems = group.items.filter((item) => {
-            const rolOk = !item.roles || (user && item.roles.includes(user.rol))
-            const isAdmin = user?.rol === 'ADMIN_SISTEMA'
-            const flagOk = !item.flag || isAdmin || activeFlags?.some((f) => f.codigo === item.flag)
-            return rolOk && flagOk
-          })
+          const isAdmin = user?.rol === 'ADMIN_SISTEMA'
+
+          const visibleItems = group.items
+            .filter((item) => {
+              const rolOk = !item.roles || (user && item.roles.includes(user.rol))
+              // ADMIN_SISTEMA ve todos los módulos aunque el flag esté inactivo
+              const flagOk = !item.flag || isAdmin || activeFlags?.some((f) => f.codigo === item.flag)
+              return rolOk && flagOk
+            })
+            .map((item) => ({
+              ...item,
+              flagOff: isAdmin && !!item.flag && !activeFlags?.some((f) => f.codigo === item.flag),
+            }))
           if (visibleItems.length === 0) return null
 
           return (
@@ -157,25 +184,65 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
               <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {visibleItems.map((item) => (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={pathname === item.url}
-                        tooltip={item.title}
-                      >
-                        <Link
-                          to={item.url}
-                          className={cn(
-                            pathname === item.url && 'font-medium',
+                  {visibleItems.map((item) => {
+                    if (item.children) {
+                      const visibleChildren = item.children.filter((c) => {
+                        const rolOk  = !c.roles || (user && c.roles.includes(user.rol))
+                        const flagOk = !c.flag  || isAdmin || activeFlags?.some((f) => f.codigo === c.flag)
+                        return rolOk && flagOk
+                      })
+                      if (visibleChildren.length === 0) return null
+                      const childActive = visibleChildren.some((c) => pathname === c.url)
+                      const isOpen = openItems[item.title] ?? childActive
+
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton
+                            tooltip={item.title}
+                            isActive={childActive}
+                            onClick={() => toggleItem(item.title)}
+                            className="cursor-pointer"
+                          >
+                            <item.icon />
+                            <span>{item.title}</span>
+                            {!collapsed && (
+                              isOpen
+                                ? <ChevronDown  className="ml-auto size-4" />
+                                : <ChevronRight className="ml-auto size-4" />
+                            )}
+                          </SidebarMenuButton>
+                          {isOpen && !collapsed && (
+                            <SidebarMenuSub>
+                              {visibleChildren.map((child) => (
+                                <SidebarMenuSubItem key={child.url}>
+                                  <SidebarMenuSubButton asChild isActive={pathname === child.url}>
+                                    <Link to={child.url} className={cn(pathname === child.url && 'font-medium')}>
+                                      <child.icon />
+                                      <span>{child.title}</span>
+                                    </Link>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
                           )}
-                        >
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
+                        </SidebarMenuItem>
+                      )
+                    }
+
+                    return (
+                      <SidebarMenuItem key={item.url}>
+                        <SidebarMenuButton asChild isActive={pathname === item.url} tooltip={item.title}>
+                          <Link to={item.url!} className={cn(pathname === item.url && 'font-medium')}>
+                            <item.icon />
+                            <span>{item.title}</span>
+                            {item.flagOff && !collapsed && (
+                              <ToggleLeft className="ml-auto size-3.5 text-muted-foreground/50" />
+                            )}
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -188,50 +255,31 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent"
-                >
-                  <Avatar className="size-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg text-xs">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-1 flex-col leading-tight text-left">
-                    <span className="truncate text-sm font-medium">
-                      {user?.nombre ?? '—'}
-                    </span>
-                    <Badge variant="outline" className="w-fit text-[10px] px-1 py-0 mt-0.5">
-                      {user ? rolLabels[user.rol] : ''}
-                    </Badge>
-                  </div>
-                  <ChevronDown className="ml-auto size-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="end"
-                className="w-56"
-              >
-                <DropdownMenuItem disabled>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {user?.email}
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={clearSession}
-                >
-                  Cerrar sesión
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <SidebarMenuButton
+              size="lg"
+              onClick={() => setProfileOpen(true)}
+              tooltip="Mi perfil"
+            >
+              <Avatar className="size-8 rounded-lg">
+                <AvatarFallback className="rounded-lg text-xs">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-1 flex-col leading-tight text-left">
+                <span className="truncate text-sm font-medium">
+                  {user?.nombre ?? '—'}
+                </span>
+                <Badge variant="outline" className="w-fit text-[10px] px-1 py-0 mt-0.5">
+                  {user ? rolLabels[user.rol] : ''}
+                </Badge>
+              </div>
+              <ChevronDown className="ml-auto size-4 text-muted-foreground" />
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <ProfileSheet open={profileOpen} onOpenChange={setProfileOpen} />
     </Sidebar>
   )
 }

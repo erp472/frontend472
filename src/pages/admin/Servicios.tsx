@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -101,7 +101,11 @@ function ServicioForm({
   const schema = isEdit ? updateSchema : createSchema
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<CreateForm & UpdateForm>({
     resolver: zodResolver(schema as any),
-    defaultValues: isEdit ? {
+  })
+
+  useEffect(() => {
+    if (!open) return
+    reset(isEdit ? {
       nombre:                   servicio.nombre,
       descripcion:              servicio.descripcion ?? '',
       requiere_estampilla:      servicio.requiereEstampilla,
@@ -111,14 +115,14 @@ function ServicioForm({
       factor_volumetrico:       servicio.factorVolumetrico,
       tiempo_entrega_dias:      servicio.tiempoEntregaDias ?? ('' as any),
       codigo_sigma:             servicio.codigoSigma ?? '',
-    } : {
+    } as any : {
       tipo: 'nacional',
       requiere_estampilla: false,
       requiere_dimensiones: false,
       requiere_valor_declarado: false,
       factor_volumetrico: 2500,
-    } as any,
-  })
+    } as any)
+  }, [open, servicio])
 
   const tipoValue = watch('tipo')
   const estampilla = watch('requiere_estampilla')
@@ -161,7 +165,7 @@ function ServicioForm({
             <>
               <div className="space-y-1.5">
                 <Label>Código *</Label>
-                <Input {...register('codigo')} placeholder="NAC-EST" />
+                <Input {...register('codigo')} placeholder="SRV-001" />
                 {errors.codigo && <p className="text-xs text-destructive">{errors.codigo.message}</p>}
               </div>
               <div className="space-y-1.5">
@@ -180,7 +184,7 @@ function ServicioForm({
 
           <div className="space-y-1.5">
             <Label>Nombre *</Label>
-            <Input {...register('nombre')} placeholder="Envío Nacional Estándar" />
+            <Input {...register('nombre')} placeholder="Nombre del servicio" />
             {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
           </div>
 

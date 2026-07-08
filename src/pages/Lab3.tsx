@@ -5,7 +5,7 @@
  * Sin conexión a API — datos y flujos hardcodeados.
  */
 
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import {
   Banknote, CheckCircle2, XCircle, Loader2, Fingerprint,
   Search, ChevronRight, ChevronLeft, ArrowRight,
@@ -150,22 +150,21 @@ function CajaApertura({ onDone }: { onDone: () => void }) {
             <span className="font-medium text-muted-foreground text-right">Subtotal</span>
             <Separator className="col-span-3" />
             {BILLETES.map(d => (
-              <>
-                <span key={`l${d}`} className="flex items-center gap-2">
+              <Fragment key={d}>
+                <span className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-primary/40" />
                   {cop(d)}
                 </span>
                 <Input
-                  key={`i${d}`}
                   type="number" min={0} placeholder="0"
                   className="h-7 text-right text-sm"
                   value={cantidades[d] ?? ''}
                   onChange={e => set(d, e.target.value)}
                 />
-                <span key={`s${d}`} className="text-right text-muted-foreground">
+                <span className="text-right text-muted-foreground">
                   {cantidades[d] ? cop(d * cantidades[d]) : '—'}
                 </span>
-              </>
+              </Fragment>
             ))}
           </div>
         </CardContent>
@@ -182,19 +181,18 @@ function CajaApertura({ onDone }: { onDone: () => void }) {
             <span className="font-medium text-muted-foreground text-right">Subtotal</span>
             <Separator className="col-span-3" />
             {MONEDAS.map(d => (
-              <>
-                <span key={`l${d}`}>{cop(d)}</span>
+              <Fragment key={d}>
+                <span>{cop(d)}</span>
                 <Input
-                  key={`i${d}`}
                   type="number" min={0} placeholder="0"
                   className="h-7 text-right text-sm"
                   value={cantidades[d] ?? ''}
                   onChange={e => set(d, e.target.value)}
                 />
-                <span key={`s${d}`} className="text-right text-muted-foreground">
+                <span className="text-right text-muted-foreground">
                   {cantidades[d] ? cop(d * cantidades[d]) : '—'}
                 </span>
-              </>
+              </Fragment>
             ))}
           </div>
         </CardContent>
@@ -377,19 +375,18 @@ function CajaCierre() {
             <span className="font-medium text-muted-foreground text-right">Subtotal</span>
             <Separator className="col-span-3" />
             {[...BILLETES, ...MONEDAS].map(d => (
-              <>
-                <span key={`l${d}`}>{cop(d)}</span>
+              <Fragment key={d}>
+                <span>{cop(d)}</span>
                 <Input
-                  key={`i${d}`}
                   type="number" min={0} placeholder="0"
                   className="h-7 text-right text-sm"
                   value={cantidades[d] ?? ''}
                   onChange={e => set(d, e.target.value)}
                 />
-                <span key={`s${d}`} className="text-right text-muted-foreground">
+                <span className="text-right text-muted-foreground">
                   {cantidades[d] ? cop(d * cantidades[d]) : '—'}
                 </span>
-              </>
+              </Fragment>
             ))}
           </div>
         </CardContent>
@@ -1878,12 +1875,6 @@ export default function Lab3() {
 
   return (
     <div className="min-h-screen bg-muted/20">
-      {/* Banner */}
-      <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-xs text-yellow-700 flex items-center gap-2">
-        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-        <span><strong>Mockup estático — Sprints 1-4</strong> · Caja · Giros · Ventas · Despacho · Datos de ejemplo, sin API.</span>
-      </div>
-
       <div className="p-4 md:p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="mb-6 overflow-x-auto">

@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom'
-import { Monitor, ToggleLeft } from 'lucide-react'
+import { Monitor, ToggleLeft, ClipboardList } from 'lucide-react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LabGuard } from '@/components/layout/LabGuard'
 import { isTauri } from '@/lib/tauri'
@@ -22,6 +22,7 @@ const SucursalesPage = lazy(() => import('@/pages/admin/Sucursales'))
 const EquiposPage    = lazy(() => import('@/pages/admin/Equipos'))
 const ProductosPage  = lazy(() => import('@/pages/admin/Productos'))
 const ServiciosPage  = lazy(() => import('@/pages/admin/Servicios'))
+const AuditPage      = lazy(() => import('@/pages/admin/Audit'))
 
 // ── Loaders ───────────────────────────────────────────────────────────────────
 function PageLoader() {
@@ -55,6 +56,23 @@ function Forbidden() {
         <div className="text-5xl font-bold text-muted-foreground/40">403</div>
         <h1 className="text-xl font-semibold">Sin permisos</h1>
         <p className="text-muted-foreground text-sm">Tu rol no tiene acceso a esta sección.</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Pantalla auditoría (próximamente) ────────────────────────────────────────
+function AuditComingSoon() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-8 text-center">
+      <div className="max-w-sm space-y-4">
+        <div className="flex justify-center">
+          <ClipboardList className="h-16 w-16 text-muted-foreground/40" />
+        </div>
+        <h1 className="text-xl font-semibold">Auditoría</h1>
+        <p className="text-muted-foreground text-sm">
+          El módulo de auditoría está en desarrollo. Pronto podrás consultar el historial completo de acciones del sistema.
+        </p>
       </div>
     </div>
   )
@@ -224,10 +242,19 @@ export const router = createBrowserRouter(
                       element: <FlagGuard flag="modulo_comercios" />,
                       children: [{ path: '/admin/comercios', element: lazySuspense(ComerciosPage) }],
                     },
-                    { path: '/admin/audit',         element: lazySuspense(FeatureFlagsPage) },
-                    { path: '/admin/settings',      element: lazySuspense(FeatureFlagsPage) },
                     { path: '/admin/feature-flags', element: lazySuspense(FeatureFlagsPage) },
-                    { path: '/admin/permisos',      element: lazySuspense(PermisosPage) },
+                    { path: '/admin/audit',         element: lazySuspense(AuditPage) },
+                  ],
+                },
+
+                // ADMIN_SISTEMA + ADMIN_NACIONAL
+                {
+                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />,
+                  children: [
+                    {
+                      element: <FlagGuard flag="sistema_permisos" />,
+                      children: [{ path: '/admin/permisos', element: lazySuspense(PermisosPage) }],
+                    },
                   ],
                 },
               ],
@@ -240,44 +267,44 @@ export const router = createBrowserRouter(
     // Rutas públicas
     { path: '/login', element: lazySuspense(Login) },
     { path: '/unauthorized', element: <Unauthorized /> },
-    // Workbench — solo en desarrollo
-    ...(import.meta.env.DEV
-      ? [
-          {
-            path: '/lab',
-            element: (
-              <LabGuard>
-                <Suspense fallback={<PageLoader />}>
-                  <Lab />
-                </Suspense>
-              </LabGuard>
-            ),
-          },
-          {
-            path: '/lab2',
-            element: (
-              <LabGuard>
-                <Suspense fallback={<PageLoader />}>
-                  <Lab2 />
-                </Suspense>
-              </LabGuard>
-            ),
-          },
-          {
-            path: '/lab3',
-            element: (
-              <Suspense fallback={<PageLoader />}>
-                <Lab3 />
-              </Suspense>
-            ),
-          },
-        ]
-      : []),
+    // Workbench — solo ADMIN_SISTEMA
+    {
+      path: '/lab',
+      element: (
+        <LabGuard>
+          <Suspense fallback={<PageLoader />}>
+            <Lab />
+          </Suspense>
+        </LabGuard>
+      ),
+    },
+    {
+      path: '/lab2',
+      element: (
+        <LabGuard>
+          <Suspense fallback={<PageLoader />}>
+            <Lab2 />
+          </Suspense>
+        </LabGuard>
+      ),
+    },
+    // Mockups de pantallas — acceso directo sin guard
+    {
+      path: '/lab3',
+      element: (
+        <Suspense fallback={<PageLoader />}>
+          <Lab3 />
+        </Suspense>
+      ),
+    },
     { path: '*', element: <Navigate to="/" replace /> },
   ],
   {
     future: {
-      v7_relativeSplatPath: true,
+      v7_relativeSplatPath:           true,
+      v7_fetcherPersist:              true,
+      v7_normalizeFormMethod:         true,
+      v7_skipActionErrorRevalidation: true,
     },
   },
 )

@@ -7,6 +7,7 @@ import {
   useDeleteFeatureFlag,
   type Entorno,
 } from '@/queries/feature-flags.queries'
+import { navMain } from '@/components/layout/AppSidebar'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -22,6 +23,16 @@ import {
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Trash2, Plus } from 'lucide-react'
+
+// Solo muestra flags que corresponden a módulos/secciones de la navegación
+const REGISTERED_FLAGS = new Set<string>(
+  navMain.flatMap((g) =>
+    g.items.flatMap((item) => [
+      ...(item.flag ? [item.flag] : []),
+      ...(item.children?.flatMap((c) => c.flag ? [c.flag] : []) ?? []),
+    ]),
+  ),
+)
 
 const ROWS = 15
 const ENTORNOS: Entorno[] = ['all', 'dev', 'staging', 'prod']
@@ -45,10 +56,14 @@ export default function FeatureFlags() {
   const [descripcion, setDesc]    = useState('')
   const [entorno, setEntorno]     = useState<Entorno>('all')
 
-  const totalPages = Math.max(1, Math.ceil((flags?.length ?? 0) / ROWS))
+  const moduleFlags = useMemo(
+    () => flags?.filter((f) => REGISTERED_FLAGS.has(f.codigo)) ?? [],
+    [flags],
+  )
+  const totalPages = Math.max(1, Math.ceil(moduleFlags.length / ROWS))
   const pageFlags  = useMemo(
-    () => flags?.slice((page - 1) * ROWS, page * ROWS) ?? [],
-    [flags, page],
+    () => moduleFlags.slice((page - 1) * ROWS, page * ROWS),
+    [moduleFlags, page],
   )
 
   function handleCreate() {
@@ -135,7 +150,7 @@ export default function FeatureFlags() {
                   </TableRow>
                 ))
             }
-            {!isLoading && flags?.length === 0 && (
+            {!isLoading && moduleFlags.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   No hay flags configurados. Crea el primero.
@@ -145,10 +160,10 @@ export default function FeatureFlags() {
           </TableBody>
         </Table>
 
-        {!isLoading && (flags?.length ?? 0) > 0 && (
+        {!isLoading && moduleFlags.length > 0 && (
           <div className="flex items-center justify-between border-t px-4 py-3">
             <span className="text-xs text-muted-foreground tabular-nums">
-              {(page - 1) * ROWS + 1}–{Math.min(page * ROWS, flags!.length)} de {flags!.length}
+              {(page - 1) * ROWS + 1}–{Math.min(page * ROWS, moduleFlags.length)} de {moduleFlags.length}
             </span>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
