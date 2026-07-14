@@ -41,6 +41,13 @@ export function useUser(id: number) {
   })
 }
 
+export function useOwnProfile() {
+  return useQuery({
+    queryKey: ['users', 'me'] as const,
+    queryFn:  () => apiFetch<UserResponse>('/users/me'),
+  })
+}
+
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function useCreateUser() {
@@ -61,6 +68,15 @@ export function useUpdateUser() {
       qc.invalidateQueries({ queryKey: USER_KEYS.all() })
       qc.invalidateQueries({ queryKey: USER_KEYS.detail(id) })
     },
+  })
+}
+
+export function useUpdateOwnProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: UpdateUserInput) =>
+      apiFetch<UserResponse>('/users/me', { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users', 'me'] }),
   })
 }
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApiForm } from '@/lib/useApiForm'
 import { apiFetch } from '@/lib/api'
 import { useSessionStore, userSchema, type User } from '@/stores/useSessionStore'
+import { isTauri, getMacAddress } from '@/lib/tauri'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -24,9 +25,18 @@ export default function Login() {
     schema: loginSchema,
     defaultValues: { email: '', password: '' },
     onSubmit: async (data: LoginData) => {
+      const extraHeaders: Record<string, string> = {}
+      if (isTauri()) {
+        try {
+          const mac = await getMacAddress()
+          extraHeaders['x-mac-address'] = mac
+        } catch { /* sin adaptador de red */ }
+        extraHeaders['x-plataforma'] = 'tauri'
+      }
       const res = await apiFetch<{ access_token: string; user?: User }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(data),
+        headers: extraHeaders,
       })
       setToken(res.access_token)
       if (res.user) {

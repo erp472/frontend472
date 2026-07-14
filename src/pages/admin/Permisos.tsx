@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, ShieldCheck, Trash2, AlertTriangle, Plus, Search, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ShieldCheck, Trash2, AlertTriangle, Plus, Search, X, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   usePermisosMatrix,
@@ -290,10 +290,11 @@ function RolModal({ rol, open, onClose, onDeleted }: RolModalProps) {
 interface RolCarouselProps {
   roles: RolItem[]
   selectedId: number | null
-  onOpen: (rol: RolItem) => void
+  onSelect: (rol: RolItem) => void
+  onEdit: (rol: RolItem) => void
 }
 
-function RolCarousel({ roles, selectedId, onOpen }: RolCarouselProps) {
+function RolCarousel({ roles, selectedId, onSelect, onEdit }: RolCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   function scroll(dir: 'left' | 'right') {
@@ -326,15 +327,23 @@ function RolCarousel({ roles, selectedId, onOpen }: RolCarouselProps) {
         {roles.map((rol) => (
           <button
             key={rol.id}
-            onClick={() => onOpen(rol)}
+            onClick={() => onSelect(rol)}
             className={cn(
-              'flex-shrink-0 rounded-xl border p-4 text-left w-44 transition-all duration-150',
+              'group relative flex-shrink-0 rounded-xl border p-4 text-left w-44 transition-all duration-150',
               'hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               selectedId === rol.id
                 ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20'
                 : 'border-border hover:border-muted-foreground/40 bg-card',
             )}
           >
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(rol) }}
+              className="absolute top-2 right-2 flex items-center justify-center size-5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity"
+              title="Editar rol"
+              tabIndex={-1}
+            >
+              <Pencil className="size-3" />
+            </button>
             <div className="flex items-center gap-2 mb-1.5">
               <ShieldCheck
                 className={cn(
@@ -344,7 +353,7 @@ function RolCarousel({ roles, selectedId, onOpen }: RolCarouselProps) {
               />
               <span
                 className={cn(
-                  'text-sm font-medium leading-tight',
+                  'text-sm font-medium leading-tight pr-4',
                   selectedId === rol.id && 'text-primary',
                 )}
               >
@@ -487,8 +496,11 @@ export default function Permisos() {
   const selectedPermisoIds = new Set(selectedRol?.permisoIds ?? [])
   const isMutating         = asignar.isPending || revocar.isPending
 
-  function handleOpenModal(rol: RolItem) {
+  function handleSelectRol(rol: RolItem) {
     setSelectedRolId(rol.id)
+  }
+
+  function handleOpenModal(rol: RolItem) {
     setModalRol(rol)
     setModalOpen(true)
   }
@@ -607,7 +619,8 @@ export default function Permisos() {
         <RolCarousel
           roles={filteredRoles}
           selectedId={selectedRolId}
-          onOpen={handleOpenModal}
+          onSelect={handleSelectRol}
+          onEdit={handleOpenModal}
         />
       </div>
 

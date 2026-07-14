@@ -12,15 +12,19 @@ export interface PaginaMeta {
 // ── Usuarios ─────────────────────────────────────────────────────────────────
 
 export interface UserResponse {
-  id: number
-  nombre: string
-  email: string
-  rol: RolUsuario
-  activo: boolean
-  ultimoLogin: string | null
-  sucursal: { id: number; codigo: string; nombre: string; ciudad: string | null } | null
-  createdAt: string
-  updatedAt: string
+  id:           number
+  nombre:       string
+  email:        string
+  rol:          RolUsuario
+  activo:       boolean
+  telefono:     string | null
+  ultimoLogin:  string | null
+  sucursal:     { id: number; codigo: string; nombre: string; ciudad: string | null } | null
+  pais:         { id: number; nombre: string } | null
+  departamento: { id: number; nombre: string } | null
+  ciudad:       { id: number; nombre: string } | null
+  createdAt:    string
+  updatedAt:    string
 }
 
 export interface UserMeta {
@@ -52,12 +56,16 @@ export interface CreateUserInput {
 }
 
 export interface UpdateUserInput {
-  nombre?:      string | undefined
-  email?:       string | undefined
-  password?:    string | undefined
-  rol?:         RolUsuario | undefined
-  sucursal_id?: number | null | undefined
-  activo?:      boolean | undefined
+  nombre?:          string | undefined
+  email?:           string | undefined
+  password?:        string | undefined
+  telefono?:        string | null | undefined
+  pais_id?:         number | null | undefined
+  departamento_id?: number | null | undefined
+  ciudad_id?:       number | null | undefined
+  rol?:             RolUsuario | undefined
+  sucursal_id?:     number | null | undefined
+  activo?:          boolean | undefined
 }
 
 // ── Roles y Permisos ─────────────────────────────────────────────────────────
