@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom'
-import { Monitor, ToggleLeft, ClipboardList } from 'lucide-react'
+import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Monitor, ToggleLeft, ClipboardList, Vault } from 'lucide-react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LabGuard } from '@/components/layout/LabGuard'
 import { isTauri } from '@/lib/tauri'
@@ -22,7 +22,33 @@ const SucursalesPage = lazy(() => import('@/pages/admin/Sucursales'))
 const EquiposPage    = lazy(() => import('@/pages/admin/Equipos'))
 const ProductosPage  = lazy(() => import('@/pages/admin/Productos'))
 const ServiciosPage  = lazy(() => import('@/pages/admin/Servicios'))
-const AuditPage      = lazy(() => import('@/pages/admin/Audit'))
+const AuditPage          = lazy(() => import('@/pages/admin/Audit'))
+const PuntoVentasAdminPage = lazy(() => import('@/pages/admin/PuntoVentasAdmin'))
+const PuntoCajasPage    = lazy(() => import('@/pages/cajas/PuntoCajas'))
+const DetalleCajaPage   = lazy(() => import('@/pages/cajas/DetalleCaja'))
+const AlertasCierrePage = lazy(() => import('@/pages/cajas/AlertasCierre'))
+const PuntoVentasPage   = lazy(() => import('@/pages/ventas/PuntoVentas'))
+const CarritoVentaPage  = lazy(() => import('@/pages/ventas/CarritoVenta'))
+const ClientesPage      = lazy(() => import('@/pages/clientes/index'))
+const TiposClientePage  = lazy(() => import('@/pages/clientes/TiposClientePage'))
+
+// ── Cajas redirect ────────────────────────────────────────────────────────────
+
+function CajasRedirect() {
+  const sucursalId = useSessionStore((s) => s.user?.sucursal_id)
+
+  if (sucursalId) return <Navigate to={`/cajas/principales/${sucursalId}`} replace />
+
+  return (
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
+      <Vault className="size-10 text-muted-foreground/30" />
+      <p className="font-medium">Sin sucursal asignada</p>
+      <p className="text-sm text-muted-foreground">
+        Tu cuenta no tiene una sucursal asociada. Contacta al administrador.
+      </p>
+    </div>
+  )
+}
 
 // ── Loaders ───────────────────────────────────────────────────────────────────
 function PageLoader() {
@@ -145,6 +171,11 @@ function PlatformGuard() {
   return <Outlet />
 }
 
+function DesktopOnlyRoute() {
+  if (!isTauri()) return <DesktopOnly />
+  return <Outlet />
+}
+
 function FlagGuard({ flag }: { flag: string }) {
   const userRol = useSessionStore((s) => s.user?.rol)
   const entorno = import.meta.env.DEV ? 'dev' : (import.meta.env.VITE_ENTORNO ?? 'prod')
@@ -230,6 +261,75 @@ export const router = createBrowserRouter(
                     {
                       element: <FlagGuard flag="modulo_regionales" />,
                       children: [{ path: '/admin/regionales', element: lazySuspense(RegionalesPage) }],
+                    },
+                  ],
+                },
+
+                // Panel Puntos de Venta — ADMIN_SISTEMA, ADMIN_NACIONAL
+                {
+                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />,
+                  children: [
+                    {
+                      element: <FlagGuard flag="modulo_cajas" />,
+                      children: [
+                        { path: '/admin/puntos-venta', element: lazySuspense(PuntoVentasAdminPage) },
+                      ],
+                    },
+                  ],
+                },
+
+                // Cajas — solo Tauri · SUPERVISOR_REGIONAL, CAJERO, TESORERIA
+                {
+                  element: <DesktopOnlyRoute />,
+                  children: [
+                    {
+                      element: <RoleGuard roles={['CAJERO', 'SUPERVISOR_REGIONAL', 'TESORERIA']} />,
+                      children: [
+                        {
+                          element: <FlagGuard flag="modulo_cajas" />,
+                          children: [
+                            { path: '/cajas',                                  element: <CajasRedirect /> },
+                            { path: '/cajas/principales/:sucursalId',          element: lazySuspense(PuntoCajasPage) },
+                            { path: '/cajas/punto/:sesionId',                  element: lazySuspense(DetalleCajaPage) },
+                            { path: '/cajas/cierre/:sucursalId',               element: lazySuspense(AlertasCierrePage) },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+
+                // Ventas — solo Tauri · CAJERO
+                {
+                  element: <DesktopOnlyRoute />,
+                  children: [
+                    {
+                      element: <RoleGuard roles={['CAJERO']} />,
+                      children: [
+                        {
+                          element: <FlagGuard flag="modulo_ventas" />,
+                          children: [
+                            { path: '/ventas',              element: lazySuspense(PuntoVentasPage) },
+                            { path: '/ventas/caja/:cajaId', element: lazySuspense(CarritoVentaPage) },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+
+                // Clientes — CAJERO, SUPERVISOR, ADMIN
+                {
+                  element: (
+                    <RoleGuard roles={['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO']} />
+                  ),
+                  children: [
+                    {
+                      element: <FlagGuard flag="modulo_clientes" />,
+                      children: [
+                        { path: '/clientes',                element: lazySuspense(ClientesPage) },
+                        { path: '/clientes/tipos',          element: lazySuspense(TiposClientePage) },
+                      ],
                     },
                   ],
                 },

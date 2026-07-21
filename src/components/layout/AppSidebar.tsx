@@ -13,6 +13,10 @@ import {
   ToggleLeft,
   ScrollText,
   Settings2,
+  Vault,
+  UserRound,
+  Tag,
+  ReceiptText,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -49,12 +53,13 @@ interface NavChild {
 }
 
 interface NavItem {
-  title:       string
-  url?:        string
-  icon:        React.ElementType
-  roles?:      string[]
-  flag?:       string
-  children?:   NavChild[]
+  title:        string
+  url?:         string
+  icon:         React.ElementType
+  roles?:       string[]
+  flag?:        string
+  activePrefix?: string
+  children?:    NavChild[]
 }
 
 interface NavGroup {
@@ -75,8 +80,26 @@ const navMain: NavGroup[] = [
       { title: 'Usuarios',    url: '/admin/users',      icon: Users,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'], flag: 'modulo_usuarios' },
       { title: 'Comercios',   url: '/admin/comercios',  icon: Building,  roles: ['ADMIN_SISTEMA'], flag: 'modulo_comercios' },
       { title: 'Regionales',  url: '/admin/regionales', icon: MapPin,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_regionales' },
-      { title: 'Sucursales',  url: '/admin/branches',   icon: Store,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_sucursales' },
-      { title: 'Equipos',     url: '/admin/devices',    icon: Monitor,   roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_equipos' },
+      { title: 'Sucursales',     url: '/admin/branches',      icon: Store,        roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_sucursales' },
+      { title: 'Puntos de venta', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_cajas' },
+      { title: 'Equipos',        url: '/admin/devices',       icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_equipos' },
+    ],
+  },
+  {
+    label: 'Operaciones',
+    items: [
+      { title: 'Cajas',  url: '/cajas',  icon: Vault,         activePrefix: '/cajas',     roles: ['CAJERO', 'SUPERVISOR_REGIONAL', 'TESORERIA'], flag: 'modulo_cajas' },
+      {
+        title:        'Clientes',
+        icon:         UserRound,
+        activePrefix: '/clientes',
+        roles:        ['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO'],
+        flag:         'modulo_clientes',
+        children: [
+          { title: 'Directorio',    url: '/clientes',       icon: UserRound, roles: ['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO'] },
+          { title: 'Tipos / Beneficios', url: '/clientes/tipos', icon: Tag,  roles: ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO'] },
+        ],
+      },
     ],
   },
   {
@@ -175,6 +198,8 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
             })
             .map((item) => ({
               ...item,
+              // Cajas → CajaPadre central (id=65)
+              url: item.url === '/cajas' ? '/cajas/principales/1' : item.url,
               flagOff: isAdmin && !!item.flag && !activeFlags?.some((f) => f.codigo === item.flag),
             }))
           if (visibleItems.length === 0) return null
@@ -231,8 +256,8 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
 
                     return (
                       <SidebarMenuItem key={item.url}>
-                        <SidebarMenuButton asChild isActive={pathname === item.url} tooltip={item.title}>
-                          <Link to={item.url!} className={cn(pathname === item.url && 'font-medium')}>
+                        <SidebarMenuButton asChild isActive={item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url} tooltip={item.title}>
+                          <Link to={item.url!} className={cn((item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url) && 'font-medium')}>
                             <item.icon />
                             <span>{item.title}</span>
                             {item.flagOff && !collapsed && (
