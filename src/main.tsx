@@ -16,6 +16,7 @@ import {
 import { apiFetch } from '@/lib/api'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useInactivityWatcher } from '@/hooks/useInactivityWatcher'
+import { useSessionRefresh } from '@/hooks/useSessionRefresh'
 import { router } from '@/router'
 import './index.css'
 
@@ -52,6 +53,7 @@ bootstrap().catch(() => useSessionStore.getState().clearSession())
 
 function App() {
   useInactivityWatcher()
+  useSessionRefresh()
   return <RouterProvider router={router} />
 }
 

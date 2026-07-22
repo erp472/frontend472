@@ -6,6 +6,7 @@ import { LabGuard } from '@/components/layout/LabGuard'
 import { isTauri } from '@/lib/tauri'
 import { type RolUsuario, useSessionStore } from '@/stores/useSessionStore'
 import { useFeatureFlagsActivos } from '@/queries/feature-flags.queries'
+import { useAcceso } from '@/hooks/useAcceso'
 
 // ── Lazy pages ────────────────────────────────────────────────────────────────
 const Dashboard    = lazy(() => import('@/pages/Dashboard'))
@@ -173,6 +174,15 @@ function RoleGuard({ roles }: { roles: RolUsuario[] }) {
   return <Outlet />
 }
 
+// Gatea por permiso dinámico (asignado por rol vía la matriz de Permisos),
+// misma fuente de verdad que AppSidebar usa para decidir si mostrar el enlace.
+function PermisoGuard({ permiso }: { permiso: string }) {
+  const { tiene } = useAcceso()
+
+  if (!tiene(permiso)) return <Forbidden />
+  return <Outlet />
+}
+
 const DESKTOP_ONLY_ROLES: RolUsuario[] = ['CAJERO', 'USUARIO_POST']
 
 function PlatformGuard() {
@@ -224,18 +234,9 @@ export const router = createBrowserRouter(
               children: [
                 { path: '/', element: lazySuspense(Dashboard) },
 
-                // Gestión de usuarios
+                // Gestión de usuarios — dinámico por permiso admin:usuarios
                 {
-                  element: (
-                    <RoleGuard
-                      roles={[
-                        'ADMIN_SISTEMA',
-                        'ADMIN_NACIONAL',
-                        'SUPERVISOR_REGIONAL',
-                        'ADMINISTRATIVO',
-                      ]}
-                    />
-                  ),
+                  element: <PermisoGuard permiso="admin:usuarios" />,
                   children: [
                     {
                       element: <FlagGuard flag="modulo_usuarios" />,
@@ -291,12 +292,12 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Cajas — solo Tauri · caja principal: SUPERVISOR_REGIONAL, TESORERIA
+                // Cajas — solo Tauri · dinámico por permiso caja:consultar
                 {
                   element: <DesktopOnlyRoute />,
                   children: [
                     {
-                      element: <RoleGuard roles={['SUPERVISOR_REGIONAL', 'TESORERIA']} />,
+                      element: <PermisoGuard permiso="caja:consultar" />,
                       children: [
                         {
                           element: <FlagGuard flag="modulo_cajas" />,
@@ -317,12 +318,12 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Ventas — solo Tauri · caja auxiliar: CAJERO + SUPERVISOR_REGIONAL
+                // Ventas — solo Tauri · dinámico por permiso ventas:consultar
                 {
                   element: <DesktopOnlyRoute />,
                   children: [
                     {
-                      element: <RoleGuard roles={['CAJERO', 'SUPERVISOR_REGIONAL']} />,
+                      element: <PermisoGuard permiso="ventas:consultar" />,
                       children: [
                         {
                           element: <FlagGuard flag="modulo_ventas" />,
@@ -336,11 +337,9 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Clientes — CAJERO, SUPERVISOR, ADMIN
+                // Clientes — dinámico por permiso clientes:consultar
                 {
-                  element: (
-                    <RoleGuard roles={['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO']} />
-                  ),
+                  element: <PermisoGuard permiso="clientes:consultar" />,
                   children: [
                     {
                       element: <FlagGuard flag="modulo_clientes" />,
@@ -364,14 +363,21 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // ADMIN_SISTEMA + ADMIN_NACIONAL
+                // Permisos — dinámico por permiso admin:usuarios
                 {
-                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />,
+                  element: <PermisoGuard permiso="admin:usuarios" />,
                   children: [
                     {
                       element: <FlagGuard flag="sistema_permisos" />,
                       children: [{ path: '/admin/permisos', element: lazySuspense(PermisosPage) }],
                     },
+                  ],
+                },
+
+                // Auditoría — ADMIN_SISTEMA, ADMIN_NACIONAL
+                {
+                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />,
+                  children: [
                     { path: '/admin/audit', element: lazySuspense(AuditPage) },
                   ],
                 },
