@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Monitor, ToggleLeft, ClipboardList, Vault } from 'lucide-react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LabGuard } from '@/components/layout/LabGuard'
@@ -48,6 +48,19 @@ function CajasRedirect() {
       </p>
     </div>
   )
+}
+
+// Bloquea acceso a sucursales ajenas. Admins pasan siempre.
+function SucursalGuard() {
+  const user      = useSessionStore((s) => s.user)
+  const { sucursalId } = useParams<{ sucursalId: string }>()
+  const isAdmin   = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
+  const propiaSucursal = user?.sucursal_id
+
+  if (!isAdmin && propiaSucursal != null && Number(sucursalId) !== propiaSucursal) {
+    return <Navigate to={`/cajas/principales/${propiaSucursal}`} replace />
+  }
+  return <Outlet />
 }
 
 // ── Loaders ───────────────────────────────────────────────────────────────────
@@ -278,20 +291,25 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Cajas — solo Tauri · SUPERVISOR_REGIONAL, CAJERO, TESORERIA
+                // Cajas — solo Tauri · caja principal: SUPERVISOR_REGIONAL, TESORERIA
                 {
                   element: <DesktopOnlyRoute />,
                   children: [
                     {
-                      element: <RoleGuard roles={['CAJERO', 'SUPERVISOR_REGIONAL', 'TESORERIA']} />,
+                      element: <RoleGuard roles={['SUPERVISOR_REGIONAL', 'TESORERIA']} />,
                       children: [
                         {
                           element: <FlagGuard flag="modulo_cajas" />,
                           children: [
-                            { path: '/cajas',                                  element: <CajasRedirect /> },
-                            { path: '/cajas/principales/:sucursalId',          element: lazySuspense(PuntoCajasPage) },
-                            { path: '/cajas/punto/:sesionId',                  element: lazySuspense(DetalleCajaPage) },
-                            { path: '/cajas/cierre/:sucursalId',               element: lazySuspense(AlertasCierrePage) },
+                            { path: '/cajas',              element: <CajasRedirect /> },
+                            { path: '/cajas/punto/:sesionId', element: lazySuspense(DetalleCajaPage) },
+                            {
+                              element: <SucursalGuard />,
+                              children: [
+                                { path: '/cajas/principales/:sucursalId', element: lazySuspense(PuntoCajasPage) },
+                                { path: '/cajas/cierre/:sucursalId',      element: lazySuspense(AlertasCierrePage) },
+                              ],
+                            },
                           ],
                         },
                       ],
@@ -299,12 +317,12 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Ventas — solo Tauri · CAJERO
+                // Ventas — solo Tauri · caja auxiliar: CAJERO + SUPERVISOR_REGIONAL
                 {
                   element: <DesktopOnlyRoute />,
                   children: [
                     {
-                      element: <RoleGuard roles={['CAJERO']} />,
+                      element: <RoleGuard roles={['CAJERO', 'SUPERVISOR_REGIONAL']} />,
                       children: [
                         {
                           element: <FlagGuard flag="modulo_ventas" />,
@@ -343,7 +361,6 @@ export const router = createBrowserRouter(
                       children: [{ path: '/admin/comercios', element: lazySuspense(ComerciosPage) }],
                     },
                     { path: '/admin/feature-flags', element: lazySuspense(FeatureFlagsPage) },
-                    { path: '/admin/audit',         element: lazySuspense(AuditPage) },
                   ],
                 },
 
@@ -355,6 +372,7 @@ export const router = createBrowserRouter(
                       element: <FlagGuard flag="sistema_permisos" />,
                       children: [{ path: '/admin/permisos', element: lazySuspense(PermisosPage) }],
                     },
+                    { path: '/admin/audit', element: lazySuspense(AuditPage) },
                   ],
                 },
               ],

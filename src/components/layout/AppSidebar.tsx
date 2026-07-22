@@ -17,6 +17,7 @@ import {
   UserRound,
   Tag,
   ReceiptText,
+  ShoppingCart,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -39,32 +40,37 @@ import {
 } from '@/components/ui/sidebar'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { useSessionStore } from '@/stores/useSessionStore'
-import { useFeatureFlagsActivos } from '@/queries/feature-flags.queries'
+import { type RolUsuario, useSessionStore } from '@/stores/useSessionStore'
+import { useAcceso } from '@/hooks/useAcceso'
 import { ProfileSheet } from './ProfileSheet'
 import { cn } from '@/lib/utils'
 
 interface NavChild {
-  title:  string
-  url:    string
-  icon:   React.ElementType
-  roles?: string[]
-  flag?:  string
+  title:       string
+  url:         string
+  icon:        React.ElementType
+  permiso?:    string
+  flag?:       string
+  plataforma?: 'tauri' | 'web'
+  roles?:      RolUsuario[]
 }
 
 interface NavItem {
-  title:        string
-  url?:         string
-  icon:         React.ElementType
-  roles?:       string[]
-  flag?:        string
+  title:         string
+  url?:          string
+  icon:          React.ElementType
+  permiso?:      string
+  flag?:         string
   activePrefix?: string
-  children?:    NavChild[]
+  plataforma?:   'tauri' | 'web'
+  roles?:        RolUsuario[]
+  children?:     NavChild[]
 }
 
 interface NavGroup {
-  label: string
-  items: NavItem[]
+  label:      string
+  plataforma?: 'web'
+  items:      NavItem[]
 }
 
 const navMain: NavGroup[] = [
@@ -75,51 +81,56 @@ const navMain: NavGroup[] = [
     ],
   },
   {
-    label: 'Administración',
+    label:      'Administración',
+    plataforma: 'web',
     items: [
-      { title: 'Usuarios',    url: '/admin/users',      icon: Users,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'], flag: 'modulo_usuarios' },
-      { title: 'Comercios',   url: '/admin/comercios',  icon: Building,  roles: ['ADMIN_SISTEMA'], flag: 'modulo_comercios' },
-      { title: 'Regionales',  url: '/admin/regionales', icon: MapPin,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_regionales' },
-      { title: 'Sucursales',     url: '/admin/branches',      icon: Store,        roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_sucursales' },
-      { title: 'Puntos de venta', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_cajas' },
-      { title: 'Equipos',        url: '/admin/devices',       icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_equipos' },
+      { title: 'Usuarios',        url: '/admin/users',        icon: Users,       permiso: 'admin:usuarios',                                                    flag: 'modulo_usuarios'   },
+      { title: 'Comercios',       url: '/admin/comercios',    icon: Building,    roles: ['ADMIN_SISTEMA'],                                                     flag: 'modulo_comercios'  },
+      { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_regionales' },
+      { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_sucursales' },
+      { title: 'Puntos de venta', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_cajas'      },
+      { title: 'Equipos',         url: '/admin/devices',      icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_equipos'    },
     ],
   },
   {
     label: 'Operaciones',
     items: [
-      { title: 'Cajas',  url: '/cajas',  icon: Vault,         activePrefix: '/cajas',     roles: ['CAJERO', 'SUPERVISOR_REGIONAL', 'TESORERIA'], flag: 'modulo_cajas' },
+      { title: 'Cajas',  url: '/cajas',  icon: Vault,        activePrefix: '/cajas',  permiso: 'caja:consultar',    flag: 'modulo_cajas',  plataforma: 'tauri' },
+      { title: 'Ventas', url: '/ventas', icon: ShoppingCart, activePrefix: '/ventas', permiso: 'ventas:consultar',  flag: 'modulo_ventas', plataforma: 'tauri' },
       {
-        title:        'Clientes',
-        icon:         UserRound,
-        activePrefix: '/clientes',
-        roles:        ['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO'],
-        flag:         'modulo_clientes',
+        title:         'Clientes',
+        icon:          UserRound,
+        activePrefix:  '/clientes',
+        permiso:       'clientes:consultar',
+        flag:          'modulo_clientes',
+        plataforma:    'web',
         children: [
-          { title: 'Directorio',    url: '/clientes',       icon: UserRound, roles: ['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO'] },
-          { title: 'Tipos / Beneficios', url: '/clientes/tipos', icon: Tag,  roles: ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'ADMINISTRATIVO'] },
+          { title: 'Directorio',         url: '/clientes',       icon: UserRound, permiso: 'clientes:consultar' },
+          { title: 'Tipos / Beneficios', url: '/clientes/tipos', icon: Tag,       permiso: 'clientes:crear'     },
         ],
       },
     ],
   },
   {
-    label: 'Catálogo',
+    label:      'Catálogo',
+    plataforma: 'web',
     items: [
       { title: 'Productos', url: '/admin/productos', icon: Package, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'CAJERO', 'TESORERIA', 'ADMINISTRATIVO'], flag: 'modulo_productos' },
       { title: 'Servicios', url: '/admin/servicios', icon: Truck,   roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'CAJERO', 'TESORERIA', 'ADMINISTRATIVO'], flag: 'modulo_servicios' },
     ],
   },
   {
-    label: 'Sistema',
+    label:      'Sistema',
+    plataforma: 'web',
     items: [
-      { title: 'Permisos', url: '/admin/permisos', icon: ShieldCheck, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'sistema_permisos' },
+      { title: 'Permisos', url: '/admin/permisos', icon: ShieldCheck, permiso: 'admin:usuarios', flag: 'sistema_permisos' },
       {
         title:    'Configuración',
         icon:     Settings2,
-        roles:    ['ADMIN_SISTEMA'],
+        roles:    ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],
         children: [
-          { title: 'Aperturas', url: '/admin/feature-flags', icon: ToggleLeft, roles: ['ADMIN_SISTEMA'], flag: 'sistema_aperturas' },
-          { title: 'Auditoría', url: '/admin/audit',         icon: ScrollText, roles: ['ADMIN_SISTEMA'], flag: 'sistema_auditoria' },
+          { title: 'Aperturas', url: '/admin/feature-flags', icon: ToggleLeft, roles: ['ADMIN_SISTEMA'],                    permiso: 'admin:feature_flags', flag: 'sistema_aperturas' },
+          { title: 'Auditoría', url: '/admin/audit',         icon: ScrollText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],  permiso: 'admin:auditoria',     flag: 'sistema_auditoria' },
         ],
       },
     ],
@@ -127,31 +138,30 @@ const navMain: NavGroup[] = [
 ]
 
 const rolLabels: Record<string, string> = {
-  USUARIO_POST: 'Usuario Post',
-  CAJERO: 'Cajero',
-  ADMINISTRATIVO: 'Administrativo',
-  TESORERIA: 'Tesorería',
-  INVENTARIOS: 'Inventarios',
+  USUARIO_POST:        'Usuario Post',
+  CAJERO:              'Cajero',
+  ADMINISTRATIVO:      'Administrativo',
+  TESORERIA:           'Tesorería',
+  INVENTARIOS:         'Inventarios',
   SUPERVISOR_REGIONAL: 'Supervisor',
-  ADMIN_NACIONAL: 'Admin Nacional',
-  ADMIN_SISTEMA: 'Admin Sistema',
+  ADMIN_NACIONAL:      'Admin Nacional',
+  ADMIN_SISTEMA:       'Admin Sistema',
 }
 
 export { navMain, rolLabels }
 
 export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
   const { pathname } = useLocation()
-  const { state } = useSidebar()
-  const collapsed = state === 'collapsed'
-  const user = useSessionStore((s) => s.user)
-  const [openItems, setOpenItems] = useState<Record<string, boolean>>({ 'Configuración': true })
+  const { state }   = useSidebar()
+  const collapsed   = state === 'collapsed'
+  const user        = useSessionStore((s) => s.user)
+  const { puede, flagActivo, isAdmin, esTauri } = useAcceso()
+
+  const [openItems,   setOpenItems]   = useState<Record<string, boolean>>({ 'Configuración': true })
   const [profileOpen, setProfileOpen] = useState(false)
 
   const toggleItem = (key: string) =>
     setOpenItems((prev) => ({ ...prev, [key]: !prev[key] }))
-
-  const entorno = import.meta.env.DEV ? 'dev' : import.meta.env.VITE_ENTORNO ?? 'prod'
-  const { data: activeFlags } = useFeatureFlagsActivos({ entorno, plataforma: 'web' })
 
   const initials = user?.nombre
     .split(' ')
@@ -187,21 +197,23 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
 
       <SidebarContent>
         {navMain.map((group) => {
-          const isAdmin = user?.rol === 'ADMIN_SISTEMA'
+          if (group.plataforma === 'web' && esTauri) return null
 
           const visibleItems = group.items
             .filter((item) => {
-              const rolOk = !item.roles || (user && item.roles.includes(user.rol))
-              // ADMIN_SISTEMA ve todos los módulos aunque el flag esté inactivo
-              const flagOk = !item.flag || isAdmin || activeFlags?.some((f) => f.codigo === item.flag)
-              return rolOk && flagOk
+              if (item.plataforma === 'tauri' && !esTauri) return false
+              if (item.plataforma === 'web'   &&  esTauri) return false
+              if (item.roles && !isAdmin && !item.roles.includes(user?.rol as RolUsuario)) return false
+              if (item.permiso && !puede(item.permiso, item.flag)) return false
+              if (!item.permiso && item.flag && !isAdmin && !flagActivo(item.flag)) return false
+              return true
             })
             .map((item) => ({
               ...item,
-              // Cajas → CajaPadre central (id=65)
-              url: item.url === '/cajas' ? '/cajas/principales/1' : item.url,
-              flagOff: isAdmin && !!item.flag && !activeFlags?.some((f) => f.codigo === item.flag),
+              url:     item.url === '/cajas' ? `/cajas/principales/${user?.sucursal_id ?? 1}` : item.url,
+              flagOff: isAdmin && !!item.flag && !flagActivo(item.flag),
             }))
+
           if (visibleItems.length === 0) return null
 
           return (
@@ -212,13 +224,16 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
                   {visibleItems.map((item) => {
                     if (item.children) {
                       const visibleChildren = item.children.filter((c) => {
-                        const rolOk  = !c.roles || (user && c.roles.includes(user.rol))
-                        const flagOk = !c.flag  || isAdmin || activeFlags?.some((f) => f.codigo === c.flag)
-                        return rolOk && flagOk
+                        if (c.plataforma === 'tauri' && !esTauri) return false
+                        if (c.plataforma === 'web'   &&  esTauri) return false
+                        if (c.roles && !isAdmin && !c.roles.includes(user?.rol as RolUsuario)) return false
+                        if (c.permiso && !puede(c.permiso, c.flag)) return false
+                        if (!c.permiso && c.flag && !isAdmin && !flagActivo(c.flag)) return false
+                        return true
                       })
                       if (visibleChildren.length === 0) return null
                       const childActive = visibleChildren.some((c) => pathname === c.url)
-                      const isOpen = openItems[item.title] ?? childActive
+                      const isOpen      = openItems[item.title] ?? childActive
 
                       return (
                         <SidebarMenuItem key={item.title}>
@@ -256,8 +271,15 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
 
                     return (
                       <SidebarMenuItem key={item.url}>
-                        <SidebarMenuButton asChild isActive={item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url} tooltip={item.title}>
-                          <Link to={item.url!} className={cn((item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url) && 'font-medium')}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url}
+                          tooltip={item.title}
+                        >
+                          <Link
+                            to={item.url!}
+                            className={cn((item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url) && 'font-medium')}
+                          >
                             <item.icon />
                             <span>{item.title}</span>
                             {item.flagOff && !collapsed && (

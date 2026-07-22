@@ -23,6 +23,7 @@ export const userSchema = z.object({
   sucursal_id: z.number().int().nullable(),
   activo: z.boolean(),
   ultimoLogin: z.string().nullable(),
+  permisos: z.array(z.string()).default([]),
 })
 export type User = z.infer<typeof userSchema>
 

@@ -9,6 +9,7 @@ export type TamanoApartado = 'pequeno' | 'mediano' | 'grande'
 export interface ProductoCatalogo {
   id: number; codigo: string; nombre: string; tipo: TipoProducto
   precio: number; porcentajeTax: number
+  stockActual: number | null; stockMinimo: number | null
 }
 
 export interface ClienteResumen {
@@ -246,12 +247,12 @@ export function useContratarApartado(cajaId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ clienteId, ...data }: { clienteId: number } & Record<string, unknown>) =>
-      apiFetch<ApartadoPostal>(`/ventas/punto/${cajaId}/apartado?clienteId=${clienteId}`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
+      apiFetch<{ apartado: ApartadoPostal; saldoActual: number; alertas: unknown[] }>(
+        `/ventas/punto/${cajaId}/apartado?clienteId=${clienteId}`,
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['ventas', 'apartados', result.sucursalId] })
+      qc.invalidateQueries({ queryKey: ['ventas', 'apartados', result.apartado.sucursalId] })
       qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) })
     },
   })

@@ -4,6 +4,7 @@ import {
   ShoppingCart, Trash2, ChevronLeft, RefreshCw,
   Search, CheckCircle2, AlertTriangle, Loader2,
   Package, MailOpen, Plus, ChevronRight, Tag, Pencil,
+  Truck,
 } from 'lucide-react'
 import { Button }      from '@/components/ui/button'
 import { Input }       from '@/components/ui/input'
@@ -28,15 +29,20 @@ import {
   useResumenTurno,
   useVentasTurno,
   useApartadosDisponibles,
+  useServiciosPostales,
+  useCotizarEnvio,
   useIniciarVenta,
   useAgregarProducto,
   useEliminarProducto,
   useConfirmarVenta,
   useAnularVenta,
   useContratarApartado,
+  useCrearEnvio,
   type ClienteResumen,
   type MedioPagoVenta,
   type TipoProducto,
+  type ServicioCatalogo,
+  type Envio,
 } from '@/queries/ventas.queries'
 
 // ── Validación de email ───────────────────────────────────────────────────────
@@ -221,6 +227,18 @@ const TIPOS_PRODUCTO: { value: TipoProducto | ''; label: string }[] = [
 const MEDIOS_PAGO: { value: MedioPagoVenta; label: string }[] = [
   { value: 'efectivo',          label: 'Efectivo' },
   { value: 'cheque',            label: 'Cheque' },
+  { value: 'tarjeta_debito',    label: 'Tarjeta Débito' },
+  { value: 'tarjeta_credito',   label: 'Tarjeta Crédito' },
+  { value: 'transferencia',     label: 'Transferencia' },
+  { value: 'consignacion',      label: 'Consignación' },
+  { value: 'preporteado',       label: 'Preporteado' },
+  { value: 'mixto_preporteado', label: 'Mixto-Preporteado' },
+]
+
+type MedioPagoEnvio = Exclude<MedioPagoVenta, 'cheque'>
+
+const MEDIOS_PAGO_ENVIO: { value: MedioPagoEnvio; label: string }[] = [
+  { value: 'efectivo',          label: 'Efectivo' },
   { value: 'tarjeta_debito',    label: 'Tarjeta Débito' },
   { value: 'tarjeta_credito',   label: 'Tarjeta Crédito' },
   { value: 'transferencia',     label: 'Transferencia' },
@@ -549,14 +567,29 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
   )
 }
 
+// ── StockBadge ────────────────────────────────────────────────────────────────
+
+function StockBadge({ stock, minimo }: { stock: number | null; minimo: number | null }) {
+  if (stock === null) return null
+  if (stock === 0)    return <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">Sin stock</Badge>
+  if (minimo !== null && stock <= minimo)
+    return <Badge className="text-[9px] px-1 py-0 h-3.5 bg-amber-500 hover:bg-amber-500">Stock: {stock}</Badge>
+  return <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5">Stock: {stock}</Badge>
+}
+
 // ── TabProductos ──────────────────────────────────────────────────────────────
 
 function TabProductos({
   sucursalId, ventaId, cajaId,
 }: { sucursalId: number; ventaId: number | null; cajaId: number }) {
   const [tipoFiltro, setTipoFiltro] = useState<TipoProducto | ''>('')
+  const [busqueda,   setBusqueda]   = useState('')
   const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, tipoFiltro || undefined)
   const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
+
+  const filtrado = catalogo?.filter(p =>
+    !busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase()),
+  ) ?? []
 
   const handleAgregar = async (productoId: number, nombre: string) => {
     if (!ventaId) {
@@ -573,6 +606,18 @@ function TabProductos({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Búsqueda */}
+      <div className="px-3 pt-2 pb-1 shrink-0">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Input
+            className="pl-8 h-8 text-sm"
+            placeholder="Buscar producto..."
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+          />
+        </div>
+      </div>
       {/* Tipo filter */}
       <div className="flex gap-1.5 px-3 py-2 flex-wrap border-b shrink-0">
         {TIPOS_PRODUCTO.map(t => (
@@ -598,43 +643,62 @@ function TabProductos({
           <div className="flex items-center justify-center py-12">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
-        ) : !catalogo?.length ? (
+        ) : !filtrado.length ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
-            No hay productos disponibles
+            {busqueda ? 'Sin resultados' : 'No hay productos disponibles'}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-3">
-            {catalogo.map(p => (
-              <button
-                key={p.id}
-                type="button"
-                disabled={!ventaId || agregar.isPending}
-                onClick={() => handleAgregar(p.id, p.nombre)}
-                className={cn(
-                  'group rounded-lg border p-3 text-left flex flex-col gap-2 transition-all',
-                  'hover:border-primary/60 hover:shadow-sm',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                )}
-              >
-                <div className="flex items-start justify-between gap-1">
-                  <span className="text-xs font-semibold leading-tight line-clamp-2">{p.nombre}</span>
-                  <Package className="size-3.5 text-muted-foreground/40 shrink-0 mt-0.5" />
-                </div>
-                <div className="flex items-end justify-between mt-auto gap-1">
-                  <div>
-                    <span className="text-sm font-bold tabular-nums">{fmt(p.precio)}</span>
-                    {p.porcentajeTax > 0 && (
-                      <span className="block text-[10px] text-muted-foreground">+{p.porcentajeTax}% IVA</span>
+            {filtrado.map(p => {
+              const iva       = Math.round(p.precio * p.porcentajeTax / 100)
+              const total     = p.precio + iva
+              const sinStock  = p.stockActual !== null && p.stockActual === 0
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={!ventaId || agregar.isPending || sinStock}
+                  onClick={() => handleAgregar(p.id, p.nombre)}
+                  className={cn(
+                    'group rounded-lg border p-3 text-left flex flex-col gap-2 transition-all',
+                    sinStock
+                      ? 'border-dashed border-muted-foreground/30 opacity-50 cursor-not-allowed'
+                      : 'hover:border-primary/60 hover:shadow-sm',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                    'disabled:cursor-not-allowed',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <span className="text-xs font-semibold leading-tight line-clamp-2">{p.nombre}</span>
+                    <Package className="size-3.5 text-muted-foreground/40 shrink-0 mt-0.5" />
+                  </div>
+                  <div className="flex items-end justify-between mt-auto gap-1">
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-bold tabular-nums">{fmt(p.precio)}</span>
+                      {iva > 0 ? (
+                        <>
+                          <div className="text-[10px] text-amber-600 tabular-nums">
+                            IVA {p.porcentajeTax}%: {fmt(iva)}
+                          </div>
+                          <div className="text-[10px] font-semibold tabular-nums">
+                            Total: {fmt(total)}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-[10px] text-emerald-600">Sin IVA</div>
+                      )}
+                      <StockBadge stock={p.stockActual} minimo={p.stockMinimo} />
+                    </div>
+                    {!sinStock && (
+                      <Plus className={cn(
+                        'size-5 rounded-full bg-primary text-primary-foreground p-0.5 shrink-0',
+                        'opacity-0 group-hover:opacity-100 transition-opacity',
+                      )} />
                     )}
                   </div>
-                  <Plus className={cn(
-                    'size-5 rounded-full bg-primary text-primary-foreground p-0.5 shrink-0',
-                    'opacity-0 group-hover:opacity-100 transition-opacity',
-                  )} />
-                </div>
-              </button>
-            ))}
+                </button>
+              )
+            })}
           </div>
         )}
       </ScrollArea>
@@ -644,65 +708,1132 @@ function TabProductos({
 
 // ── TabApartado ───────────────────────────────────────────────────────────────
 
+const TAMANO_LABEL: Record<string, string> = { pequeno: 'Pequeño', mediano: 'Mediano', grande: 'Grande' }
+const IVA_RATE = 0.19
+
+function addMonths(dateStr: string, months: number): string {
+  const d = new Date(dateStr)
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString().split('T')[0]
+}
+
 function TabApartado({
   sucursalId, cajaId, clienteId,
 }: { sucursalId: number; cajaId: number; clienteId: number | null }) {
-  const { data: apartados, isLoading } = useApartadosDisponibles(sucursalId)
+  const today = new Date().toISOString().split('T')[0]
+
+  const [tamanoFiltro,   setTamanoFiltro]   = useState<string>('')
+  const [selectedId,     setSelectedId]     = useState<number | null>(null)
+  const [duracionMeses,  setDuracionMeses]  = useState(12)
+  const [fechaInicio,    setFechaInicio]    = useState(today)
+  const [comentarios,    setComentarios]    = useState('')
+
+  const { data: apartados, isLoading } = useApartadosDisponibles(sucursalId, tamanoFiltro || undefined)
   const contratar = useContratarApartado(cajaId)
 
-  const handleContratar = async (apartadoId: number, numero: string) => {
+  const filtrados = apartados ?? []
+  const selected  = filtrados.find(a => a.id === selectedId) ?? null
+
+  const fechaFin  = addMonths(fechaInicio, duracionMeses)
+
+  // Precio e IVA
+  const valorBase = selected?.valor ?? 0
+  const base      = selected?.incluyeIva ? Math.round(valorBase / (1 + IVA_RATE)) : valorBase
+  const iva       = selected?.incluyeIva ? valorBase - base : Math.round(valorBase * IVA_RATE)
+  const total     = base + iva
+
+  const handleContratar = async () => {
     if (!clienteId) { toast.error('Busca un cliente primero'); return }
+    if (!selected)  { toast.error('Selecciona un apartado');   return }
     try {
-      await contratar.mutateAsync({ clienteId, apartadoId, duracionMeses: 12 })
-      toast.success(`Apartado #${numero} contratado`)
+      await contratar.mutateAsync({
+        clienteId,
+        sucursalId:     selected.sucursalId,
+        numeroApartado: selected.numero,
+        tamano:         selected.tamano,
+        meses:          Math.max(1, duracionMeses),
+        fechaInicio,
+        monto:          total,
+        incluyeIva:     selected.incluyeIva ?? true,
+        ...(comentarios.trim() ? { comentarios: comentarios.trim() } : {}),
+      })
+      toast.success(`Apartado #${selected.numero} contratado`)
+      setSelectedId(null)
+      setComentarios('')
+      setDuracionMeses(12)
+      setFechaInicio(today)
     } catch {
       toast.error('No se pudo contratar el apartado')
     }
   }
 
-  const TAMANO: Record<string, string> = { pequeno: 'Pequeño', mediano: 'Mediano', grande: 'Grande' }
-
-  if (isLoading) return (
-    <div className="flex items-center justify-center h-full">
-      <Loader2 className="size-5 animate-spin text-muted-foreground" />
-    </div>
-  )
-
-  if (!apartados?.length) return (
-    <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
-      No hay apartados disponibles en esta sucursal
-    </div>
-  )
-
   return (
-    <ScrollArea className="h-full">
-      <div className="p-3 space-y-1.5">
-        {apartados.map(a => (
-          <div key={a.id} className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
-            <div className="flex-1 min-w-0">
+    <div className="flex h-full overflow-hidden">
+
+      {/* ── Panel izquierdo: Nuevo Contrato ────────────────────────────────── */}
+      <div className="w-44 shrink-0 flex flex-col border-r">
+        <div className="px-2.5 py-2 border-b shrink-0">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+            Nuevo contrato
+          </p>
+          <Select value={tamanoFiltro} onValueChange={v => { setTamanoFiltro(v); setSelectedId(null) }}>
+            <SelectTrigger className="h-7 text-xs">
+              <SelectValue placeholder="Tamaño" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Todos</SelectItem>
+              <SelectItem value="pequeno">Pequeño</SelectItem>
+              <SelectItem value="mediano">Mediano</SelectItem>
+              <SelectItem value="grande">Grande</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="px-2 py-1.5 shrink-0">
+          <p className="text-[10px] text-muted-foreground font-medium">No. Apartado Postal</p>
+        </div>
+
+        <ScrollArea className="flex-1">
+          {isLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : !filtrados.length ? (
+            <p className="px-2 py-4 text-[11px] text-center text-muted-foreground">
+              Sin disponibles
+            </p>
+          ) : (
+            <div className="px-1.5 pb-2 space-y-0.5">
+              {filtrados.map(a => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setSelectedId(a.id)}
+                  className={cn(
+                    'w-full text-left rounded-md px-2 py-1.5 transition-colors',
+                    selectedId === a.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted',
+                  )}
+                >
+                  <p className="text-xs font-bold leading-none">#{a.numero}</p>
+                  <p className={cn(
+                    'text-[10px] mt-0.5',
+                    selectedId === a.id ? 'text-primary-foreground/70' : 'text-muted-foreground',
+                  )}>
+                    {TAMANO_LABEL[a.tamano] ?? a.tamano}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </div>
+
+      {/* ── Panel derecho: Formulario ───────────────────────────────────────── */}
+      <ScrollArea className="flex-1">
+        <div className="p-3 space-y-3">
+
+          {/* Apartado seleccionado */}
+          <div className="rounded-lg border bg-muted/30 px-3 py-2 min-h-[40px] flex items-center">
+            {selected ? (
               <div className="flex items-center gap-2">
-                <span className="font-bold text-sm">#{a.numero}</span>
-                <Badge variant="outline" className="text-[10px] px-1 py-0">
-                  {TAMANO[a.tamano] ?? a.tamano}
+                <span className="text-sm font-bold">#{selected.numero}</span>
+                <Badge variant="outline" className="text-[10px] px-1.5">
+                  {TAMANO_LABEL[selected.tamano] ?? selected.tamano}
                 </Badge>
               </div>
-              {a.valor != null && (
-                <p className="text-xs text-muted-foreground mt-0.5">{fmt(a.valor)} / año</p>
-              )}
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Selecciona un apartado de la lista
+              </p>
+            )}
+          </div>
+
+          {/* Duración */}
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              Duración
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Tiempo (meses)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="60"
+                  className="h-8 text-sm"
+                  value={duracionMeses}
+                  onChange={e => setDuracionMeses(Math.max(1, Number(e.target.value) || 1))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Fecha de inicio</Label>
+                <Input
+                  type="date"
+                  className="h-8 text-xs"
+                  value={fechaInicio}
+                  onChange={e => setFechaInicio(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Fecha final</Label>
+                <Input
+                  type="date"
+                  className="h-8 text-xs bg-muted/40"
+                  value={fechaFin}
+                  readOnly
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Precio</Label>
+                <div className="h-8 flex items-center px-3 rounded-md border bg-muted/40">
+                  <span className="text-sm font-bold tabular-nums text-primary">{fmt(total)}</span>
+                </div>
+              </div>
             </div>
+          </div>
+
+          {/* Denominación Tarifas IVA */}
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+              Denominación Tarifas IVA
+            </p>
+            <div className="rounded-md border overflow-hidden">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="bg-muted/50 border-b">
+                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Tarifa</th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Compras</th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">IVA</th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Base Imp.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selected ? (
+                    <tr>
+                      <td className="px-2 py-2 tabular-nums">{(IVA_RATE * 100).toFixed(0)}%</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(total)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-amber-600">{fmt(iva)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(base)}</td>
+                    </tr>
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-2 py-3 text-center text-muted-foreground">
+                        —
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Comentarios */}
+          <div className="space-y-1">
+            <Label className="text-xs">Comentarios</Label>
+            <textarea
+              className="w-full rounded-md border bg-background px-3 py-2 text-xs resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              rows={2}
+              placeholder="Observaciones opcionales..."
+              value={comentarios}
+              onChange={e => setComentarios(e.target.value)}
+            />
+          </div>
+
+          {/* Botones */}
+          <div className="flex gap-2">
             <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs shrink-0"
-              disabled={!clienteId || contratar.isPending}
-              onClick={() => handleContratar(a.id, a.numero)}
+              className="flex-1"
+              disabled={!selectedId || !clienteId || contratar.isPending}
+              onClick={handleContratar}
             >
+              {contratar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
               Contratar
             </Button>
+            <Button
+              variant="outline"
+              disabled={!selectedId || contratar.isPending}
+              onClick={() => { setSelectedId(null); setComentarios(''); setDuracionMeses(12); setFechaInicio(today) }}
+            >
+              Cancelar
+            </Button>
           </div>
-        ))}
+
+          {!clienteId && (
+            <p className="text-[11px] text-center text-muted-foreground">
+              Busca un cliente para poder contratar
+            </p>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
+// ── TabProductosEspeciales ────────────────────────────────────────────────────
+
+function TabProductosEspeciales({
+  sucursalId, ventaId, cajaId,
+}: { sucursalId: number; ventaId: number | null; cajaId: number }) {
+  const [busqueda, setBusqueda] = useState('')
+  const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, 'otro')
+  const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
+
+  const filtrado = catalogo?.filter(p =>
+    !busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase()),
+  ) ?? []
+
+  const handleAgregar = async (productoId: number, nombre: string) => {
+    if (!ventaId) { toast.error('Busca un cliente primero'); return }
+    try {
+      await agregar.mutateAsync({ productoId, cantidad: 1 })
+      toast.success(`${nombre} agregado`)
+    } catch {
+      toast.error('No se pudo agregar el producto')
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-3 py-2 border-b shrink-0">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Input
+            className="pl-8 h-8 text-sm"
+            placeholder="Buscar alistamiento..."
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+          />
+        </div>
       </div>
-    </ScrollArea>
+      <ScrollArea className="flex-1">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : !filtrado.length ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            {busqueda ? 'Sin resultados' : 'No hay productos especiales disponibles'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-3">
+            {filtrado.map(p => {
+              const iva      = Math.round(p.precio * p.porcentajeTax / 100)
+              const total    = p.precio + iva
+              const sinStock = p.stockActual !== null && p.stockActual === 0
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={!ventaId || agregar.isPending || sinStock}
+                  onClick={() => handleAgregar(p.id, p.nombre)}
+                  className={cn(
+                    'group rounded-lg border p-3 text-left flex flex-col gap-2 transition-all',
+                    sinStock
+                      ? 'border-dashed border-muted-foreground/30 opacity-50 cursor-not-allowed'
+                      : 'hover:border-primary/60 hover:shadow-sm',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                    'disabled:cursor-not-allowed',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <span className="text-xs font-semibold leading-tight line-clamp-2">{p.nombre}</span>
+                    <Truck className="size-3.5 text-muted-foreground/40 shrink-0 mt-0.5" />
+                  </div>
+                  <div className="flex items-end justify-between mt-auto gap-1">
+                    <div className="space-y-0.5">
+                      <span className="text-sm font-bold tabular-nums">{fmt(p.precio)}</span>
+                      {iva > 0 ? (
+                        <>
+                          <div className="text-[10px] text-amber-600 tabular-nums">
+                            IVA {p.porcentajeTax}%: {fmt(iva)}
+                          </div>
+                          <div className="text-[10px] font-semibold tabular-nums">
+                            Total: {fmt(total)}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-[10px] text-emerald-600">Sin IVA</div>
+                      )}
+                      <StockBadge stock={p.stockActual} minimo={p.stockMinimo} />
+                    </div>
+                    {!sinStock && (
+                      <Plus className={cn(
+                        'size-5 rounded-full bg-primary text-primary-foreground p-0.5 shrink-0',
+                        'opacity-0 group-hover:opacity-100 transition-opacity',
+                      )} />
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </ScrollArea>
+    </div>
+  )
+}
+
+// ── TabServiciosPostales ──────────────────────────────────────────────────────
+
+interface PersonaEnvioForm {
+  nombre: string; empresa: string; documento: string; email: string
+  telefono: string; direccion: string; ciudad: string; pais: string; cp: string
+}
+
+interface EnvioLocal {
+  guia: string; servicioNombre: string; destinatario: string; ciudad: string
+  cantidad: number; pesoFisico: number; pesoFacturado: number
+  valorServicio: number; valorTotal: number
+}
+
+const personaVacia = (): PersonaEnvioForm => ({
+  nombre: '', empresa: '', documento: '', email: '', telefono: '',
+  direccion: '', ciudad: '', pais: 'CO', cp: '',
+})
+
+const CAJAS_ENVIO = [
+  { productoId: 7, nombre: 'Caja Pequeña 4-72',  precio: 1500 },
+  { productoId: 8, nombre: 'Caja Mediana 4-72',  precio: 2500 },
+  { productoId: 9, nombre: 'Caja Grande 4-72',   precio: 3500 },
+] as const
+
+// ── Dirección normalizada / libre ─────────────────────────────────────────────
+
+const TIPOS_VIA = [
+  { value: 'CLL', label: 'Calle' },
+  { value: 'KR',  label: 'Carrera' },
+  { value: 'DG',  label: 'Diagonal' },
+  { value: 'TV',  label: 'Transversal' },
+  { value: 'AV',  label: 'Avenida' },
+  { value: 'AC',  label: 'Autopista' },
+  { value: 'CI',  label: 'Circular' },
+  { value: 'VR',  label: 'Variante' },
+  { value: 'MZ',  label: 'Manzana' },
+  { value: 'LT',  label: 'Lote' },
+] as const
+
+const CUADRANTES = [
+  { value: 'N',  label: 'N – Norte' },
+  { value: 'S',  label: 'S – Sur' },
+  { value: 'E',  label: 'E – Este' },
+  { value: 'O',  label: 'O – Oeste' },
+] as const
+
+interface DirState {
+  modo:         'normalizada' | 'libre'
+  // Normalizada — vía principal
+  tipoVia:     string
+  numVia:      string
+  letraVia:    string
+  bis:         boolean
+  cuadrante1:  string
+  // Normalizada — generadora + placa
+  numGen:      string
+  letraGen:    string
+  cuadrante2:  string
+  placa:       string
+  // Libre
+  textoLibre:  string
+  // Compartido
+  departamento: string
+  ciudad:       string
+  adicion:      string
+}
+
+const dirVacia = (): DirState => ({
+  modo: 'normalizada',
+  tipoVia: 'CLL', numVia: '', letraVia: '', bis: false, cuadrante1: '',
+  numGen: '', letraGen: '', cuadrante2: '', placa: '',
+  textoLibre: '', departamento: '', ciudad: '', adicion: '',
+})
+
+function composeAddress(d: DirState): string {
+  if (d.modo === 'libre') {
+    return [d.textoLibre.trim(), d.adicion.trim()].filter(Boolean).join(', ')
+  }
+  const viaParts = [d.tipoVia, d.numVia, d.letraVia, d.bis ? 'BIS' : '', d.cuadrante1]
+    .filter(Boolean).join(' ')
+  const genParts = [d.numGen, d.letraGen, d.cuadrante2].filter(Boolean).join(' ')
+  const main = [viaParts, '#', genParts && d.placa ? `${genParts} - ${d.placa}` : genParts || (d.placa ? `- ${d.placa}` : '')]
+    .filter(Boolean).join(' ')
+  return [main, d.adicion.trim()].filter(Boolean).join(', ')
+}
+
+function DireccionInput({ value, onChange }: { value: DirState; onChange: (s: DirState) => void }) {
+  const set = <K extends keyof DirState>(k: K, v: DirState[K]) => onChange({ ...value, [k]: v })
+  const preview = composeAddress(value)
+
+  return (
+    <div className="space-y-2">
+      {/* Selector de modo */}
+      <div className="flex rounded-md border overflow-hidden divide-x text-[11px] font-medium">
+        <button
+          type="button"
+          onClick={() => set('modo', 'normalizada')}
+          className={cn(
+            'flex-1 py-1 text-center transition-colors',
+            value.modo === 'normalizada'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:bg-muted/60',
+          )}
+        >
+          Normalizada
+        </button>
+        <button
+          type="button"
+          onClick={() => set('modo', 'libre')}
+          className={cn(
+            'flex-1 py-1 text-center transition-colors',
+            value.modo === 'libre'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:bg-muted/60',
+          )}
+        >
+          Sin normalizar
+        </button>
+      </div>
+
+      {value.modo === 'normalizada' ? (
+        <div className="rounded-md border p-2 space-y-2">
+          {/* Vía principal */}
+          <div className="space-y-1">
+            <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Vía principal</p>
+            <div className="flex gap-1 items-center flex-wrap">
+              <Select value={value.tipoVia} onValueChange={v => set('tipoVia', v)}>
+                <SelectTrigger className="h-7 w-[62px] text-xs px-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIPOS_VIA.map(t => (
+                    <SelectItem key={t.value} value={t.value} className="text-xs">
+                      <span className="font-mono font-semibold">{t.value}</span>
+                      <span className="text-muted-foreground ml-1.5">{t.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                className="h-7 text-xs w-10 text-center px-1"
+                placeholder="Nº"
+                value={value.numVia}
+                onChange={e => set('numVia', e.target.value.replace(/\D/g, ''))}
+                maxLength={4}
+              />
+              <Input
+                className="h-7 text-xs w-8 text-center px-1 uppercase"
+                placeholder="Ltr"
+                value={value.letraVia}
+                onChange={e => set('letraVia', e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                maxLength={2}
+              />
+              <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none shrink-0">
+                <input
+                  type="checkbox"
+                  checked={value.bis}
+                  onChange={e => set('bis', e.target.checked)}
+                  className="size-3 accent-primary"
+                />
+                <span className="font-semibold">BIS</span>
+              </label>
+              <Select value={value.cuadrante1} onValueChange={v => set('cuadrante1', v)}>
+                <SelectTrigger className="h-7 w-[62px] text-xs px-1.5">
+                  <SelectValue placeholder="Cuad." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" className="text-xs text-muted-foreground">—</SelectItem>
+                  {CUADRANTES.map(c => (
+                    <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Vía generadora + placa */}
+          <div className="space-y-1">
+            <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Vía generadora y placa</p>
+            <div className="flex gap-1 items-center flex-wrap">
+              <span className="text-xs font-bold text-muted-foreground shrink-0">#</span>
+              <Input
+                className="h-7 text-xs w-10 text-center px-1"
+                placeholder="Nº"
+                value={value.numGen}
+                onChange={e => set('numGen', e.target.value.replace(/\D/g, ''))}
+                maxLength={4}
+              />
+              <Input
+                className="h-7 text-xs w-8 text-center px-1 uppercase"
+                placeholder="Ltr"
+                value={value.letraGen}
+                onChange={e => set('letraGen', e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                maxLength={2}
+              />
+              <Select value={value.cuadrante2} onValueChange={v => set('cuadrante2', v)}>
+                <SelectTrigger className="h-7 w-[62px] text-xs px-1.5">
+                  <SelectValue placeholder="Cuad." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" className="text-xs text-muted-foreground">—</SelectItem>
+                  {CUADRANTES.map(c => (
+                    <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs font-bold text-muted-foreground shrink-0">–</span>
+              <Input
+                className="h-7 text-xs w-12 text-center px-1"
+                placeholder="Placa"
+                value={value.placa}
+                onChange={e => set('placa', e.target.value.replace(/\D/g, ''))}
+                maxLength={5}
+              />
+            </div>
+          </div>
+
+          {/* Preview compuesto */}
+          {preview && (
+            <p className="text-[11px] font-mono bg-muted/60 rounded px-2 py-1 text-center tracking-wide text-foreground">
+              {preview}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <Label className="text-xs">Dirección</Label>
+          <Input
+            className="h-8 text-sm"
+            placeholder="Ej. Diagonal 5 B # 76-43"
+            value={value.textoLibre}
+            onChange={e => set('textoLibre', e.target.value)}
+          />
+        </div>
+      )}
+
+      {/* Geografía (compartido) */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs">Departamento</Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder="Cundinamarca"
+            value={value.departamento}
+            onChange={e => set('departamento', e.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Ciudad <span className="text-destructive">*</span></Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder="Bogotá"
+            value={value.ciudad}
+            onChange={e => set('ciudad', e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Adición */}
+      <div className="space-y-1">
+        <Label className="text-xs">Adición de dirección</Label>
+        <Input
+          className="h-7 text-xs"
+          placeholder="Apto 301, Torre A, Interior 2..."
+          value={value.adicion}
+          onChange={e => set('adicion', e.target.value)}
+        />
+      </div>
+    </div>
+  )
+}
+
+function TabServiciosPostales({
+  sucursalId, cajaId, clienteId, ventaId,
+}: { sucursalId: number; cajaId: number; clienteId: number | null; ventaId: number | null }) {
+  const [servicioId,     setServicioId]     = useState(0)
+  const [cantidadPiezas, setCantidadPiezas] = useState(1)
+  const [pesoKg,         setPesoKg]         = useState('')
+  const [altoCm,         setAltoCm]         = useState('')
+  const [anchoCm,        setAnchoCm]        = useState('')
+  const [largoCm,        setLargoCm]        = useState('')
+  const [valorDeclarado, setValorDeclarado] = useState('')
+  const [contenido,      setContenido]      = useState('')
+  const [remitente,      setRemitente]      = useState<PersonaEnvioForm>(personaVacia())
+  const [destinatario,   setDestinatario]   = useState<PersonaEnvioForm>(personaVacia())
+  const [dirDest,        setDirDest]        = useState<DirState>(dirVacia())
+  const [lote,           setLote]           = useState('')
+  const [observaciones,  setObservaciones]  = useState('')
+  const [medioPago,      setMedioPago]      = useState<MedioPagoEnvio>('efectivo')
+  const [enviosGenerados, setEnviosGenerados] = useState<EnvioLocal[]>([])
+  const [cajaDlgOpen,    setCajaDlgOpen]    = useState(false)
+  const [cajaSeleccion,  setCajaSeleccion]  = useState<number>(7)
+  const [cajaCantidad,   setCajaCantidad]   = useState(1)
+
+  const { data: servicios, isLoading: loadingServicios } = useServiciosPostales(sucursalId)
+  // Filtrar apartado_postal: tiene su propio tab
+  const serviciosFiltrados = servicios?.filter((s: ServicioCatalogo) => s.tipo !== 'apartado_postal')
+  const selectedService = serviciosFiltrados?.find((s: ServicioCatalogo) => s.id === servicioId)
+  const esInternacional = !!selectedService?.tipo?.includes('internacional')
+
+  const pesoNum = Number(pesoKg) || 0
+
+  const { data: cotizacion, isLoading: cotizando } = useCotizarEnvio({
+    servicioId,
+    pesoFisicoKg: pesoNum,
+    ...(altoCm  ? { altoCm:  Number(altoCm)  } : {}),
+    ...(anchoCm ? { anchoCm: Number(anchoCm) } : {}),
+    ...(largoCm ? { largoCm: Number(largoCm) } : {}),
+  })
+
+  const crearEnvio  = useCrearEnvio(cajaId)
+  const agregarProd = useAgregarProducto(ventaId ?? 0, cajaId)
+
+  const puedeGuardar = servicioId > 0 && pesoNum > 0 && !!cotizacion
+    && remitente.nombre.trim() !== '' && destinatario.nombre.trim() !== ''
+
+  const resetForm = () => {
+    setServicioId(0); setCantidadPiezas(1)
+    setPesoKg(''); setAltoCm(''); setAnchoCm(''); setLargoCm('')
+    setValorDeclarado(''); setContenido('')
+    setRemitente(personaVacia()); setDestinatario(personaVacia()); setDirDest(dirVacia())
+    setLote(''); setObservaciones(''); setMedioPago('efectivo')
+    setCajaCantidad(1); setCajaSeleccion(7)
+  }
+
+  const ejecutarGenerar = async () => {
+    const dirTexto = composeAddress(dirDest)
+    const body: Record<string, unknown> = {
+      servicioId, sucursalId, pesoFisicoKg: pesoNum, medioPago, cantidadPiezas,
+      remitente: {
+        nombre:    remitente.nombre.trim(),
+        empresa:   remitente.empresa.trim() || undefined,
+        documento: remitente.documento.trim() || undefined,
+        email:     remitente.email.trim() || undefined,
+        telefono:  remitente.telefono.trim() || undefined,
+        ciudad:    remitente.ciudad.trim() || undefined,
+        pais:      remitente.pais || 'CO',
+      },
+      destinatario: {
+        nombre:       destinatario.nombre.trim(),
+        empresa:      destinatario.empresa.trim() || undefined,
+        documento:    destinatario.documento.trim() || undefined,
+        email:        destinatario.email.trim() || undefined,
+        telefono:     destinatario.telefono.trim() || undefined,
+        direccion:    dirTexto || undefined,
+        ciudad:       dirDest.ciudad.trim() || undefined,
+        departamento: dirDest.departamento.trim() || undefined,
+        pais:         destinatario.pais || 'CO',
+        codigoPostal: destinatario.cp.trim() || undefined,
+      },
+    }
+    if (altoCm)               body.altoCm          = Number(altoCm)
+    if (anchoCm)              body.anchoCm         = Number(anchoCm)
+    if (largoCm)              body.largoCm         = Number(largoCm)
+    if (valorDeclarado)       body.valorDeclarado  = Number(valorDeclarado)
+    if (contenido.trim())     body.contenido       = contenido.trim()
+    if (lote.trim())          body.lote            = lote.trim()
+    if (observaciones.trim()) body.observaciones   = observaciones.trim()
+
+    const result: Envio = await crearEnvio.mutateAsync(body)
+    setEnviosGenerados(prev => [...prev, {
+      guia:           result.numeroGuia,
+      servicioNombre: selectedService?.nombre ?? '—',
+      destinatario:   result.destinatarioNombre ?? destinatario.nombre.trim(),
+      ciudad:         result.destinatarioCiudad ?? dirDest.ciudad.trim(),
+      cantidad:       cantidadPiezas,
+      pesoFisico:     result.pesoFisicoKg,
+      pesoFacturado:  result.pesoTarificadoKg,
+      valorServicio:  result.valorServicio,
+      valorTotal:     result.valorTotal,
+    }])
+    toast.success(`Guía ${result.numeroGuia} generada`)
+    resetForm()
+  }
+
+  const handleGuardar = () => {
+    if (!clienteId) { toast.error('Busca un cliente primero'); return }
+    setCajaDlgOpen(true)
+  }
+
+  const handleCajaSi = async () => {
+    setCajaDlgOpen(false)
+    try {
+      if (ventaId) await agregarProd.mutateAsync({ productoId: cajaSeleccion, cantidad: cajaCantidad })
+      await ejecutarGenerar()
+    } catch {
+      toast.error('No se pudo completar la operación')
+    }
+  }
+
+  const handleCajaNo = async () => {
+    setCajaDlgOpen(false)
+    try {
+      await ejecutarGenerar()
+    } catch {
+      toast.error('No se pudo generar la guía')
+    }
+  }
+
+  const totalEnvios = enviosGenerados.reduce((s, e) => s + e.valorTotal, 0)
+
+  return (
+    <div className="flex h-full overflow-hidden">
+
+      {/* ── Panel izquierdo: Formulario ──────────────────────────────────── */}
+      <div className="w-72 xl:w-80 shrink-0 border-r flex flex-col">
+        <div className="px-3 py-2 border-b shrink-0">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Nuevo envío</p>
+        </div>
+
+        <ScrollArea className="flex-1">
+          <div className="p-3 space-y-3">
+
+            {/* Servicio */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Servicio <span className="text-destructive">*</span></Label>
+              {loadingServicios ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <Select value={servicioId ? String(servicioId) : ''} onValueChange={v => setServicioId(Number(v))}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Seleccionar servicio..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {serviciosFiltrados?.map((s: ServicioCatalogo) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.nombre} — {s.codigo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Peso + Cantidad piezas */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Peso físico (kg) <span className="text-destructive">*</span></Label>
+                <Input
+                  type="number" step="0.1" min="0.1"
+                  className="h-8 text-sm" placeholder="0.5"
+                  value={pesoKg}
+                  onChange={e => setPesoKg(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Cantidad piezas</Label>
+                <Input
+                  type="number" min="1"
+                  className="h-8 text-sm"
+                  value={cantidadPiezas}
+                  onChange={e => setCantidadPiezas(Math.max(1, Number(e.target.value) || 1))}
+                />
+              </div>
+            </div>
+
+            {/* Dimensiones */}
+            {selectedService?.requiereDimensiones && (
+              <div className="space-y-1">
+                <Label className="text-xs">Dimensiones (cm)</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Input type="number" className="h-8 text-sm" placeholder="Alto"  value={altoCm}  onChange={e => setAltoCm(e.target.value)}  />
+                  <Input type="number" className="h-8 text-sm" placeholder="Ancho" value={anchoCm} onChange={e => setAnchoCm(e.target.value)} />
+                  <Input type="number" className="h-8 text-sm" placeholder="Largo" value={largoCm} onChange={e => setLargoCm(e.target.value)} />
+                </div>
+              </div>
+            )}
+
+            {/* Valor declarado */}
+            {selectedService?.requiereValorDeclarado && (
+              <div className="space-y-1">
+                <Label className="text-xs">Valor declarado (COP)</Label>
+                <Input type="number" className="h-8 text-sm" placeholder="0" value={valorDeclarado} onChange={e => setValorDeclarado(e.target.value)} />
+              </div>
+            )}
+
+            {/* Contenido */}
+            <div className="space-y-1">
+              <Label className="text-xs">Contenido / descripción</Label>
+              <Input className="h-8 text-sm" placeholder="Descripción del contenido" value={contenido} onChange={e => setContenido(e.target.value)} />
+            </div>
+
+            {/* Cotización inline */}
+            {servicioId > 0 && pesoNum > 0 && (
+              <div className="rounded-lg bg-muted/40 border p-2.5">
+                <p className="text-[10px] font-medium text-muted-foreground mb-1">Cotización</p>
+                {cotizando ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" /> Calculando...
+                  </div>
+                ) : cotizacion ? (
+                  <div className="space-y-0.5 text-xs">
+                    {cotizacion.pesoVolumetricoKg != null && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Peso vol.:</span><span>{cotizacion.pesoVolumetricoKg} kg</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-semibold">
+                      <span>Valor:</span>
+                      <span className="text-primary">{fmt(cotizacion.valorServicio)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Ingresa el peso para cotizar</p>
+                )}
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Remitente */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Remitente</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-xs">Nombre <span className="text-destructive">*</span></Label>
+                  <Input className="h-8 text-sm" value={remitente.nombre} onChange={e => setRemitente(p => ({ ...p, nombre: e.target.value }))} placeholder="Nombre completo" />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-xs">Empresa</Label>
+                  <Input className="h-8 text-sm" value={remitente.empresa} onChange={e => setRemitente(p => ({ ...p, empresa: e.target.value }))} placeholder="Razón social (opcional)" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Teléfono</Label>
+                  <Input className="h-8 text-sm" value={remitente.telefono} onChange={e => setRemitente(p => ({ ...p, telefono: e.target.value }))} placeholder="3001234567" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Ciudad</Label>
+                  <Input className="h-8 text-sm" value={remitente.ciudad} onChange={e => setRemitente(p => ({ ...p, ciudad: e.target.value }))} placeholder="Bogotá" />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Destinatario */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Destinatario</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-xs">Nombre <span className="text-destructive">*</span></Label>
+                  <Input className="h-8 text-sm" value={destinatario.nombre} onChange={e => setDestinatario(p => ({ ...p, nombre: e.target.value }))} placeholder="Nombre completo" />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-xs">Empresa</Label>
+                  <Input className="h-8 text-sm" value={destinatario.empresa} onChange={e => setDestinatario(p => ({ ...p, empresa: e.target.value }))} placeholder="Razón social (opcional)" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Documento</Label>
+                  <Input className="h-8 text-sm" value={destinatario.documento} onChange={e => setDestinatario(p => ({ ...p, documento: e.target.value }))} placeholder="CC / NIT" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Teléfono</Label>
+                  <Input className="h-8 text-sm" value={destinatario.telefono} onChange={e => setDestinatario(p => ({ ...p, telefono: e.target.value }))} placeholder="3001234567" />
+                </div>
+              </div>
+
+              {/* Dirección normalizada */}
+              <div className="space-y-1.5 mt-2">
+                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Dirección de entrega</p>
+                <DireccionInput value={dirDest} onChange={setDirDest} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {esInternacional ? (
+                  <div className="space-y-1">
+                    <Label className="text-xs">País (ISO-2)</Label>
+                    <Input className="h-8 text-sm" maxLength={2} value={destinatario.pais} onChange={e => setDestinatario(p => ({ ...p, pais: e.target.value.toUpperCase() }))} placeholder="US" />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Código postal</Label>
+                    <Input className="h-8 text-sm" value={destinatario.cp} onChange={e => setDestinatario(p => ({ ...p, cp: e.target.value }))} placeholder="111011" />
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <Label className="text-xs">Email</Label>
+                  <Input type="email" className="h-8 text-sm" value={destinatario.email} onChange={e => setDestinatario(p => ({ ...p, email: e.target.value }))} placeholder="dest@correo.com" />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Lote */}
+            <div className="space-y-1">
+              <Label className="text-xs">Lote</Label>
+              <Input className="h-8 text-sm" placeholder="N° de lote (opcional)" value={lote} onChange={e => setLote(e.target.value)} />
+            </div>
+
+            {/* Observaciones */}
+            <div className="space-y-1">
+              <Label className="text-xs">Observaciones</Label>
+              <Input className="h-8 text-sm" placeholder="Opcional" value={observaciones} onChange={e => setObservaciones(e.target.value)} />
+            </div>
+
+            {/* Medio de pago */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Medio de pago</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {MEDIOS_PAGO_ENVIO.map(m => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setMedioPago(m.value)}
+                    className={cn(
+                      'rounded-md border px-2 py-1 text-xs font-medium text-left transition-colors',
+                      medioPago === m.value
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                    )}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </ScrollArea>
+
+        <div className="border-t p-3 space-y-2 shrink-0">
+          <Button
+            className="w-full"
+            disabled={!puedeGuardar || !clienteId || crearEnvio.isPending || agregarProd.isPending}
+            onClick={handleGuardar}
+          >
+            {(crearEnvio.isPending || agregarProd.isPending) && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            Guardar Acción
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={resetForm}
+            disabled={crearEnvio.isPending || agregarProd.isPending}
+          >
+            Cancelar
+          </Button>
+          {!clienteId && (
+            <p className="text-[11px] text-center text-muted-foreground">Busca un cliente para continuar</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Panel derecho: Envíos generados ──────────────────────────────── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 px-3 py-2 border-b shrink-0 text-xs">
+          <span className="font-semibold">
+            Cant. envíos (Pantalla actual): <span className="text-primary">{enviosGenerados.length}</span>
+          </span>
+          <Separator orientation="vertical" className="h-3.5" />
+          <span className="font-semibold">
+            Total envíos: <span className="text-primary">{fmt(totalEnvios)}</span>
+          </span>
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {enviosGenerados.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
+              <Truck className="size-8 opacity-20" />
+              <p className="text-xs">No hay envíos generados en esta sesión</p>
+            </div>
+          ) : (
+            <table className="w-full text-[11px] border-collapse">
+              <thead>
+                <tr className="border-b bg-muted/50 sticky top-0 z-10">
+                  <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Guía</th>
+                  <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Servicio</th>
+                  <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Destino</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Cant.</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Inf.</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Fact.</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Valor Unit.</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Subtotal</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Desc.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enviosGenerados.map((e, i) => (
+                  <tr key={`${e.guia}-${i}`} className="border-b hover:bg-muted/30">
+                    <td className="px-2 py-2 font-mono font-semibold whitespace-nowrap">{e.guia}</td>
+                    <td className="px-2 py-2 max-w-[120px] truncate">{e.servicioNombre}</td>
+                    <td className="px-2 py-2 max-w-[100px] truncate">{e.ciudad || e.destinatario}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{e.cantidad}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{e.pesoFisico} kg</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{e.pesoFacturado} kg</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{fmt(e.valorServicio)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmt(e.valorTotal)}</td>
+                    <td className="px-2 py-2 text-right text-muted-foreground">—</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* ── Diálogo: ¿adquirió la caja? ──────────────────────────────────── */}
+      <Dialog open={cajaDlgOpen} onOpenChange={setCajaDlgOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">¿Adquirió la caja 4-72?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            ¿El cliente adquirió la caja de empaque en este punto de venta 4-72?
+          </p>
+
+          {ventaId && (
+            <div className="space-y-3 pt-1">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipo de caja</Label>
+                <div className="space-y-1">
+                  {CAJAS_ENVIO.map(c => (
+                    <button
+                      key={c.productoId}
+                      type="button"
+                      onClick={() => setCajaSeleccion(c.productoId)}
+                      className={cn(
+                        'w-full text-left rounded-md border px-3 py-2 text-xs transition-colors',
+                        cajaSeleccion === c.productoId
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border hover:border-primary/40',
+                      )}
+                    >
+                      <span className="font-medium">{c.nombre}</span>
+                      <span className="ml-2 text-muted-foreground">{fmt(c.precio)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">¿En cuántas adquirió?</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="20"
+                  className="h-8 text-sm w-24"
+                  value={cajaCantidad}
+                  onChange={e => setCajaCantidad(Math.max(1, Number(e.target.value) || 1))}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="outline" onClick={handleCajaNo} disabled={crearEnvio.isPending || agregarProd.isPending}>
+              No
+            </Button>
+            <Button onClick={handleCajaSi} disabled={crearEnvio.isPending || agregarProd.isPending}>
+              {(crearEnvio.isPending || agregarProd.isPending) && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+              {ventaId ? 'Sí, agregar y generar' : 'Sí'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }
 
@@ -854,29 +1985,34 @@ function CarritoPanel({
         ) : (
           <div className="p-2 space-y-1">
             {detalle.map(d => (
-              <div key={d.id} className="flex items-start gap-2 rounded-md border px-2.5 py-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium leading-tight line-clamp-2">
-                    {d.nombreProducto ?? `Producto #${d.productoId}`}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {d.cantidad}× {fmt(d.precioUnitario)}
-                    {d.descuento > 0 && (
-                      <span className="text-emerald-600 ml-1">−{fmt(d.descuento)}</span>
-                    )}
-                  </p>
+              <div key={d.id} className="rounded-md border px-2.5 py-2">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium leading-tight line-clamp-2">
+                      {d.nombreProducto ?? `Producto #${d.productoId}`}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
+                      {d.cantidad} × {fmt(d.precioUnitario)}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-bold tabular-nums">{fmt(d.subtotal)}</p>
+                    <button
+                      type="button"
+                      onClick={() => handleEliminar(d.id)}
+                      disabled={eliminar.isPending}
+                      className="mt-1 text-muted-foreground/40 hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-bold tabular-nums">{fmt(d.subtotal)}</p>
-                  <button
-                    type="button"
-                    onClick={() => handleEliminar(d.id)}
-                    disabled={eliminar.isPending}
-                    className="mt-1 text-muted-foreground/40 hover:text-destructive transition-colors"
-                  >
-                    <Trash2 className="size-3" />
-                  </button>
-                </div>
+                {(d.descuento > 0) && (
+                  <div className="flex justify-between mt-1 text-[10px] text-emerald-600 tabular-nums">
+                    <span>Descuento</span>
+                    <span>−{fmt(d.descuento)}</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1093,13 +2229,14 @@ function PagarDialog({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type Tab = 'productos' | 'apartado' | 'servicios' | 'historial'
+type Tab = 'productos' | 'especiales' | 'apartado' | 'servicios' | 'historial'
 
 const TABS: { value: Tab; label: string }[] = [
-  { value: 'productos', label: 'Productos' },
-  { value: 'apartado',  label: 'Apartado Postal' },
-  { value: 'servicios', label: 'Servicios Postales' },
-  { value: 'historial', label: 'Historial' },
+  { value: 'productos',  label: 'Productos' },
+  { value: 'especiales', label: 'Especiales' },
+  { value: 'apartado',   label: 'Apartado' },
+  { value: 'servicios',  label: 'Servicios' },
+  { value: 'historial',  label: 'Historial' },
 ]
 
 export default function CarritoVenta() {
@@ -1204,6 +2341,13 @@ export default function CarritoVenta() {
                 cajaId={cajaId}
               />
             )}
+            {activeTab === 'especiales' && (
+              <TabProductosEspeciales
+                sucursalId={sucursalId}
+                ventaId={ventaId}
+                cajaId={cajaId}
+              />
+            )}
             {activeTab === 'apartado' && (
               <TabApartado
                 sucursalId={sucursalId}
@@ -1212,14 +2356,12 @@ export default function CarritoVenta() {
               />
             )}
             {activeTab === 'servicios' && (
-              <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center text-muted-foreground">
-                <AlertTriangle className="size-8 opacity-30" />
-                <p className="text-sm font-medium">Servicios Postales</p>
-                <p className="text-xs max-w-xs">
-                  El módulo de guías postales (cotización, remitente/destinatario, generación de guía)
-                  está en desarrollo.
-                </p>
-              </div>
+              <TabServiciosPostales
+                sucursalId={sucursalId}
+                cajaId={cajaId}
+                clienteId={cliente?.id ?? null}
+                ventaId={ventaId}
+              />
             )}
             {activeTab === 'historial' && (
               <TabHistorial
