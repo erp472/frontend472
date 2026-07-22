@@ -110,8 +110,9 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
             >
               <Link to="/">
                 {collapsed ? (
-                  <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-bold shrink-0">
-                    472
+                  <div className="flex size-8 items-center justify-center rounded-md bg-primary text-sm font-bold shrink-0 leading-none">
+                    <span style={{ color: '#FDC52F' }}>«</span>
+                    <span style={{ color: '#E51937' }}>»</span>
                   </div>
                 ) : (
                   <img src="/logo.png" alt="4-72" className="h-7 w-auto" />

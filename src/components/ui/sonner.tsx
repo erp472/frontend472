@@ -11,35 +11,32 @@ const Toaster = ({ theme: themeProp, ...props }: ToasterProps) => {
       theme={resolvedTheme}
       className="toaster group"
       icons={{
-        success: (
-          <CircleCheckIcon className="size-4" />
-        ),
-        info: (
-          <InfoIcon className="size-4" />
-        ),
-        warning: (
-          <TriangleAlertIcon className="size-4" />
-        ),
-        error: (
-          <OctagonXIcon className="size-4" />
-        ),
-        loading: (
-          <Loader2Icon className="size-4 animate-spin" />
-        ),
+        success: <CircleCheckIcon className="size-4 text-[#1E4093]" />,
+        info:    <InfoIcon className="size-4 text-[#1E4093]" />,
+        warning: <TriangleAlertIcon className="size-4 text-[#FDC52F]" />,
+        error:   <OctagonXIcon className="size-4 text-[#E51937]" />,
+        loading: <Loader2Icon className="size-4 animate-spin" />,
       }}
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          "--normal-bg":      "var(--popover)",
+          "--normal-text":    "var(--popover-foreground)",
+          "--normal-border":  "var(--border)",
+          "--success-bg":     "var(--popover)",
+          "--success-text":   "#1E4093",
+          "--success-border": "var(--border)",
+          "--error-bg":       "var(--popover)",
+          "--error-text":     "#E51937",
+          "--error-border":   "var(--border)",
+          "--warning-bg":     "var(--popover)",
+          "--warning-text":   "#7A5500",
+          "--warning-border": "var(--border)",
+          "--info-bg":        "var(--popover)",
+          "--info-text":      "#1E4093",
+          "--info-border":    "var(--border)",
+          "--border-radius":  "var(--radius)",
         } as React.CSSProperties
       }
-      toastOptions={{
-        classNames: {
-          toast: "cn-toast",
-        },
-      }}
       {...props}
     />
   )
