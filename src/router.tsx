@@ -33,6 +33,24 @@ const CarritoVentaPage  = lazy(() => import('@/pages/ventas/CarritoVenta'))
 const ClientesPage      = lazy(() => import('@/pages/clientes/index'))
 const TiposClientePage  = lazy(() => import('@/pages/clientes/TiposClientePage'))
 
+// ── Home redirect: cajeros/supervisores van directo a su área ─────────────────
+
+function HomeRedirect() {
+  const user = useSessionStore(s => s.user)
+
+  if (user?.rol === 'SUPERVISOR_REGIONAL') {
+    return <Navigate to={`/cajas/principales/${user.sucursal_id ?? 1}`} replace />
+  }
+  if (user?.rol === 'CAJERO' || user?.rol === 'USUARIO_POST') {
+    return <Navigate to="/ventas" replace />
+  }
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <Dashboard />
+    </Suspense>
+  )
+}
+
 // ── Cajas redirect ────────────────────────────────────────────────────────────
 
 function CajasRedirect() {
@@ -232,7 +250,7 @@ export const router = createBrowserRouter(
             {
               element: <PlatformGuard />,
               children: [
-                { path: '/', element: lazySuspense(Dashboard) },
+                { path: '/', element: <HomeRedirect /> },
 
                 // Gestión de usuarios — dinámico por permiso admin:usuarios
                 {

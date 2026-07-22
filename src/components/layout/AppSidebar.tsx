@@ -18,6 +18,7 @@ import {
   Tag,
   ReceiptText,
   ShoppingCart,
+  BarChart2,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -77,14 +78,14 @@ const navMain: NavGroup[] = [
   {
     label: 'Principal',
     items: [
-      { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+      { title: 'Dashboard', url: '/', icon: LayoutDashboard, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA', 'ADMINISTRATIVO', 'INVENTARIOS'] },
     ],
   },
   {
     label:      'Administración',
     plataforma: 'web',
     items: [
-      { title: 'Usuarios',        url: '/admin/users',        icon: Users,       permiso: 'admin:usuarios',                                                    flag: 'modulo_usuarios'   },
+      { title: 'Usuarios',        url: '/admin/users',        icon: Users,       permiso: 'admin:usuarios', roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],  flag: 'modulo_usuarios'   },
       { title: 'Comercios',       url: '/admin/comercios',    icon: Building,    roles: ['ADMIN_SISTEMA'],                                                     flag: 'modulo_comercios'  },
       { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_regionales' },
       { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_sucursales' },

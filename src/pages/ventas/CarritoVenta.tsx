@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ShoppingCart, Trash2, ChevronLeft, RefreshCw,
   Search, CheckCircle2, AlertTriangle, Loader2,
   Package, MailOpen, Plus, ChevronRight, Tag, Pencil,
-  Truck,
+  Truck, X, UserRound,
 } from 'lucide-react'
 import { Button }      from '@/components/ui/button'
 import { Input }       from '@/components/ui/input'
@@ -973,101 +973,249 @@ function TabApartado({
 
 // ── TabProductosEspeciales ────────────────────────────────────────────────────
 
+const CATEGORIAS_ESPECIALES = [
+  { label: 'Administración de Correspondencia', prefijo: 'ADM. DE CORRESPONDENCIA' },
+  { label: 'Alistamiento',                      prefijo: 'ALISTAMIENTO' },
+  { label: 'Servicios Geográficos',             prefijo: 'SVC-GEO' },
+  { label: 'Documentos y Oficina',              prefijo: 'SVC-DOC' },
+  { label: 'Enriquecimiento de Datos',          prefijo: 'Enriquecimiento' },
+  { label: 'Otros',                             prefijo: '' },
+] as const
+
+function getCategoriaEspecial(codigo: string, nombre: string): string {
+  if (nombre.startsWith('ADM. DE CORRESPONDENCIA')) return 'Administración de Correspondencia'
+  if (nombre.startsWith('ALISTAMIENTO'))            return 'Alistamiento'
+  if (codigo.startsWith('SVC-GEO'))                return 'Servicios Geográficos'
+  if (codigo.startsWith('SVC-DOC'))                return 'Documentos y Oficina'
+  if (nombre.startsWith('Enriquecimiento'))         return 'Enriquecimiento de Datos'
+  return 'Otros'
+}
+
 function TabProductosEspeciales({
   sucursalId, ventaId, cajaId,
 }: { sucursalId: number; ventaId: number | null; cajaId: number }) {
-  const [busqueda, setBusqueda] = useState('')
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('')
+  const [productoId,             setProductoId]             = useState(0)
+  const [cantidad,               setCantidad]               = useState(1)
+
   const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, 'otro')
   const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
 
-  const filtrado = catalogo?.filter(p =>
-    !busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase()),
-  ) ?? []
+  const porCategoria = useMemo(() => {
+    const map = new Map<string, typeof catalogo>()
+    for (const p of catalogo ?? []) {
+      const cat = getCategoriaEspecial(p.codigo, p.nombre)
+      if (!map.has(cat)) map.set(cat, [])
+      map.get(cat)!.push(p)
+    }
+    return map
+  }, [catalogo])
 
-  const handleAgregar = async (productoId: number, nombre: string) => {
-    if (!ventaId) { toast.error('Busca un cliente primero'); return }
+  const serviciosDeCategoria = useMemo(
+    () => (categoriaSeleccionada ? (porCategoria.get(categoriaSeleccionada) ?? []) : []),
+    [porCategoria, categoriaSeleccionada],
+  )
+
+  const productoSeleccionado = serviciosDeCategoria.find(p => p.id === productoId) ?? null
+
+  const iva   = productoSeleccionado ? Math.round(productoSeleccionado.precio * productoSeleccionado.porcentajeTax / 100) : 0
+  const total = productoSeleccionado ? productoSeleccionado.precio + iva : 0
+
+  const minCompra     = productoSeleccionado?.cantidadMinima ?? 1
+  const maxVenta      = productoSeleccionado?.cantidadMaxima ?? null
+  const maxDisponible = productoSeleccionado?.stockActual ?? null
+  const maxCompra     = maxVenta !== null && maxDisponible !== null
+    ? Math.min(maxVenta, maxDisponible)
+    : (maxVenta ?? maxDisponible)
+  const sinStock   = maxDisponible !== null && maxDisponible === 0
+  const bajoMinimo = cantidad < minCompra
+  const sobreStock = maxCompra !== null && cantidad > maxCompra
+  const cantidadOk = !bajoMinimo && !sobreStock && !sinStock
+
+  const handleCambiarCategoria = (v: string) => {
+    setCategoriaSeleccionada(v)
+    setProductoId(0)
+    setCantidad(1)
+  }
+
+  const handleCambiarProducto = (v: string) => {
+    const p = serviciosDeCategoria.find(x => x.id === Number(v))
+    setProductoId(Number(v))
+    setCantidad(p?.cantidadMinima ?? 1)
+  }
+
+  const handleAgregar = async () => {
+    if (!ventaId)              { toast.error('Busca un cliente primero'); return }
+    if (!productoSeleccionado) { toast.error('Selecciona un servicio');   return }
+    if (sinStock)              { toast.error('Sin unidades disponibles'); return }
+    if (bajoMinimo)            { toast.error(`Mínimo de compra: ${minCompra} unidades`); return }
+    if (sobreStock)            { toast.error(`Solo hay ${maxCompra} unidades disponibles`); return }
     try {
-      await agregar.mutateAsync({ productoId, cantidad: 1 })
-      toast.success(`${nombre} agregado`)
+      await agregar.mutateAsync({ productoId: productoSeleccionado.id, cantidad })
+      toast.success(`${productoSeleccionado.nombre} ×${cantidad} agregado`)
+      setProductoId(0)
+      setCantidad(1)
     } catch {
-      toast.error('No se pudo agregar el producto')
+      toast.error('No se pudo agregar el servicio')
     }
   }
 
+  const categoriasDisponibles = Array.from(porCategoria.keys())
+
   return (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b shrink-0">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input
-            className="pl-8 h-8 text-sm"
-            placeholder="Buscar alistamiento..."
-            value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-          />
-        </div>
-      </div>
-      <ScrollArea className="flex-1">
+      <div className="px-4 py-3 border-b shrink-0">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2.5">
+          Servicios especiales
+        </p>
+
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
-          </div>
-        ) : !filtrado.length ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {busqueda ? 'Sin resultados' : 'No hay productos especiales disponibles'}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+            <Loader2 className="size-3.5 animate-spin" /> Cargando catálogo...
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-3">
-            {filtrado.map(p => {
-              const iva      = Math.round(p.precio * p.porcentajeTax / 100)
-              const total    = p.precio + iva
-              const sinStock = p.stockActual !== null && p.stockActual === 0
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  disabled={!ventaId || agregar.isPending || sinStock}
-                  onClick={() => handleAgregar(p.id, p.nombre)}
-                  className={cn(
-                    'group rounded-lg border p-3 text-left flex flex-col gap-2 transition-all',
-                    sinStock
-                      ? 'border-dashed border-muted-foreground/30 opacity-50 cursor-not-allowed'
-                      : 'hover:border-primary/60 hover:shadow-sm',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-                    'disabled:cursor-not-allowed',
-                  )}
+          <div className="space-y-2.5">
+            {/* Categoría */}
+            <div className="space-y-1">
+              <Label className="text-xs">Categoría</Label>
+              <Select value={categoriaSeleccionada} onValueChange={handleCambiarCategoria}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Seleccionar categoría..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoriasDisponibles.map(cat => (
+                    <SelectItem key={cat} value={cat} className="text-xs">{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Servicio */}
+            {categoriaSeleccionada && (
+              <div className="space-y-1">
+                <Label className="text-xs">Servicio</Label>
+                <Select
+                  value={productoId ? String(productoId) : ''}
+                  onValueChange={handleCambiarProducto}
                 >
-                  <div className="flex items-start justify-between gap-1">
-                    <span className="text-xs font-semibold leading-tight line-clamp-2">{p.nombre}</span>
-                    <Truck className="size-3.5 text-muted-foreground/40 shrink-0 mt-0.5" />
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Seleccionar servicio..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {serviciosDeCategoria.map(p => (
+                      <SelectItem key={p.id} value={String(p.id)} className="text-xs">
+                        {p.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Detalles del servicio seleccionado */}
+            {productoSeleccionado && (
+              <>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 space-y-1 text-xs">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Código</span>
+                    <span className="font-mono">{productoSeleccionado.codigo}</span>
                   </div>
-                  <div className="flex items-end justify-between mt-auto gap-1">
-                    <div className="space-y-0.5">
-                      <span className="text-sm font-bold tabular-nums">{fmt(p.precio)}</span>
-                      {iva > 0 ? (
-                        <>
-                          <div className="text-[10px] text-amber-600 tabular-nums">
-                            IVA {p.porcentajeTax}%: {fmt(iva)}
-                          </div>
-                          <div className="text-[10px] font-semibold tabular-nums">
-                            Total: {fmt(total)}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-[10px] text-emerald-600">Sin IVA</div>
-                      )}
-                      <StockBadge stock={p.stockActual} minimo={p.stockMinimo} />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Precio unit.</span>
+                    <span className="font-semibold tabular-nums">{fmt(productoSeleccionado.precio)}</span>
+                  </div>
+                  {iva > 0 && (
+                    <div className="flex justify-between text-amber-600">
+                      <span>IVA {productoSeleccionado.porcentajeTax}%</span>
+                      <span className="tabular-nums">{fmt(iva)}</span>
                     </div>
-                    {!sinStock && (
-                      <Plus className={cn(
-                        'size-5 rounded-full bg-primary text-primary-foreground p-0.5 shrink-0',
-                        'opacity-0 group-hover:opacity-100 transition-opacity',
-                      )} />
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Disponible</span>
+                    <span className={cn('font-medium tabular-nums', sinStock ? 'text-destructive' : 'text-green-600')}>
+                      {maxCompra === null ? '∞' : maxCompra} {maxCompra !== null && 'un.'}
+                    </span>
+                  </div>
+                  {minCompra > 1 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Mínimo compra</span>
+                      <span className="tabular-nums">{minCompra} un.</span>
+                    </div>
+                  )}
+                  {productoSeleccionado.precio === 0 && (
+                    <p className="text-amber-600 text-[10px] pt-0.5">
+                      Precio pendiente — actualizar en Administración
+                    </p>
+                  )}
+                  {sinStock && (
+                    <p className="text-destructive text-[10px] pt-0.5 font-medium">
+                      Sin unidades disponibles en esta sucursal
+                    </p>
+                  )}
+                </div>
+
+                {/* Cantidad + total */}
+                {!sinStock && (
+                <div className="flex items-end gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">
+                      Cantidad
+                      {maxCompra !== null && (
+                        <span className="text-muted-foreground font-normal ml-1">(máx. {maxCompra})</span>
+                      )}
+                    </Label>
+                    <Input
+                      type="number"
+                      min={minCompra}
+                      max={maxCompra ?? undefined}
+                      className={cn('h-8 text-sm w-24', (bajoMinimo || sobreStock) && 'border-destructive focus-visible:ring-destructive')}
+                      value={cantidad}
+                      onChange={e => setCantidad(Math.max(1, Number(e.target.value) || 1))}
+                    />
+                    {bajoMinimo && (
+                      <p className="text-[10px] text-destructive">Mín. {minCompra}</p>
+                    )}
+                    {sobreStock && (
+                      <p className="text-[10px] text-destructive">Máx. {maxCompra}</p>
                     )}
                   </div>
-                </button>
-              )
-            })}
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs">Subtotal</Label>
+                    <div className="h-8 flex items-center px-3 rounded-md border bg-muted/40">
+                      <span className="text-sm font-bold tabular-nums text-primary">
+                        {fmt(total * cantidad)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                )}
+
+                <Button
+                  className="w-full"
+                  disabled={!ventaId || agregar.isPending || !cantidadOk}
+                  onClick={handleAgregar}
+                >
+                  {agregar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+                  <Plus className="size-3.5 mr-1.5" />
+                  Agregar al carrito
+                </Button>
+
+                {!ventaId && (
+                  <p className="text-[11px] text-center text-muted-foreground">
+                    Busca un cliente para continuar
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Panel de historial de servicios agregados en esta sesión */}
+      <ScrollArea className="flex-1">
+        {!catalogo?.length && !isLoading && (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            No hay servicios disponibles en este punto
           </div>
         )}
       </ScrollArea>
@@ -1084,7 +1232,7 @@ interface PersonaEnvioForm {
 
 interface EnvioLocal {
   guia: string; servicioNombre: string; destinatario: string; ciudad: string
-  cantidad: number; pesoFisico: number; pesoFacturado: number
+  cantidad: number; pesoFisico: number; pesoVolumetrico: number | null; pesoFacturado: number
   valorServicio: number; valorTotal: number
 }
 
@@ -1361,10 +1509,13 @@ function TabServiciosPostales({
   const [remitente,      setRemitente]      = useState<PersonaEnvioForm>(personaVacia())
   const [destinatario,   setDestinatario]   = useState<PersonaEnvioForm>(personaVacia())
   const [dirDest,        setDirDest]        = useState<DirState>(dirVacia())
+  const [dirSaved,       setDirSaved]       = useState<{ dir: DirState; obs: string }[]>([])
   const [lote,           setLote]           = useState('')
   const [observaciones,  setObservaciones]  = useState('')
   const [medioPago,      setMedioPago]      = useState<MedioPagoEnvio>('efectivo')
   const [enviosGenerados, setEnviosGenerados] = useState<EnvioLocal[]>([])
+  const [seguroPostal,   setSeguroPostal]   = useState(false)
+  const [ecoComercial,   setEcoComercial]   = useState(false)
   const [cajaDlgOpen,    setCajaDlgOpen]    = useState(false)
   const [cajaSeleccion,  setCajaSeleccion]  = useState<number>(7)
   const [cajaCantidad,   setCajaCantidad]   = useState(1)
@@ -1397,6 +1548,7 @@ function TabServiciosPostales({
     setValorDeclarado(''); setContenido('')
     setRemitente(personaVacia()); setDestinatario(personaVacia()); setDirDest(dirVacia())
     setLote(''); setObservaciones(''); setMedioPago('efectivo')
+    setSeguroPostal(false); setEcoComercial(false)
     setCajaCantidad(1); setCajaSeleccion(7)
   }
 
@@ -1433,19 +1585,32 @@ function TabServiciosPostales({
     if (contenido.trim())     body.contenido       = contenido.trim()
     if (lote.trim())          body.lote            = lote.trim()
     if (observaciones.trim()) body.observaciones   = observaciones.trim()
+    if (seguroPostal)         body.seguroPostal    = true
+    if (ecoComercial)         body.ecoComercial    = true
 
     const result: Envio = await crearEnvio.mutateAsync(body)
     setEnviosGenerados(prev => [...prev, {
-      guia:           result.numeroGuia,
-      servicioNombre: selectedService?.nombre ?? '—',
-      destinatario:   result.destinatarioNombre ?? destinatario.nombre.trim(),
-      ciudad:         result.destinatarioCiudad ?? dirDest.ciudad.trim(),
-      cantidad:       cantidadPiezas,
-      pesoFisico:     result.pesoFisicoKg,
-      pesoFacturado:  result.pesoTarificadoKg,
-      valorServicio:  result.valorServicio,
-      valorTotal:     result.valorTotal,
+      guia:            result.numeroGuia,
+      servicioNombre:  selectedService?.nombre ?? '—',
+      destinatario:    result.destinatarioNombre ?? destinatario.nombre.trim(),
+      ciudad:          result.destinatarioCiudad ?? dirDest.ciudad.trim(),
+      cantidad:        cantidadPiezas,
+      pesoFisico:      result.pesoFisicoKg,
+      pesoVolumetrico: cotizacion?.pesoVolumetricoKg ?? null,
+      pesoFacturado:   result.pesoTarificadoKg,
+      valorServicio:   result.valorServicio,
+      valorTotal:      result.valorTotal,
     }])
+    // Guardar dirección en historial de sesión si tiene ciudad
+    if (dirDest.ciudad.trim()) {
+      const compuesta = composeAddress(dirDest)
+      setDirSaved(prev => {
+        const yaExiste = prev.some(
+          d => composeAddress(d.dir) === compuesta && d.dir.ciudad === dirDest.ciudad,
+        )
+        return yaExiste ? prev : [...prev, { dir: { ...dirDest }, obs: '' }]
+      })
+    }
     toast.success(`Guía ${result.numeroGuia} generada`)
     resetForm()
   }
@@ -1634,9 +1799,101 @@ function TabServiciosPostales({
                 </div>
               </div>
 
+              {/* Lista de direcciones de esta sesión */}
+              {dirSaved.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Direcciones de esta sesión
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setDirDest(dirVacia())}
+                      className="text-[9px] text-primary hover:underline"
+                    >
+                      + Nueva
+                    </button>
+                  </div>
+                  <div className="rounded-md border overflow-hidden text-[10px]">
+                    {/* Column headers */}
+                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-1.5 px-2 py-1 bg-muted/50 border-b font-medium text-muted-foreground">
+                      <span className="w-3" />
+                      <span>Dirección</span>
+                      <span>Obs.</span>
+                    </div>
+                    {dirSaved.map((item, i) => {
+                      const addr    = composeAddress(item.dir)
+                      const current = composeAddress(dirDest) === addr && dirDest.ciudad === item.dir.ciudad
+                      return (
+                        <div
+                          key={i}
+                          className={cn(
+                            'grid grid-cols-[auto_1fr_auto] items-start gap-x-1.5 px-2 py-1.5 border-b last:border-b-0 transition-colors',
+                            current ? 'bg-primary/5' : 'hover:bg-muted/30',
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setDirDest(item.dir)}
+                            className="mt-1 shrink-0"
+                          >
+                            <span className={cn(
+                              'block size-2.5 rounded-full border-2 transition-colors',
+                              current ? 'border-primary bg-primary' : 'border-muted-foreground/40',
+                            )} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDirDest(item.dir)}
+                            className="text-left min-w-0"
+                          >
+                            <p className={cn(
+                              'font-mono leading-tight truncate',
+                              current && 'text-primary font-semibold',
+                            )}>
+                              {addr || '—'}
+                            </p>
+                            <p className="text-[9px] text-muted-foreground truncate">
+                              {[item.dir.ciudad, item.dir.departamento].filter(Boolean).join(', ')}
+                            </p>
+                          </button>
+                          <div className="flex items-start gap-1 min-w-0">
+                            <input
+                              type="text"
+                              value={item.obs}
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => setDirSaved(prev =>
+                                prev.map((d, idx) => idx === i ? { ...d, obs: e.target.value } : d)
+                              )}
+                              placeholder="Obs."
+                              className="w-14 h-5 text-[9px] rounded border border-border bg-background px-1 placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDirSaved(prev => prev.filter((_, idx) => idx !== i))
+                                if (current) setDirDest(dirVacia())
+                              }}
+                              className="mt-0.5 text-muted-foreground/40 hover:text-destructive transition-colors shrink-0"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Dirección normalizada */}
               <div className="space-y-1.5 mt-2">
-                <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Dirección de entrega</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Dirección de entrega</p>
+                  {dirSaved.length === 0 && (
+                    <span className="text-[9px] text-muted-foreground">Nueva dirección</span>
+                  )}
+                </div>
                 <DireccionInput value={dirDest} onChange={setDirDest} />
               </div>
 
@@ -1673,6 +1930,28 @@ function TabServiciosPostales({
               <Input className="h-8 text-sm" placeholder="Opcional" value={observaciones} onChange={e => setObservaciones(e.target.value)} />
             </div>
 
+            {/* Seguro postal + Eco comercial */}
+            <div className="flex gap-4">
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={seguroPostal}
+                  onChange={e => setSeguroPostal(e.target.checked)}
+                  className="size-3.5 accent-primary"
+                />
+                <span className="text-xs">Seguro postal</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={ecoComercial}
+                  onChange={e => setEcoComercial(e.target.checked)}
+                  className="size-3.5 accent-primary"
+                />
+                <span className="text-xs">Eco comercial</span>
+              </label>
+            </div>
+
             {/* Medio de pago */}
             <div className="space-y-1.5">
               <Label className="text-xs">Medio de pago</Label>
@@ -1705,7 +1984,7 @@ function TabServiciosPostales({
             onClick={handleGuardar}
           >
             {(crearEnvio.isPending || agregarProd.isPending) && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
-            Guardar Acción
+            Generar guía
           </Button>
           <Button
             variant="outline"
@@ -1748,10 +2027,11 @@ function TabServiciosPostales({
                   <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Servicio</th>
                   <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Destino</th>
                   <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Cant.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Inf.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Fact.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Valor Unit.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Subtotal</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Físico</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Vol.</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Tar.</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Valor Flete</th>
+                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Total</th>
                   <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Desc.</th>
                 </tr>
               </thead>
@@ -1763,6 +2043,9 @@ function TabServiciosPostales({
                     <td className="px-2 py-2 max-w-[100px] truncate">{e.ciudad || e.destinatario}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{e.cantidad}</td>
                     <td className="px-2 py-2 text-right tabular-nums">{e.pesoFisico} kg</td>
+                    <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                      {e.pesoVolumetrico != null ? `${e.pesoVolumetrico} kg` : '—'}
+                    </td>
                     <td className="px-2 py-2 text-right tabular-nums">{e.pesoFacturado} kg</td>
                     <td className="px-2 py-2 text-right tabular-nums">{fmt(e.valorServicio)}</td>
                     <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmt(e.valorTotal)}</td>
@@ -1947,6 +2230,237 @@ function TabHistorial({
   )
 }
 
+// ── TabResumenPago ────────────────────────────────────────────────────────────
+
+function TabResumenPago({
+  carrito, cliente, ventaId, cajaId, onExito,
+}: {
+  carrito: Venta | null
+  cliente: ClienteResumen | null
+  ventaId: number
+  cajaId: number
+  onExito: () => void
+}) {
+  const [medioPago,        setMedioPago]        = useState<MedioPagoVenta>('efectivo')
+  const [email,            setEmail]            = useState(cliente?.email ?? '')
+  const [efectivoRecibido, setEfectivoRecibido] = useState('')
+  const confirmar = useConfirmarVenta(ventaId, cajaId)
+
+  const sellosTotal   = carrito?.detalle.filter(d => d.tipoProducto === 'estampilla').reduce((s, d) => s + d.subtotal, 0) ?? 0
+  const showEfectivo  = medioPago === 'efectivo' || medioPago === 'mixto_preporteado'
+  const efectivo      = Number(efectivoRecibido) || 0
+  const total         = carrito?.total ?? 0
+  const cambio        = showEfectivo ? Math.max(0, efectivo - total) : 0
+  const faltante      = showEfectivo ? Math.max(0, total - efectivo) : 0
+
+  const handleConfirmar = async () => {
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error('Ingresa un email válido para la factura')
+      return
+    }
+    if (showEfectivo && efectivo > 0 && efectivo < total) {
+      toast.error('El efectivo recibido no cubre el total')
+      return
+    }
+    try {
+      await confirmar.mutateAsync({
+        medioPago,
+        emailFactura: email.trim(),
+        ...(showEfectivo && efectivo > 0 ? { efectivoRecibido: efectivo } : {}),
+      })
+      toast.success('Pago confirmado')
+      onExito()
+    } catch {
+      toast.error('No se pudo confirmar el pago')
+    }
+  }
+
+  if (!carrito || !carrito.detalle.length) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
+        <ShoppingCart className="size-8 opacity-20" />
+        <p className="text-xs">El carrito está vacío</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+
+      {/* Prefactura header */}
+      <div className="px-4 py-2.5 border-b bg-muted/20 shrink-0">
+        <div className="flex items-center gap-3 mb-1">
+          {cliente ? (
+            <>
+              <UserRound className="size-4 text-muted-foreground shrink-0" />
+              <span className="text-sm font-semibold">
+                {cliente.nombre}{cliente.apellido ? ` ${cliente.apellido}` : ''}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {cliente.tipoDocumento}: {cliente.numeroDocumento}
+              </span>
+            </>
+          ) : (
+            <span className="text-sm text-muted-foreground">Sin cliente asociado</span>
+          )}
+          <p className="ml-auto text-[10px] text-muted-foreground">
+            Usted está procesando una venta de productos de 4-72
+          </p>
+        </div>
+        <div className="flex items-center gap-6 text-xs">
+          <div>
+            <span className="text-muted-foreground">IVA a pagar: </span>
+            <span className="font-semibold tabular-nums">{fmt(carrito.iva)}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Total a pagar: </span>
+            <span className="font-bold text-primary tabular-nums text-sm">{fmt(carrito.total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Items table */}
+      <div className="flex-1 overflow-auto border-b">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b bg-muted/50 sticky top-0 z-10">
+              <th className="px-3 py-2 text-center font-medium text-muted-foreground w-8">#</th>
+              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Producto / Servicio</th>
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-12">Cant.</th>
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Impuesto</th>
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Desc.</th>
+              <th className="px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-24">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {carrito.detalle.map((d, i) => (
+              <tr key={d.id} className="border-b hover:bg-muted/20">
+                <td className="px-3 py-2 text-center text-muted-foreground">{i + 1}</td>
+                <td className="px-3 py-2">
+                  <p className="font-medium leading-tight">{d.nombreProducto ?? `Producto #${d.productoId}`}</p>
+                  {d.tipoProducto && (
+                    <p className="text-[10px] text-muted-foreground capitalize">
+                      {d.tipoProducto.replace('_', ' ')}
+                    </p>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{d.cantidad}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">—</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {d.descuento > 0
+                    ? <span className="text-emerald-600">−{fmt(d.descuento)}</span>
+                    : <span className="text-muted-foreground/30">—</span>
+                  }
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmt(d.subtotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 5-column totals bar */}
+      <div className="grid grid-cols-5 divide-x border-b bg-muted/30 text-xs shrink-0">
+        {[
+          { label: 'Estampillas', value: fmt(sellosTotal) },
+          { label: 'IVA',         value: fmt(carrito.iva) },
+          { label: 'Descuento',   value: carrito.descuento > 0 ? `−${fmt(carrito.descuento)}` : '—' },
+          { label: 'Subtotal',    value: fmt(carrito.subtotal) },
+          { label: 'Total',       value: fmt(carrito.total), primary: true },
+        ].map(col => (
+          <div key={col.label} className="px-3 py-2 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{col.label}</p>
+            <p className={cn('font-semibold tabular-nums mt-0.5', col.primary && 'text-primary text-sm')}>{col.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Payment fields */}
+      <div className="px-4 py-3 space-y-3 shrink-0 bg-card">
+        {/* Email */}
+        <div className="space-y-0.5">
+          <div className="relative">
+            <MailOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Input
+              type="email"
+              className="pl-8 h-8 text-sm"
+              placeholder="Email para factura electrónica *"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground px-0.5">
+            Este campo es obligatorio. Solo se usará para facturación electrónica.
+          </p>
+        </div>
+
+        {/* Medio de pago */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Medio de pago</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {MEDIOS_PAGO.map(m => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setMedioPago(m.value)}
+                className={cn(
+                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                  medioPago === m.value
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                )}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Efectivo sub-fields */}
+        {showEfectivo && (
+          <div className="flex items-center gap-4 rounded-lg border px-3 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Efectivo recibido</Label>
+              <Input
+                type="number"
+                className="h-8 text-sm w-32"
+                placeholder="0"
+                value={efectivoRecibido}
+                onChange={e => setEfectivoRecibido(e.target.value)}
+              />
+            </div>
+            {efectivo > 0 && (
+              <div className="space-y-0.5">
+                <p className={cn('text-[11px]', faltante > 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                  {faltante > 0 ? 'Faltante' : 'Cambio'}
+                </p>
+                <p className={cn('font-semibold tabular-nums text-sm', faltante > 0 ? 'text-destructive' : 'text-emerald-600')}>
+                  {fmt(faltante > 0 ? faltante : cambio)}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            onClick={handleConfirmar}
+            disabled={confirmar.isPending || !email.trim()}
+          >
+            {confirmar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            Confirmar pago — {fmt(carrito.total)}
+          </Button>
+          <Button variant="destructive" size="sm" disabled={confirmar.isPending} onClick={() => {/* anulación pendiente */}}>
+            Anular
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── CarritoPanel ──────────────────────────────────────────────────────────────
 
 function CarritoPanel({
@@ -1972,6 +2486,16 @@ function CarritoPanel({
         )}
       </div>
 
+      {detalle.length > 0 && (
+        <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 px-2.5 py-1 border-b bg-muted/40 text-[10px] text-muted-foreground font-medium shrink-0">
+          <span>Artículo</span>
+          <span className="text-right w-7">Cant.</span>
+          <span className="text-right w-14">Desc.</span>
+          <span className="text-right w-16">Total</span>
+          <span className="w-4" />
+        </div>
+      )}
+
       <ScrollArea className="flex-1">
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
@@ -1983,36 +2507,38 @@ function CarritoPanel({
             <p className="text-xs">El carrito está vacío</p>
           </div>
         ) : (
-          <div className="p-2 space-y-1">
+          <div className="divide-y">
             {detalle.map(d => (
-              <div key={d.id} className="rounded-md border px-2.5 py-2">
-                <div className="flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-tight line-clamp-2">
-                      {d.nombreProducto ?? `Producto #${d.productoId}`}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
-                      {d.cantidad} × {fmt(d.precioUnitario)}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs font-bold tabular-nums">{fmt(d.subtotal)}</p>
-                    <button
-                      type="button"
-                      onClick={() => handleEliminar(d.id)}
-                      disabled={eliminar.isPending}
-                      className="mt-1 text-muted-foreground/40 hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="size-3" />
-                    </button>
-                  </div>
+              <div
+                key={d.id}
+                className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 hover:bg-muted/30 transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium leading-tight line-clamp-2">
+                    {d.nombreProducto ?? `Producto #${d.productoId}`}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground tabular-nums">
+                    {fmt(d.precioUnitario)} c/u
+                  </p>
                 </div>
-                {(d.descuento > 0) && (
-                  <div className="flex justify-between mt-1 text-[10px] text-emerald-600 tabular-nums">
-                    <span>Descuento</span>
-                    <span>−{fmt(d.descuento)}</span>
-                  </div>
-                )}
+                <span className="text-xs tabular-nums text-right w-7">{d.cantidad}</span>
+                <span className={cn(
+                  'text-xs tabular-nums text-right w-14',
+                  d.descuento > 0 ? 'text-emerald-600' : 'text-muted-foreground/30',
+                )}>
+                  {d.descuento > 0 ? `−${fmt(d.descuento)}` : '—'}
+                </span>
+                <span className="text-xs font-semibold tabular-nums text-right w-16">
+                  {fmt(d.subtotal)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleEliminar(d.id)}
+                  disabled={eliminar.isPending}
+                  className="flex justify-center w-4 text-muted-foreground/30 hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="size-3" />
+                </button>
               </div>
             ))}
           </div>
@@ -2229,14 +2755,15 @@ function PagarDialog({
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-type Tab = 'productos' | 'especiales' | 'apartado' | 'servicios' | 'historial'
+type Tab = 'productos' | 'especiales' | 'apartado' | 'servicios' | 'historial' | 'pagar'
 
-const TABS: { value: Tab; label: string }[] = [
+const TABS: { value: Tab; label: string; primary?: boolean }[] = [
   { value: 'productos',  label: 'Productos' },
   { value: 'especiales', label: 'Especiales' },
   { value: 'apartado',   label: 'Apartado' },
   { value: 'servicios',  label: 'Servicios' },
   { value: 'historial',  label: 'Historial' },
+  { value: 'pagar',      label: 'Pagar',     primary: true },
 ]
 
 export default function CarritoVenta() {
@@ -2271,7 +2798,7 @@ export default function CarritoVenta() {
   const handlePagoExitoso = () => {
     setVentaId(null)
     setCliente(null)
-    setActiveTab('historial')
+    setActiveTab('productos')
   }
 
   return (
@@ -2323,8 +2850,12 @@ export default function CarritoVenta() {
                 className={cn(
                   'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
                   activeTab === t.value
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
+                    ? t.primary
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-primary text-primary'
+                    : t.primary
+                      ? 'border-transparent text-primary/70 hover:text-primary hover:bg-primary/5'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
               >
                 {t.label}
@@ -2369,6 +2900,21 @@ export default function CarritoVenta() {
                 userRol={user?.rol ?? ''}
               />
             )}
+            {activeTab === 'pagar' && ventaId != null && (
+              <TabResumenPago
+                carrito={carrito ?? null}
+                cliente={cliente}
+                ventaId={ventaId}
+                cajaId={cajaId}
+                onExito={handlePagoExitoso}
+              />
+            )}
+            {activeTab === 'pagar' && ventaId == null && (
+              <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
+                <ShoppingCart className="size-8 opacity-20" />
+                <p className="text-xs">El carrito está vacío</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2377,7 +2923,7 @@ export default function CarritoVenta() {
           <CarritoPanel
             ventaId={ventaId}
             cajaId={cajaId}
-            onPagar={() => setPagarOpen(true)}
+            onPagar={() => setActiveTab('pagar')}
           />
         </div>
       </div>

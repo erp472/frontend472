@@ -10,6 +10,7 @@ export interface ProductoCatalogo {
   id: number; codigo: string; nombre: string; tipo: TipoProducto
   precio: number; porcentajeTax: number
   stockActual: number | null; stockMinimo: number | null
+  cantidadMinima: number | null; cantidadMaxima: number | null
 }
 
 export interface ClienteResumen {
