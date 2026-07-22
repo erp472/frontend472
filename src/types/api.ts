@@ -51,25 +51,115 @@ export interface UpdateUserInput {
   activo?: boolean
 }
 
-// ── Roles y Permisos ─────────────────────────────────────────────────────────
+// ── Roles, Módulos y Permisos ─────────────────────────────────────────────────
+
+export interface ModuloRef {
+  id: string
+  nombre: string
+  orden: number
+}
 
 export interface PermisoEntry {
   id: string
   nombre: string
+  descripcion: string | null
+  moduloId: string
+  modulo: ModuloRef
+  activo: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ModuloEntry {
+  id: string
+  nombre: string
+  descripcion: string | null
+  orden: number
+  activo: boolean
+  permisos: Pick<PermisoEntry, 'id' | 'nombre' | 'descripcion'>[]
   createdAt: string
   updatedAt: string
 }
 
 export interface RolPermisoEntry {
-  rolId: string
+  id: string
   permisoId: string
-  permiso: { id: string; nombre: string }
+  permiso: {
+    id: string
+    nombre: string
+    descripcion: string | null
+    modulo: ModuloRef
+  }
 }
 
 export interface RolEntry {
   id: string
   nombre: string
+  descripcion: string | null
+  activo: boolean
   permisos: RolPermisoEntry[]
   createdAt: string
   updatedAt: string
+}
+
+export interface MatrixRole {
+  id: string
+  nombre: string
+  descripcion: string | null
+  permisoIds: string[]
+}
+
+export interface MatrixResponse {
+  modulos: (ModuloEntry & { permisos: Pick<PermisoEntry, 'id' | 'nombre' | 'descripcion'>[] })[]
+  roles: MatrixRole[]
+}
+
+// ── Feature Flags ────────────────────────────────────────────────────────────
+// Nota: ids numéricos (no UUID) — coinciden con el backend real de feature-flags,
+// a diferencia de RolEntry/ModuloEntry de arriba que están desactualizados.
+
+export type FeatureFlagEntorno = 'all' | 'dev' | 'staging' | 'prod'
+
+export interface FeatureFlagRolRef {
+  id: number
+  codigo: string
+  nombre: string
+}
+
+export interface FeatureFlagUsuarioRef {
+  id: number
+  nombre: string
+  email: string
+}
+
+export interface FeatureFlagResponse {
+  id: number
+  codigo: string
+  descripcion: string | null
+  activo: boolean
+  entorno: FeatureFlagEntorno
+  roles: FeatureFlagRolRef[]
+  usuarios: FeatureFlagUsuarioRef[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateFeatureFlagInput {
+  codigo: string
+  descripcion?: string
+  activo: boolean
+  entorno: FeatureFlagEntorno
+}
+
+export interface UpdateFeatureFlagInput {
+  descripcion?: string
+  activo?: boolean
+  entorno?: FeatureFlagEntorno
+}
+
+export interface RolDisponible {
+  idroles: number
+  codigoroles: string
+  nombreroles: string
+  activoroles: boolean
 }

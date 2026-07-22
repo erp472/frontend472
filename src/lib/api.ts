@@ -45,8 +45,9 @@ export async function apiFetch<T>(
   assertHttps(url)
 
   const token = _getToken?.()
+  const hasBody = init.body != null
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
     ...(init.headers as Record<string, string>),
   }
   if (token) headers['Authorization'] = `Bearer ${token}`

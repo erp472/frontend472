@@ -67,7 +67,7 @@ const navMain: NavGroup[] = [
     items: [
       { title: 'Permisos',      url: '/admin/permisos',  icon: ShieldCheck, roles: ['ADMIN_SISTEMA'] },
       { title: 'Auditoría',     url: '/admin/audit',     icon: ScrollText,  roles: ['ADMIN_SISTEMA'] },
-      { title: 'Configuración', url: '/admin/settings',  icon: Settings,    roles: ['ADMIN_SISTEMA'] },
+      { title: 'Configuraciones', url: '/admin/settings',  icon: Settings,    roles: ['ADMIN_SISTEMA'] },
     ],
   },
 ]

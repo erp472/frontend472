@@ -14,6 +14,7 @@ const Login        = lazy(() => import('@/pages/Login'))
 const Lab          = lazy(() => import('@/pages/Lab'))
 const UsersPage    = lazy(() => import('@/pages/admin/Users'))
 const PermisosPage = lazy(() => import('@/pages/admin/Permisos'))
+const SettingsPage = lazy(() => import('@/pages/admin/Settings'))
 
 // Páginas placeholder — se implementan en fases siguientes
 const Placeholder  = lazy(() => Promise.resolve({
@@ -131,7 +132,7 @@ export const router = createBrowserRouter(
               element: <RoleGuard roles={['ADMIN_SISTEMA']} />,
               children: [
                 { path: '/admin/audit',     element: lazySuspense(Placeholder) },
-                { path: '/admin/settings',  element: lazySuspense(Placeholder) },
+                { path: '/admin/settings',  element: lazySuspense(SettingsPage) },
                 { path: '/admin/permisos',  element: lazySuspense(PermisosPage) },
               ],
             },

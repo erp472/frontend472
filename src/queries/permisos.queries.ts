@@ -1,18 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
-import type { PermisoEntry, RolEntry } from '@/types/api'
+import type { PermisoEntry, RolEntry, ModuloEntry, MatrixResponse } from '@/types/api'
 
 // ── Cache keys ────────────────────────────────────────────────────────────────
 
 export const PERMISOS_KEYS = {
-  roles:       ()        => ['permisos', 'roles'] as const,
+  matrix:      ()           => ['permisos', 'matrix'] as const,
+  roles:       ()           => ['permisos', 'roles'] as const,
   rol:         (id: string) => ['permisos', 'roles', id] as const,
   rolPermisos: (id: string) => ['permisos', 'roles', id, 'permisos'] as const,
-  permisos:    ()        => ['permisos', 'permisos'] as const,
-  permiso:     (id: string) => ['permisos', 'permisos', id] as const,
+  modulos:     ()           => ['permisos', 'modulos'] as const,
+  modulo:      (id: string) => ['permisos', 'modulos', id] as const,
+  permisos:    ()           => ['permisos', 'permisos'] as const,
 }
 
-// ── Queries ───────────────────────────────────────────────────────────────────
+// ── Matrix ────────────────────────────────────────────────────────────────────
+
+export function useMatrix() {
+  return useQuery({
+    queryKey: PERMISOS_KEYS.matrix(),
+    queryFn:  () => apiFetch<MatrixResponse>('/permisos/matrix'),
+  })
+}
+
+// ── Roles ─────────────────────────────────────────────────────────────────────
 
 export function useRoles() {
   return useQuery({
@@ -32,35 +43,32 @@ export function useRol(id: string) {
 export function useRolPermisos(rolId: string) {
   return useQuery({
     queryKey: PERMISOS_KEYS.rolPermisos(rolId),
-    queryFn:  () => apiFetch<PermisoEntry[]>(`/permisos/roles/${rolId}/permisos`),
+    queryFn:  () => apiFetch<RolEntry['permisos']>(`/permisos/roles/${rolId}/permisos`),
     enabled:  !!rolId,
   })
 }
 
-export function usePermisos() {
-  return useQuery({
-    queryKey: PERMISOS_KEYS.permisos(),
-    queryFn:  () => apiFetch<PermisoEntry[]>('/permisos/permisos'),
-  })
-}
-
-// ── Rol mutations ─────────────────────────────────────────────────────────────
-
 export function useCreateRol() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (nombre: string) =>
-      apiFetch<RolEntry>('/permisos/roles', { method: 'POST', body: JSON.stringify({ nombre }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() }),
+    mutationFn: (data: { nombre: string; descripcion?: string }) =>
+      apiFetch<RolEntry>('/permisos/roles', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
   })
 }
 
 export function useUpdateRol() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, nombre }: { id: string; nombre: string }) =>
-      apiFetch<RolEntry>(`/permisos/roles/${id}`, { method: 'PATCH', body: JSON.stringify({ nombre }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() }),
+    mutationFn: ({ id, ...data }: { id: string; nombre?: string; descripcion?: string; activo?: boolean }) =>
+      apiFetch<RolEntry>(`/permisos/roles/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
   })
 }
 
@@ -69,27 +77,89 @@ export function useDeleteRol() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<{ id: string; eliminado: boolean }>(`/permisos/roles/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
   })
 }
 
-// ── Permiso mutations ─────────────────────────────────────────────────────────
+// ── Módulos ───────────────────────────────────────────────────────────────────
+
+export function useModulos() {
+  return useQuery({
+    queryKey: PERMISOS_KEYS.modulos(),
+    queryFn:  () => apiFetch<ModuloEntry[]>('/permisos/modulos'),
+  })
+}
+
+export function useCreateModulo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { nombre: string; descripcion?: string; orden?: number }) =>
+      apiFetch<ModuloEntry>('/permisos/modulos', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.modulos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
+  })
+}
+
+export function useUpdateModulo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; nombre?: string; descripcion?: string; orden?: number; activo?: boolean }) =>
+      apiFetch<ModuloEntry>(`/permisos/modulos/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.modulos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
+  })
+}
+
+export function useDeleteModulo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ id: string; eliminado: boolean }>(`/permisos/modulos/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.modulos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
+  })
+}
+
+// ── Permisos (acciones) ───────────────────────────────────────────────────────
+
+export function usePermisos() {
+  return useQuery({
+    queryKey: PERMISOS_KEYS.permisos(),
+    queryFn:  () => apiFetch<PermisoEntry[]>('/permisos/permisos'),
+  })
+}
 
 export function useCreatePermiso() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (nombre: string) =>
-      apiFetch<PermisoEntry>('/permisos/permisos', { method: 'POST', body: JSON.stringify({ nombre }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: PERMISOS_KEYS.permisos() }),
+    mutationFn: (data: { nombre: string; descripcion?: string; moduloId: string }) =>
+      apiFetch<PermisoEntry>('/permisos/permisos', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.permisos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.modulos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
   })
 }
 
 export function useUpdatePermiso() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, nombre }: { id: string; nombre: string }) =>
-      apiFetch<PermisoEntry>(`/permisos/permisos/${id}`, { method: 'PATCH', body: JSON.stringify({ nombre }) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: PERMISOS_KEYS.permisos() }),
+    mutationFn: ({ id, ...data }: { id: string; nombre?: string; descripcion?: string; activo?: boolean }) =>
+      apiFetch<PermisoEntry>(`/permisos/permisos/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.permisos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
   })
 }
 
@@ -98,11 +168,15 @@ export function useDeletePermiso() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<{ id: string; eliminado: boolean }>(`/permisos/permisos/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: PERMISOS_KEYS.permisos() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.permisos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.modulos() })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
+    },
   })
 }
 
-// ── Asignación ────────────────────────────────────────────────────────────────
+// ── Asignación rol ↔ permiso ──────────────────────────────────────────────────
 
 export function useAsignarPermiso() {
   const qc = useQueryClient()
@@ -115,6 +189,7 @@ export function useAsignarPermiso() {
     onSuccess: (_data, { rolId }) => {
       qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() })
       qc.invalidateQueries({ queryKey: PERMISOS_KEYS.rolPermisos(rolId) })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
     },
   })
 }
@@ -127,6 +202,7 @@ export function useRevocarPermiso() {
     onSuccess: (_data, { rolId }) => {
       qc.invalidateQueries({ queryKey: PERMISOS_KEYS.roles() })
       qc.invalidateQueries({ queryKey: PERMISOS_KEYS.rolPermisos(rolId) })
+      qc.invalidateQueries({ queryKey: PERMISOS_KEYS.matrix() })
     },
   })
 }
