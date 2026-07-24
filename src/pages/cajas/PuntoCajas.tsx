@@ -352,6 +352,8 @@ function CajaModal({ open, onClose, card }: {
   card: CardAuxiliar | null
 }) {
   const navigate = useNavigate()
+  const user     = useSessionStore(s => s.user)
+  const esCajero = user?.rol === 'CAJERO'
 
   const [servicios, setServicios] = useState<string[]>([])
   const [base,      setBase]      = useState('')
@@ -527,9 +529,11 @@ function CajaModal({ open, onClose, card }: {
               <Button variant="outline" onClick={() => { onClose(); navigate(`/cajas/punto/${card.sesionId}`) }}>
                 <Eye className="mr-2 size-4" /> Ver movimientos
               </Button>
-              <Button onClick={() => { onClose(); navigate(`/ventas/caja/${card.cajaId}`) }}>
-                <ShoppingCart className="mr-2 size-4" /> Ir a Ventas
-              </Button>
+              {esCajero && (
+                <Button onClick={() => { onClose(); navigate(`/ventas/caja/${card.cajaId}`) }}>
+                  <ShoppingCart className="mr-2 size-4" /> Ir a Ventas
+                </Button>
+              )}
             </>
           )}
 

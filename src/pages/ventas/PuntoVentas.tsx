@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShoppingCart, ArrowRight, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button }   from '@/components/ui/button'
@@ -67,12 +68,26 @@ export default function PuntoVentas() {
   const navigate   = useNavigate()
   const user       = useSessionStore(s => s.user)
   const sucursalId = user?.sucursal_id ?? null
+  const esCajero   = user?.rol === 'CAJERO' || user?.rol === 'USUARIO_POST'
 
   const { data, isLoading, isError, refetch, isFetching } = useStatusPunto(
     sucursalId ?? 0,
   )
 
-  const cajasAbiertas = data?.cajas.filter(c => c.estado === 'abierta' && c.tipo === 'pos') ?? []
+  const todasAbiertas = data?.cajas.filter(c => c.estado === 'abierta' && c.tipo === 'pos') ?? []
+
+  // CAJERO solo ve su propia caja (donde él abrió la sesión)
+  // user.id es string en el store, cajeroId es number en el API
+  const cajasAbiertas = esCajero
+    ? todasAbiertas.filter(c => c.cajeroId === Number(user?.id))
+    : todasAbiertas
+
+  // Si es cajero y su caja ya está identificada, redirige directo sin mostrar el selector
+  useEffect(() => {
+    if (esCajero && cajasAbiertas.length === 1) {
+      navigate(`/ventas/caja/${cajasAbiertas[0].cajaId}`, { replace: true })
+    }
+  }, [esCajero, cajasAbiertas, navigate])
 
   // ── Loading ──
   if (isLoading) {
@@ -160,8 +175,13 @@ export default function PuntoVentas() {
             ))}
           </div>
         ) : (
-          <div className="py-20 text-center text-sm text-muted-foreground">
-            No hay cajas con sesión activa en este momento
+          <div className="py-20 text-center text-sm text-muted-foreground space-y-2">
+            <AlertTriangle className="mx-auto size-8 text-muted-foreground/30" />
+            <p>
+              {esCajero
+                ? 'Tu caja no tiene una sesión activa. Contacta al supervisor para que abra tu turno.'
+                : 'No hay cajas con sesión activa en este momento.'}
+            </p>
           </div>
         )}
       </div>

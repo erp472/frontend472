@@ -19,6 +19,8 @@ import {
   ReceiptText,
   ShoppingCart,
   BarChart2,
+  Bell,
+  MailOpen,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -78,33 +80,51 @@ const navMain: NavGroup[] = [
   {
     label: 'Principal',
     items: [
-      { title: 'Dashboard', url: '/', icon: LayoutDashboard, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA', 'ADMINISTRATIVO', 'INVENTARIOS'] },
+      { title: 'Dashboard', url: '/', icon: LayoutDashboard },
     ],
   },
   {
     label:      'Administración',
     plataforma: 'web',
     items: [
-      { title: 'Usuarios',        url: '/admin/users',        icon: Users,       permiso: 'admin:usuarios', roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],  flag: 'modulo_usuarios'   },
+      { title: 'Usuarios',        url: '/admin/users',        icon: Users,       permiso: 'admin:usuarios', roles: ['ADMIN_SISTEMA'],                   flag: 'modulo_usuarios'   },
       { title: 'Comercios',       url: '/admin/comercios',    icon: Building,    roles: ['ADMIN_SISTEMA'],                                                     flag: 'modulo_comercios'  },
       { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_regionales' },
       { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_sucursales' },
-      { title: 'Puntos de venta', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_cajas'      },
+      { title: 'Cajas auxiliares', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_cajas'      },
       { title: 'Equipos',         url: '/admin/devices',      icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_equipos'    },
+    ],
+  },
+  {
+    label: 'Inventario',
+    items: [
+      { title: 'Inventario', url: '/inventario', icon: Package, roles: ['INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
     ],
   },
   {
     label: 'Operaciones',
     items: [
-      { title: 'Cajas',  url: '/cajas',  icon: Vault,        activePrefix: '/cajas',  permiso: 'caja:consultar',    flag: 'modulo_cajas',  plataforma: 'tauri' },
-      { title: 'Ventas', url: '/ventas', icon: ShoppingCart, activePrefix: '/ventas', permiso: 'ventas:consultar',  flag: 'modulo_ventas', plataforma: 'tauri' },
+      {
+        title:        'Cajas',
+        icon:         Vault,
+        activePrefix: '/cajas',
+        permiso:      'caja:consultar',
+        flag:         'modulo:caja',
+        roles:        ['SUPERVISOR_REGIONAL', 'TESORERIA'],
+        children: [
+          { title: 'Panel principal',   url: '/cajas',        icon: LayoutDashboard, permiso: 'caja:consultar' },
+          { title: 'Alertas de cierre', url: '/cajas/cierre', icon: Bell,            permiso: 'caja:consultar' },
+        ],
+      },
+      { title: 'Ventas', url: '/ventas', icon: ShoppingCart, activePrefix: '/ventas', permiso: 'ventas:consultar', flag: 'modulo:ventas', plataforma: 'tauri', roles: ['CAJERO'] },
       {
         title:         'Clientes',
         icon:          UserRound,
         activePrefix:  '/clientes',
         permiso:       'clientes:consultar',
-        flag:          'modulo_clientes',
+        flag:          'modulo:clientes',
         plataforma:    'web',
+        roles:         ['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMINISTRATIVO'],
         children: [
           { title: 'Directorio',         url: '/clientes',       icon: UserRound, permiso: 'clientes:consultar' },
           { title: 'Tipos / Beneficios', url: '/clientes/tipos', icon: Tag,       permiso: 'clientes:crear'     },
@@ -116,22 +136,29 @@ const navMain: NavGroup[] = [
     label:      'Catálogo',
     plataforma: 'web',
     items: [
-      { title: 'Productos', url: '/admin/productos', icon: Package, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'CAJERO', 'TESORERIA', 'ADMINISTRATIVO'], flag: 'modulo_productos' },
-      { title: 'Servicios', url: '/admin/servicios', icon: Truck,   roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'CAJERO', 'TESORERIA', 'ADMINISTRATIVO'], flag: 'modulo_servicios' },
+      { title: 'Productos',  url: '/admin/productos',  icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_productos' },
+      { title: 'Servicios',  url: '/admin/servicios',  icon: Truck,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_servicios' },
+      { title: 'Apartados',  url: '/admin/apartados',  icon: MailOpen, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+    ],
+  },
+  {
+    label: 'Reportes',
+    items: [
+      { title: 'Reportes', url: '/reportes', icon: BarChart2, activePrefix: '/reportes' },
     ],
   },
   {
     label:      'Sistema',
     plataforma: 'web',
     items: [
-      { title: 'Permisos', url: '/admin/permisos', icon: ShieldCheck, permiso: 'admin:usuarios', flag: 'sistema_permisos' },
+      { title: 'Permisos', url: '/admin/permisos', icon: ShieldCheck, roles: ['ADMIN_SISTEMA'], permiso: 'admin:usuarios', flag: 'sistema_permisos' },
       {
         title:    'Configuración',
         icon:     Settings2,
-        roles:    ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],
+        roles:    ['ADMIN_SISTEMA'],
         children: [
-          { title: 'Aperturas', url: '/admin/feature-flags', icon: ToggleLeft, roles: ['ADMIN_SISTEMA'],                    permiso: 'admin:feature_flags', flag: 'sistema_aperturas' },
-          { title: 'Auditoría', url: '/admin/audit',         icon: ScrollText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],  permiso: 'admin:auditoria',     flag: 'sistema_auditoria' },
+          { title: 'Aperturas', url: '/admin/feature-flags', icon: ToggleLeft, roles: ['ADMIN_SISTEMA'], permiso: 'admin:feature_flags', flag: 'sistema_aperturas' },
+          { title: 'Auditoría', url: '/admin/audit',         icon: ScrollText, roles: ['ADMIN_SISTEMA'], permiso: 'admin:auditoria',     flag: 'sistema_auditoria' },
         ],
       },
     ],

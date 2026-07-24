@@ -21,10 +21,12 @@ import {
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { useSessionStore } from '@/stores/useSessionStore'
+import { useAcceso } from '@/hooks/useAcceso'
 import { ApiError } from '@/lib/api'
 import { useCliente, useUpdateCliente, useCreateCliente, type TipoDocumento } from '@/queries/clientes.queries'
 import {
   useCatalogoProductos,
+  useTarifasEspecial,
   useCarrito,
   useResumenTurno,
   useVentasTurno,
@@ -216,10 +218,8 @@ const TIPO_DOC_OPTIONS: { value: string; label: string }[] = [
 const TIPOS_PRODUCTO: { value: TipoProducto | ''; label: string }[] = [
   { value: '',                label: 'Todos' },
   { value: 'estampilla',      label: 'Estampillas' },
-  { value: 'filatelia',       label: 'Filatelia' },
   { value: 'empaque',         label: 'Empaques' },
   { value: 'material_oficina', label: 'Material' },
-  { value: 'giro',            label: 'Giros' },
   { value: 'paquete',         label: 'Paquetes' },
   { value: 'otro',            label: 'Otro' },
 ]
@@ -734,13 +734,11 @@ function TabApartado({
   const filtrados = apartados ?? []
   const selected  = filtrados.find(a => a.id === selectedId) ?? null
 
-  const fechaFin  = addMonths(fechaInicio, duracionMeses)
+  const fechaFin = addMonths(fechaInicio, duracionMeses)
 
-  // Precio e IVA
-  const valorBase = selected?.valor ?? 0
-  const base      = selected?.incluyeIva ? Math.round(valorBase / (1 + IVA_RATE)) : valorBase
-  const iva       = selected?.incluyeIva ? valorBase - base : Math.round(valorBase * IVA_RATE)
-  const total     = base + iva
+  const PRECIO = 87_500
+  const base   = Math.round(PRECIO / (1 + IVA_RATE))
+  const iva    = PRECIO - base
 
   const handleContratar = async () => {
     if (!clienteId) { toast.error('Busca un cliente primero'); return }
@@ -753,8 +751,6 @@ function TabApartado({
         tamano:         selected.tamano,
         meses:          Math.max(1, duracionMeses),
         fechaInicio,
-        monto:          total,
-        incluyeIva:     selected.incluyeIva ?? true,
         ...(comentarios.trim() ? { comentarios: comentarios.trim() } : {}),
       })
       toast.success(`Apartado #${selected.numero} contratado`)
@@ -888,7 +884,7 @@ function TabApartado({
               <div className="space-y-1">
                 <Label className="text-xs">Precio</Label>
                 <div className="h-8 flex items-center px-3 rounded-md border bg-muted/40">
-                  <span className="text-sm font-bold tabular-nums text-primary">{fmt(total)}</span>
+                  <span className="text-sm font-bold tabular-nums text-primary">{fmt(PRECIO)}</span>
                 </div>
               </div>
             </div>
@@ -913,7 +909,7 @@ function TabApartado({
                   {selected ? (
                     <tr>
                       <td className="px-2 py-2 tabular-nums">{(IVA_RATE * 100).toFixed(0)}%</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{fmt(total)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(PRECIO)}</td>
                       <td className="px-2 py-2 text-right tabular-nums text-amber-600">{fmt(iva)}</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmt(base)}</td>
                     </tr>
@@ -973,226 +969,172 @@ function TabApartado({
 
 // ── TabProductosEspeciales ────────────────────────────────────────────────────
 
-const CATEGORIAS_ESPECIALES = [
-  { label: 'Administración de Correspondencia', prefijo: 'ADM. DE CORRESPONDENCIA' },
-  { label: 'Alistamiento',                      prefijo: 'ALISTAMIENTO' },
-  { label: 'Servicios Geográficos',             prefijo: 'SVC-GEO' },
-  { label: 'Documentos y Oficina',              prefijo: 'SVC-DOC' },
-  { label: 'Enriquecimiento de Datos',          prefijo: 'Enriquecimiento' },
-  { label: 'Otros',                             prefijo: '' },
-] as const
-
-function getCategoriaEspecial(codigo: string, nombre: string): string {
-  if (nombre.startsWith('ADM. DE CORRESPONDENCIA')) return 'Administración de Correspondencia'
-  if (nombre.startsWith('ALISTAMIENTO'))            return 'Alistamiento'
-  if (codigo.startsWith('SVC-GEO'))                return 'Servicios Geográficos'
-  if (codigo.startsWith('SVC-DOC'))                return 'Documentos y Oficina'
-  if (nombre.startsWith('Enriquecimiento'))         return 'Enriquecimiento de Datos'
-  return 'Otros'
-}
-
 function TabProductosEspeciales({
   sucursalId, ventaId, cajaId,
 }: { sucursalId: number; ventaId: number | null; cajaId: number }) {
-  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('')
-  const [productoId,             setProductoId]             = useState(0)
-  const [cantidad,               setCantidad]               = useState(1)
+  const [productoId, setProductoId] = useState(0)
+  const [cantidad,   setCantidad]   = useState(1)
+  const [calculado,  setCalculado]  = useState<{ precio: number; tarifaId: number | null } | null>(null)
 
-  const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, 'otro')
+  const { data: catalogo, isLoading: loadingCatalogo } = useCatalogoProductos(sucursalId, 'otro')
+  const { data: tarifas,  isLoading: loadingTarifas }  = useTarifasEspecial(productoId)
   const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
 
-  const porCategoria = useMemo(() => {
-    const map = new Map<string, typeof catalogo>()
-    for (const p of catalogo ?? []) {
-      const cat = getCategoriaEspecial(p.codigo, p.nombre)
-      if (!map.has(cat)) map.set(cat, [])
-      map.get(cat)!.push(p)
-    }
-    return map
-  }, [catalogo])
-
-  const serviciosDeCategoria = useMemo(
-    () => (categoriaSeleccionada ? (porCategoria.get(categoriaSeleccionada) ?? []) : []),
-    [porCategoria, categoriaSeleccionada],
-  )
-
-  const productoSeleccionado = serviciosDeCategoria.find(p => p.id === productoId) ?? null
-
-  const iva   = productoSeleccionado ? Math.round(productoSeleccionado.precio * productoSeleccionado.porcentajeTax / 100) : 0
-  const total = productoSeleccionado ? productoSeleccionado.precio + iva : 0
-
-  const minCompra     = productoSeleccionado?.cantidadMinima ?? 1
-  const maxVenta      = productoSeleccionado?.cantidadMaxima ?? null
-  const maxDisponible = productoSeleccionado?.stockActual ?? null
-  const maxCompra     = maxVenta !== null && maxDisponible !== null
-    ? Math.min(maxVenta, maxDisponible)
-    : (maxVenta ?? maxDisponible)
-  const sinStock   = maxDisponible !== null && maxDisponible === 0
-  const bajoMinimo = cantidad < minCompra
-  const sobreStock = maxCompra !== null && cantidad > maxCompra
-  const cantidadOk = !bajoMinimo && !sobreStock && !sinStock
-
-  const handleCambiarCategoria = (v: string) => {
-    setCategoriaSeleccionada(v)
-    setProductoId(0)
-    setCantidad(1)
-  }
+  const productoSeleccionado = catalogo?.find(p => p.id === productoId) ?? null
+  const valorTotal = calculado ? calculado.precio * cantidad : 0
 
   const handleCambiarProducto = (v: string) => {
-    const p = serviciosDeCategoria.find(x => x.id === Number(v))
     setProductoId(Number(v))
-    setCantidad(p?.cantidadMinima ?? 1)
+    setCantidad(1)
+    setCalculado(null)
+  }
+
+  const handleCalcular = () => {
+    if (!productoSeleccionado) return
+    if (tarifas && tarifas.length > 0) {
+      const tarifa = tarifas.find(t =>
+        cantidad >= t.minCantidad && (t.maxCantidad === null || cantidad <= t.maxCantidad)
+      )
+      if (!tarifa) { toast.error('La cantidad está fuera del rango de tarifas'); return }
+      setCalculado({ precio: tarifa.precio, tarifaId: tarifa.id })
+    } else {
+      setCalculado({ precio: productoSeleccionado.precio, tarifaId: null })
+    }
   }
 
   const handleAgregar = async () => {
     if (!ventaId)              { toast.error('Busca un cliente primero'); return }
     if (!productoSeleccionado) { toast.error('Selecciona un servicio');   return }
-    if (sinStock)              { toast.error('Sin unidades disponibles'); return }
-    if (bajoMinimo)            { toast.error(`Mínimo de compra: ${minCompra} unidades`); return }
-    if (sobreStock)            { toast.error(`Solo hay ${maxCompra} unidades disponibles`); return }
+    if (!calculado)            { toast.error('Haz clic en Calcular primero'); return }
     try {
       await agregar.mutateAsync({ productoId: productoSeleccionado.id, cantidad })
       toast.success(`${productoSeleccionado.nombre} ×${cantidad} agregado`)
       setProductoId(0)
       setCantidad(1)
+      setCalculado(null)
     } catch {
       toast.error('No se pudo agregar el servicio')
     }
   }
 
-  const categoriasDisponibles = Array.from(porCategoria.keys())
-
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b shrink-0">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2.5">
+      <div className="px-4 py-3 border-b shrink-0 space-y-3">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
           Servicios especiales
         </p>
 
-        {isLoading ? (
+        {loadingCatalogo ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
             <Loader2 className="size-3.5 animate-spin" /> Cargando catálogo...
           </div>
         ) : (
-          <div className="space-y-2.5">
-            {/* Categoría */}
+          <>
+            {/* Selector único de servicio */}
             <div className="space-y-1">
-              <Label className="text-xs">Categoría</Label>
-              <Select value={categoriaSeleccionada} onValueChange={handleCambiarCategoria}>
+              <Label className="text-xs">Servicio especial</Label>
+              <Select value={productoId ? String(productoId) : ''} onValueChange={handleCambiarProducto}>
                 <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Seleccionar categoría..." />
+                  <SelectValue placeholder="Seleccionar servicio..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {categoriasDisponibles.map(cat => (
-                    <SelectItem key={cat} value={cat} className="text-xs">{cat}</SelectItem>
+                  {(catalogo ?? []).map(p => (
+                    <SelectItem key={p.id} value={String(p.id)} className="text-xs">{p.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Servicio */}
-            {categoriaSeleccionada && (
-              <div className="space-y-1">
-                <Label className="text-xs">Servicio</Label>
-                <Select
-                  value={productoId ? String(productoId) : ''}
-                  onValueChange={handleCambiarProducto}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Seleccionar servicio..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {serviciosDeCategoria.map(p => (
-                      <SelectItem key={p.id} value={String(p.id)} className="text-xs">
-                        {p.nombre}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Detalles del servicio seleccionado */}
             {productoSeleccionado && (
               <>
-                <div className="rounded-lg border bg-muted/30 px-3 py-2 space-y-1 text-xs">
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Código</span>
-                    <span className="font-mono">{productoSeleccionado.codigo}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Precio unit.</span>
-                    <span className="font-semibold tabular-nums">{fmt(productoSeleccionado.precio)}</span>
-                  </div>
-                  {iva > 0 && (
-                    <div className="flex justify-between text-amber-600">
-                      <span>IVA {productoSeleccionado.porcentajeTax}%</span>
-                      <span className="tabular-nums">{fmt(iva)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Disponible</span>
-                    <span className={cn('font-medium tabular-nums', sinStock ? 'text-destructive' : 'text-green-600')}>
-                      {maxCompra === null ? '∞' : maxCompra} {maxCompra !== null && 'un.'}
-                    </span>
-                  </div>
-                  {minCompra > 1 && (
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Mínimo compra</span>
-                      <span className="tabular-nums">{minCompra} un.</span>
-                    </div>
-                  )}
-                  {productoSeleccionado.precio === 0 && (
-                    <p className="text-amber-600 text-[10px] pt-0.5">
-                      Precio pendiente — actualizar en Administración
-                    </p>
-                  )}
-                  {sinStock && (
-                    <p className="text-destructive text-[10px] pt-0.5 font-medium">
-                      Sin unidades disponibles en esta sucursal
-                    </p>
-                  )}
-                </div>
-
-                {/* Cantidad + total */}
-                {!sinStock && (
-                <div className="flex items-end gap-3">
+                {/* Cantidad + Calcular */}
+                <div className="flex items-end gap-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">
-                      Cantidad
-                      {maxCompra !== null && (
-                        <span className="text-muted-foreground font-normal ml-1">(máx. {maxCompra})</span>
-                      )}
-                    </Label>
+                    <Label className="text-xs">Cantidad</Label>
                     <Input
                       type="number"
-                      min={minCompra}
-                      max={maxCompra ?? undefined}
-                      className={cn('h-8 text-sm w-24', (bajoMinimo || sobreStock) && 'border-destructive focus-visible:ring-destructive')}
+                      min={1}
+                      className="h-8 text-sm w-24"
                       value={cantidad}
-                      onChange={e => setCantidad(Math.max(1, Number(e.target.value) || 1))}
+                      onChange={e => { setCantidad(Math.max(1, Number(e.target.value) || 1)); setCalculado(null) }}
                     />
-                    {bajoMinimo && (
-                      <p className="text-[10px] text-destructive">Mín. {minCompra}</p>
-                    )}
-                    {sobreStock && (
-                      <p className="text-[10px] text-destructive">Máx. {maxCompra}</p>
-                    )}
                   </div>
-                  <div className="flex-1 space-y-1">
-                    <Label className="text-xs">Subtotal</Label>
-                    <div className="h-8 flex items-center px-3 rounded-md border bg-muted/40">
-                      <span className="text-sm font-bold tabular-nums text-primary">
-                        {fmt(total * cantidad)}
-                      </span>
-                    </div>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0"
+                    onClick={handleCalcular}
+                    disabled={loadingTarifas}
+                  >
+                    {loadingTarifas ? <Loader2 className="size-3.5 animate-spin" /> : 'Calcular'}
+                  </Button>
                 </div>
+
+                {/* Tabla de tarifas */}
+                {tarifas && tarifas.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="rounded border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Mínimo</th>
+                            <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Máximo</th>
+                            <th className="text-right px-2 py-1.5 font-medium text-muted-foreground">Valor</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tarifas.map(t => (
+                            <tr
+                              key={t.id}
+                              className={cn(
+                                'border-t transition-colors',
+                                calculado?.tarifaId === t.id
+                                  ? 'bg-primary/10 font-semibold'
+                                  : 'hover:bg-muted/30',
+                              )}
+                            >
+                              <td className="px-2 py-1 tabular-nums">{t.minCantidad.toLocaleString('es-CO')}</td>
+                              <td className="px-2 py-1 tabular-nums">
+                                {t.maxCantidad !== null ? t.maxCantidad.toLocaleString('es-CO') : '∞'}
+                              </td>
+                              <td className="px-2 py-1 text-right tabular-nums">{fmt(t.precio)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Valor unitario + Valor Total */}
+                    {calculado && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Valor unitario</Label>
+                          <div className="h-8 flex items-center px-3 rounded border bg-muted/40 text-sm tabular-nums font-medium">
+                            {fmt(calculado.precio)}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Valor Total</Label>
+                          <div className="h-8 flex items-center px-3 rounded border bg-muted/40 text-sm tabular-nums font-bold text-primary">
+                            {fmt(valorTotal)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
 
+                {/* Servicios sin tarifas configuradas */}
+                {tarifas && tarifas.length === 0 && productoSeleccionado.precio === 0 && (
+                  <p className="text-amber-600 text-[10px]">
+                    Precio pendiente — actualizar en Administración
+                  </p>
+                )}
+
+                {/* Agregar al carrito */}
                 <Button
                   className="w-full"
-                  disabled={!ventaId || agregar.isPending || !cantidadOk}
+                  disabled={!ventaId || agregar.isPending || !calculado}
                   onClick={handleAgregar}
                 >
                   {agregar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
@@ -1207,18 +1149,16 @@ function TabProductosEspeciales({
                 )}
               </>
             )}
-          </div>
+
+            {!catalogo?.length && (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No hay servicios disponibles en este punto
+              </p>
+            )}
+          </>
         )}
       </div>
-
-      {/* Panel de historial de servicios agregados en esta sesión */}
-      <ScrollArea className="flex-1">
-        {!catalogo?.length && !isLoading && (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            No hay servicios disponibles en este punto
-          </div>
-        )}
-      </ScrollArea>
+      <ScrollArea className="flex-1" />
     </div>
   )
 }
@@ -2757,13 +2697,13 @@ function PagarDialog({
 
 type Tab = 'productos' | 'especiales' | 'apartado' | 'servicios' | 'historial' | 'pagar'
 
-const TABS: { value: Tab; label: string; primary?: boolean }[] = [
-  { value: 'productos',  label: 'Productos' },
-  { value: 'especiales', label: 'Especiales' },
-  { value: 'apartado',   label: 'Apartado' },
-  { value: 'servicios',  label: 'Servicios' },
+const ALL_TABS: { value: Tab; label: string; flag?: string; primary?: boolean }[] = [
+  { value: 'productos',  label: 'Productos',  flag: 'ventas:tab_productos'  },
+  { value: 'especiales', label: 'Especiales', flag: 'ventas:tab_especiales' },
+  { value: 'apartado',   label: 'Apartado',   flag: 'ventas:tab_apartado'   },
+  { value: 'servicios',  label: 'Servicios',  flag: 'ventas:tab_servicios'  },
   { value: 'historial',  label: 'Historial' },
-  { value: 'pagar',      label: 'Pagar',     primary: true },
+  { value: 'pagar',      label: 'Pagar',      primary: true },
 ]
 
 export default function CarritoVenta() {
@@ -2773,9 +2713,19 @@ export default function CarritoVenta() {
   const cajaId     = Number(cajaIdStr) || 0
   const sucursalId = user?.sucursal_id ?? 0
 
+  const { flagActivo } = useAcceso()
+  const tabs = useMemo(
+    () => ALL_TABS.filter(t => !t.flag || flagActivo(t.flag)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [flagActivo],
+  )
+
   const [ventaId,   setVentaId]   = useState<number | null>(null)
   const [cliente,   setCliente]   = useState<ClienteResumen | null>(null)
-  const [activeTab, setActiveTab] = useState<Tab>('productos')
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const first = ALL_TABS.find(t => t.value !== 'historial' && t.value !== 'pagar')
+    return first?.value ?? 'historial'
+  })
   const [pagarOpen, setPagarOpen] = useState(false)
 
   const { data: carrito }  = useCarrito(ventaId ?? 0)
@@ -2798,8 +2748,17 @@ export default function CarritoVenta() {
   const handlePagoExitoso = () => {
     setVentaId(null)
     setCliente(null)
-    setActiveTab('productos')
+    const first = tabs.find(t => t.value !== 'historial' && t.value !== 'pagar')
+    setActiveTab(first?.value ?? 'historial')
   }
+
+  // Si la tab activa queda deshabilitada por un cambio de flag, ir a la primera visible
+  useEffect(() => {
+    if (!tabs.find(t => t.value === activeTab)) {
+      const first = tabs.find(t => t.value !== 'historial' && t.value !== 'pagar')
+      setActiveTab(first?.value ?? 'historial')
+    }
+  }, [tabs, activeTab])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -2842,7 +2801,7 @@ export default function CarritoVenta() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Tab bar */}
           <div className="flex border-b shrink-0">
-            {TABS.map(t => (
+            {tabs.map(t => (
               <button
                 key={t.value}
                 type="button"

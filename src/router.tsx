@@ -21,8 +21,9 @@ const ComerciosPage  = lazy(() => import('@/pages/admin/Comercios'))
 const RegionalesPage = lazy(() => import('@/pages/admin/Regionales'))
 const SucursalesPage = lazy(() => import('@/pages/admin/Sucursales'))
 const EquiposPage    = lazy(() => import('@/pages/admin/Equipos'))
-const ProductosPage  = lazy(() => import('@/pages/admin/Productos'))
-const ServiciosPage  = lazy(() => import('@/pages/admin/Servicios'))
+const ProductosPage    = lazy(() => import('@/pages/admin/Productos'))
+const ServiciosPage    = lazy(() => import('@/pages/admin/Servicios'))
+const ApartadosPage    = lazy(() => import('@/pages/admin/ApartadosAdmin'))
 const AuditPage          = lazy(() => import('@/pages/admin/Audit'))
 const PuntoVentasAdminPage = lazy(() => import('@/pages/admin/PuntoVentasAdmin'))
 const PuntoCajasPage    = lazy(() => import('@/pages/cajas/PuntoCajas'))
@@ -30,17 +31,16 @@ const DetalleCajaPage   = lazy(() => import('@/pages/cajas/DetalleCaja'))
 const AlertasCierrePage = lazy(() => import('@/pages/cajas/AlertasCierre'))
 const PuntoVentasPage   = lazy(() => import('@/pages/ventas/PuntoVentas'))
 const CarritoVentaPage  = lazy(() => import('@/pages/ventas/CarritoVenta'))
+const ReportesPage      = lazy(() => import('@/pages/Reportes'))
 const ClientesPage      = lazy(() => import('@/pages/clientes/index'))
 const TiposClientePage  = lazy(() => import('@/pages/clientes/TiposClientePage'))
+const InventarioPage    = lazy(() => import('@/pages/inventario/InventarioPage'))
 
 // ── Home redirect: cajeros/supervisores van directo a su área ─────────────────
 
 function HomeRedirect() {
   const user = useSessionStore(s => s.user)
 
-  if (user?.rol === 'SUPERVISOR_REGIONAL') {
-    return <Navigate to={`/cajas/principales/${user.sucursal_id ?? 1}`} replace />
-  }
   if (user?.rol === 'CAJERO' || user?.rol === 'USUARIO_POST') {
     return <Navigate to="/ventas" replace />
   }
@@ -218,9 +218,10 @@ function DesktopOnlyRoute() {
 }
 
 function FlagGuard({ flag }: { flag: string }) {
-  const userRol = useSessionStore((s) => s.user?.rol)
-  const entorno = import.meta.env.DEV ? 'dev' : (import.meta.env.VITE_ENTORNO ?? 'prod')
-  const { data: activeFlags, isLoading } = useFeatureFlagsActivos({ entorno, plataforma: 'web' })
+  const userRol    = useSessionStore((s) => s.user?.rol)
+  const entorno    = import.meta.env.DEV ? 'dev' : (import.meta.env.VITE_ENTORNO ?? 'prod')
+  const plataforma = isTauri() ? 'tauri' : 'web'
+  const { data: activeFlags, isLoading } = useFeatureFlagsActivos({ entorno, plataforma })
 
   if (userRol === 'ADMIN_SISTEMA') return <Outlet />
   if (isLoading) return <PageLoader />
@@ -263,9 +264,9 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Catálogo — ADMIN_SISTEMA, ADMIN_NACIONAL + lectura para otros roles
+                // Catálogo — solo ADMIN_SISTEMA y ADMIN_NACIONAL pueden administrar
                 {
-                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'CAJERO', 'TESORERIA', 'ADMINISTRATIVO']} />,
+                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />,
                   children: [
                     {
                       element: <FlagGuard flag="modulo_productos" />,
@@ -275,6 +276,7 @@ export const router = createBrowserRouter(
                       element: <FlagGuard flag="modulo_servicios" />,
                       children: [{ path: '/admin/servicios', element: lazySuspense(ServiciosPage) }],
                     },
+                    { path: '/admin/apartados', element: lazySuspense(ApartadosPage) },
                   ],
                 },
 
@@ -310,25 +312,20 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Cajas — solo Tauri · dinámico por permiso caja:consultar
+                // Cajas — caja principal: SUPERVISOR_REGIONAL, TESORERIA
                 {
-                  element: <DesktopOnlyRoute />,
+                  element: <RoleGuard roles={['SUPERVISOR_REGIONAL', 'TESORERIA']} />,
                   children: [
                     {
                       element: <PermisoGuard permiso="caja:consultar" />,
                       children: [
+                        { path: '/cajas',              element: <CajasRedirect /> },
+                        { path: '/cajas/punto/:sesionId', element: lazySuspense(DetalleCajaPage) },
                         {
-                          element: <FlagGuard flag="modulo_cajas" />,
+                          element: <SucursalGuard />,
                           children: [
-                            { path: '/cajas',              element: <CajasRedirect /> },
-                            { path: '/cajas/punto/:sesionId', element: lazySuspense(DetalleCajaPage) },
-                            {
-                              element: <SucursalGuard />,
-                              children: [
-                                { path: '/cajas/principales/:sucursalId', element: lazySuspense(PuntoCajasPage) },
-                                { path: '/cajas/cierre/:sucursalId',      element: lazySuspense(AlertasCierrePage) },
-                              ],
-                            },
+                            { path: '/cajas/principales/:sucursalId', element: lazySuspense(PuntoCajasPage) },
+                            { path: '/cajas/cierre/:sucursalId',      element: lazySuspense(AlertasCierrePage) },
                           ],
                         },
                       ],
@@ -336,7 +333,7 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Ventas — solo Tauri · dinámico por permiso ventas:consultar
+                // Ventas — solo Tauri · caja auxiliar: CAJERO
                 {
                   element: <DesktopOnlyRoute />,
                   children: [
@@ -344,7 +341,7 @@ export const router = createBrowserRouter(
                       element: <PermisoGuard permiso="ventas:consultar" />,
                       children: [
                         {
-                          element: <FlagGuard flag="modulo_ventas" />,
+                          element: <FlagGuard flag="modulo:ventas" />,
                           children: [
                             { path: '/ventas',              element: lazySuspense(PuntoVentasPage) },
                             { path: '/ventas/caja/:cajaId', element: lazySuspense(CarritoVentaPage) },
@@ -360,7 +357,7 @@ export const router = createBrowserRouter(
                   element: <PermisoGuard permiso="clientes:consultar" />,
                   children: [
                     {
-                      element: <FlagGuard flag="modulo_clientes" />,
+                      element: <FlagGuard flag="modulo:clientes" />,
                       children: [
                         { path: '/clientes',                element: lazySuspense(ClientesPage) },
                         { path: '/clientes/tipos',          element: lazySuspense(TiposClientePage) },
@@ -368,6 +365,19 @@ export const router = createBrowserRouter(
                     },
                   ],
                 },
+
+                // Inventario — INVENTARIOS + admins
+                {
+                  element: (
+                    <RoleGuard roles={['INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />
+                  ),
+                  children: [
+                    { path: '/inventario', element: lazySuspense(InventarioPage) },
+                  ],
+                },
+
+                // Reportes — todos los roles autenticados
+                { path: '/reportes', element: lazySuspense(ReportesPage) },
 
                 // Solo ADMIN_SISTEMA
                 {

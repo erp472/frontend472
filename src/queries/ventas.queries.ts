@@ -36,6 +36,12 @@ export interface ApartadoPostal {
   id: number; sucursalId: number; numero: string; tamano: TamanoApartado
   estado: string; clienteId: number | null; fechaInicio: string | null
   fechaFin: string | null; valor: number | null; incluyeIva: boolean
+  diasAlertaVencimiento: number
+}
+
+export interface ApartadoAdminItem extends ApartadoPostal {
+  sucursalNombre: string
+  sucursalCodigo: string
 }
 
 export interface ServicioCatalogo {
@@ -56,6 +62,10 @@ export interface Envio {
   destinatarioCiudad: string | null; destinatarioPais: string
   pesoFisicoKg: number; pesoTarificadoKg: number
   valorServicio: number; valorTotal: number; estado: string; createdAt: string
+}
+
+export interface TarifaEspecial {
+  id: number; productoId: number; minCantidad: number; maxCantidad: number | null; precio: number
 }
 
 export interface ResumenLinea { cantidad: number; total: number }
@@ -80,14 +90,25 @@ export interface ConfirmarVentaResult {
 }
 
 export const VENTAS_KEYS = {
-  catalogo:   (sucursalId: number, tipo?: string) => ['ventas', 'catalogo', sucursalId, tipo] as const,
-  cliente:    (tipo: string, numero: string) => ['ventas', 'cliente', tipo, numero] as const,
-  carrito:    (ventaId: number) => ['ventas', 'carrito', ventaId] as const,
-  turno:      (cajaId: number, fecha?: string) => ['ventas', 'turno', cajaId, fecha] as const,
-  resumen:    (cajaId: number) => ['ventas', 'resumen', cajaId] as const,
-  apartados:  (sucursalId: number, tamano?: string) => ['ventas', 'apartados', sucursalId, tamano] as const,
-  servicios:  (sucursalId: number) => ['ventas', 'servicios', sucursalId] as const,
-  cotizacion: (params: object) => ['ventas', 'cotizacion', params] as const,
+  catalogo:        (sucursalId: number, tipo?: string) => ['ventas', 'catalogo', sucursalId, tipo] as const,
+  cliente:         (tipo: string, numero: string) => ['ventas', 'cliente', tipo, numero] as const,
+  carrito:         (ventaId: number) => ['ventas', 'carrito', ventaId] as const,
+  turno:           (cajaId: number, fecha?: string) => ['ventas', 'turno', cajaId, fecha] as const,
+  resumen:         (cajaId: number) => ['ventas', 'resumen', cajaId] as const,
+  apartados:       (sucursalId: number, tamano?: string) => ['ventas', 'apartados', sucursalId, tamano] as const,
+  apartadosAdmin:  (f: object) => ['ventas', 'apartados-admin', f] as const,
+  servicios:       (sucursalId: number) => ['ventas', 'servicios', sucursalId] as const,
+  cotizacion:      (params: object) => ['ventas', 'cotizacion', params] as const,
+  tarifasEspecial: (productoId: number) => ['ventas', 'tarifas-especial', productoId] as const,
+}
+
+export function useTarifasEspecial(productoId: number) {
+  return useQuery({
+    queryKey: VENTAS_KEYS.tarifasEspecial(productoId),
+    queryFn:  () => apiFetch<TarifaEspecial[]>(`/ventas/catalogo/especiales/${productoId}/tarifas`),
+    enabled:  productoId > 0,
+    staleTime: 5 * 60_000,
+  })
 }
 
 export function useCatalogoProductos(sucursalId: number, tipo?: string) {
@@ -268,5 +289,45 @@ export function useCrearEnvio(cajaId: number) {
         body: JSON.stringify(data),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) }),
+  })
+}
+
+// ── Admin CRUD Apartados ──────────────────────────────────────────────────────
+
+export function useAdminApartados(filters: { sucursalId?: number; estado?: string; tamano?: string } = {}) {
+  const params = new URLSearchParams()
+  if (filters.sucursalId) params.set('sucursalId', String(filters.sucursalId))
+  if (filters.estado)     params.set('estado',     filters.estado)
+  if (filters.tamano)     params.set('tamano',     filters.tamano)
+  return useQuery({
+    queryKey: VENTAS_KEYS.apartadosAdmin(filters),
+    queryFn:  () => apiFetch<ApartadoAdminItem[]>(`/ventas/admin/apartados?${params}`),
+  })
+}
+
+export function useCreateApartadoAdmin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { sucursalId: number; numero: string; tamano: string; diasAlertaVencimiento?: number }) =>
+      apiFetch<ApartadoPostal>('/ventas/admin/apartados', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas', 'apartados-admin'] }),
+  })
+}
+
+export function useUpdateApartadoAdmin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: number; tamano?: string; estado?: string; diasAlertaVencimiento?: number }) =>
+      apiFetch<ApartadoPostal>(`/ventas/admin/apartados/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas', 'apartados-admin'] }),
+  })
+}
+
+export function useDeleteApartadoAdmin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<void>(`/ventas/admin/apartados/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas', 'apartados-admin'] }),
   })
 }

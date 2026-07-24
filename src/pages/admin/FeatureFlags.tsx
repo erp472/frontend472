@@ -24,15 +24,24 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Trash2, Plus } from 'lucide-react'
 
-// Solo muestra flags que corresponden a módulos/secciones de la navegación
-const REGISTERED_FLAGS = new Set<string>(
-  navMain.flatMap((g) =>
+// Flags de tabs operativas — gestionadas aquí pero no viven en navMain
+const VENTAS_TAB_FLAGS = [
+  'ventas:tab_productos',
+  'ventas:tab_especiales',
+  'ventas:tab_apartado',
+  'ventas:tab_servicios',
+]
+
+// Muestra flags de navegación + flags de tabs de ventas
+const REGISTERED_FLAGS = new Set<string>([
+  ...navMain.flatMap((g) =>
     g.items.flatMap((item) => [
       ...(item.flag ? [item.flag] : []),
       ...(item.children?.flatMap((c) => c.flag ? [c.flag] : []) ?? []),
     ]),
   ),
-)
+  ...VENTAS_TAB_FLAGS,
+])
 
 const ROWS = 15
 const ENTORNOS: Entorno[] = ['all', 'dev', 'staging', 'prod']
