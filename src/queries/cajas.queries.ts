@@ -6,6 +6,21 @@ import { apiFetch } from '@/lib/api'
 export type EstadoCard = 'abierta' | 'cerrada' | 'sin_sesion'
 export type TipoAlerta = 'reposicion_caja' | 'limite_efectivo_caja'
 export type TipoCaja = 'general' | 'pos' | 'menor' | 'pagos'
+export type TipoDenominacion = 'billete' | 'moneda'
+
+export interface Denominacion {
+  denominacion: number
+  tipo:         TipoDenominacion
+  cantidad:     number
+  valorTotal:   number
+}
+
+export interface CapacidadPunto {
+  capacidadTotal:     number
+  auxiliaresAbiertas: number
+  puedeAbrirMas:      boolean
+  cuantasPuedeAbrir:  number
+}
 
 export interface CajaPadre {
   id:          number
@@ -127,14 +142,15 @@ export interface SucursalPanelItem {
 // ── Keys ──────────────────────────────────────────────────────────────────────
 
 export const CAJAS_KEYS = {
-  padres:      ()                   => ['cajas', 'padres']                   as const,
-  padre:       (id: number)         => ['cajas', 'padres', id]               as const,
-  auxiliares:  (sucursalId: number) => ['cajas', 'auxiliares', sucursalId]   as const,
-  auxiliar:    (id: number)         => ['cajas', 'auxiliares', 'item', id]   as const,
-  status:      (sucursalId: number) => ['cajas', 'status', sucursalId]       as const,
-  saldo:       (sesionId: number)   => ['cajas', 'saldo', sesionId]          as const,
-  movimientos: (sesionId: number)   => ['cajas', 'movimientos', sesionId]    as const,
-  panel:       ()                   => ['cajas', 'panel-admin']              as const,
+  padres:      ()                     => ['cajas', 'padres']                     as const,
+  padre:       (id: number)           => ['cajas', 'padres', id]                 as const,
+  auxiliares:  (sucursalId: number)   => ['cajas', 'auxiliares', sucursalId]     as const,
+  auxiliar:    (id: number)           => ['cajas', 'auxiliares', 'item', id]     as const,
+  status:      (sucursalId: number)   => ['cajas', 'status', sucursalId]         as const,
+  saldo:       (sesionId: number)     => ['cajas', 'saldo', sesionId]            as const,
+  movimientos: (sesionId: number)     => ['cajas', 'movimientos', sesionId]      as const,
+  panel:       ()                     => ['cajas', 'panel-admin']                as const,
+  capacidad:   (cajaPadreId: number)  => ['cajas', 'capacidad', cajaPadreId]     as const,
 }
 
 // ── Queries — Superadmin: CajaPadre CRUD ─────────────────────────────────────
@@ -293,10 +309,16 @@ export function useAbrirAuxiliar(sesionPrincipalId: number) {
   })
 }
 
+export interface CierrePayload {
+  totalArqueo:    string
+  denominaciones?: Denominacion[]
+  observaciones?: string
+}
+
 export function useCerrarAuxiliar(sesionId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { totalArqueo: string; observaciones?: string }) =>
+    mutationFn: (data: CierrePayload) =>
       apiFetch(`/cajas/punto/${sesionId}/cierre`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -309,17 +331,20 @@ export function useCerrarAuxiliar(sesionId: number) {
   })
 }
 
-export function useCierreMultiple() {
+export function useCierreMultipleConArqueo() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { sesionId: number; totalArqueo: string; observaciones?: string }) =>
-      apiFetch(`/cajas/punto/${data.sesionId}/cierre`, {
+    mutationFn: (data: CierrePayload & { sesionId: number }) => {
+      const { sesionId, ...payload } = data
+      return apiFetch(`/cajas/punto/${sesionId}/cierre`, {
         method: 'POST',
-        body: JSON.stringify({ totalArqueo: data.totalArqueo, observaciones: data.observaciones }),
-      }),
+        body: JSON.stringify(payload),
+      })
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas', 'status'] }),
   })
 }
+
 
 export function useCambioCustodia(sesionOrigenId: number) {
   const qc = useQueryClient()
@@ -367,6 +392,14 @@ export function usePanelAdmin() {
   return useQuery({
     queryKey: CAJAS_KEYS.panel(),
     queryFn:  () => apiFetch<SucursalPanelItem[]>('/cajas/panel-admin'),
+  })
+}
+
+export function useCapacidadPunto(cajaPadreId: number) {
+  return useQuery({
+    queryKey: CAJAS_KEYS.capacidad(cajaPadreId),
+    queryFn:  () => apiFetch<CapacidadPunto>(`/cajas/principales/${cajaPadreId}/capacidad`),
+    enabled:  cajaPadreId > 0,
   })
 }
 

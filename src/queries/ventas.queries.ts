@@ -65,6 +65,39 @@ export interface Envio {
   valorServicio: number; valorTotal: number; estado: string; createdAt: string
 }
 
+export interface GuiaPersona {
+  nombre: string | null; documento: string | null
+  telefono: string | null; email: string | null
+  direccion: string | null; ciudad: string | null; pais: string
+}
+
+export interface GuiaEnvio {
+  numeroGuia:   string
+  codigoBarras: string
+  tipo:         'nacional' | 'internacional'
+  tipoServicio: string
+  remitente:    GuiaPersona
+  destinatario: GuiaPersona
+  peso: {
+    fisicoKg: number; tarificadoKg: number
+    altoCm: number | null; anchoCm: number | null; largoCm: number | null
+  }
+  valores: {
+    servicio: number; seguro: number
+    declarado: number | null; total: number
+  }
+  estado:     string
+  generadoEn: string
+}
+
+export interface CrearEnvioResult {
+  guia:        GuiaEnvio
+  envio:       Envio
+  movimiento:  { id: number; tipo: string; monto: string }
+  saldoActual: number
+  alertas:     string[]
+}
+
 export interface TarifaEspecial {
   id: number; productoId: number; minCantidad: number; maxCantidad: number | null; precio: number
 }
@@ -285,7 +318,7 @@ export function useCrearEnvio(cajaId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: Record<string, unknown>) =>
-      apiFetch<Envio>(`/ventas/punto/${cajaId}/envio`, {
+      apiFetch<CrearEnvioResult>(`/ventas/punto/${cajaId}/envio`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),

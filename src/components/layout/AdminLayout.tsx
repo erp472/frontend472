@@ -48,7 +48,7 @@ export function AdminLayout() {
       <div className="flex h-screen flex-col">
         {tricolorBar}
         <TopNavBar />
-        <main className="flex flex-1 flex-col gap-4 overflow-auto p-4">
+        <main className="flex flex-1 flex-col overflow-hidden">
           <Outlet />
         </main>
       </div>

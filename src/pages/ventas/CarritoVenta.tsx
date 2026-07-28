@@ -12,6 +12,7 @@ import { Badge }       from '@/components/ui/badge'
 import { Label }       from '@/components/ui/label'
 import { Separator }   from '@/components/ui/separator'
 import { ScrollArea }  from '@/components/ui/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
@@ -44,8 +45,9 @@ import {
   type MedioPagoVenta,
   type TipoProducto,
   type ServicioCatalogo,
-  type Envio,
+  type GuiaEnvio,
 } from '@/queries/ventas.queries'
+import { GuiaPostal } from '@/components/GuiaPostal'
 
 // ── Validación de email ───────────────────────────────────────────────────────
 
@@ -231,13 +233,7 @@ const MEDIOS_PAGO: { value: MedioPagoVenta; label: string }[] = [
 type MedioPagoEnvio = Exclude<MedioPagoVenta, 'cheque'>
 
 const MEDIOS_PAGO_ENVIO: { value: MedioPagoEnvio; label: string }[] = [
-  { value: 'efectivo',          label: 'Efectivo' },
-  { value: 'tarjeta_debito',    label: 'Tarjeta Débito' },
-  { value: 'tarjeta_credito',   label: 'Tarjeta Crédito' },
-  { value: 'transferencia',     label: 'Transferencia' },
-  { value: 'consignacion',      label: 'Consignación' },
-  { value: 'preporteado',       label: 'Preporteado' },
-  { value: 'mixto_preporteado', label: 'Mixto-Preporteado' },
+  { value: 'efectivo', label: 'Efectivo' },
 ]
 
 // ── ResumenBanner ─────────────────────────────────────────────────────────────
@@ -761,7 +757,7 @@ function TabApartado({
 
       {/* ── Panel izquierdo: Nuevo Contrato ────────────────────────────────── */}
       <div className="w-44 shrink-0 flex flex-col border-r">
-        <div className="px-2.5 py-2 border-b shrink-0">
+        <div className="px-3 py-2 border-b shrink-0">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
             Nuevo contrato
           </p>
@@ -778,7 +774,7 @@ function TabApartado({
           </Select>
         </div>
 
-        <div className="px-2 py-1.5 shrink-0">
+        <div className="px-3 py-1.5 shrink-0">
           <p className="text-[10px] text-muted-foreground font-medium">No. Apartado Postal</p>
         </div>
 
@@ -788,11 +784,11 @@ function TabApartado({
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             </div>
           ) : !filtrados.length ? (
-            <p className="px-2 py-4 text-[11px] text-center text-muted-foreground">
+            <p className="px-3 py-4 text-[11px] text-center text-muted-foreground">
               Sin disponibles
             </p>
           ) : (
-            <div className="px-1.5 pb-2 space-y-0.5">
+            <div className="px-2 pb-2 space-y-0.5">
               {filtrados.map(a => (
                 <button
                   key={a.id}
@@ -821,7 +817,7 @@ function TabApartado({
 
       {/* ── Panel derecho: Formulario ───────────────────────────────────────── */}
       <ScrollArea className="flex-1">
-        <div className="p-3 space-y-3">
+        <div className="px-4 py-3 space-y-3">
 
           {/* Apartado seleccionado */}
           <div className="rounded-lg border bg-muted/30 px-3 py-2 min-h-[40px] flex items-center">
@@ -1225,6 +1221,7 @@ interface EnvioLocal {
   guia: string; servicioNombre: string; destinatario: string; ciudad: string
   cantidad: number; pesoFisico: number; pesoVolumetrico: number | null; pesoFacturado: number
   valorServicio: number; valorTotal: number
+  guiaData: GuiaEnvio
 }
 
 const personaDirVacia = (): PersonaDir => ({
@@ -1553,12 +1550,13 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-lg flex flex-col max-h-[90vh] p-0">
+        <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
           <DialogTitle className="text-sm">{title}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-1">
+        <ScrollArea className="flex-1 px-6 pb-6">
+        <div className="space-y-4 py-4">
           {/* Datos de la persona */}
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2 space-y-1">
@@ -1724,8 +1722,9 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
             )}
           </div>
         </div>
+        </ScrollArea>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 pb-6 shrink-0 border-t pt-4">
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
           <Button size="sm" onClick={handleOk} disabled={!nombre.trim()}>OK</Button>
         </DialogFooter>
@@ -1755,10 +1754,12 @@ function TabServiciosPostales({
   const [cantidadPiezas,setCantidadPiezas]= useState(1)
   const [medioPago,     setMedioPago]     = useState<MedioPagoEnvio>('efectivo')
   const [enviosGenerados, setEnviosGenerados] = useState<EnvioLocal[]>([])
+  const [guiaActual,    setGuiaActual]    = useState<GuiaEnvio | null>(null)
   const [modalPersona,  setModalPersona]  = useState<'remitente'|'destinatario'|null>(null)
   const [cajaDlgOpen,   setCajaDlgOpen]   = useState(false)
   const [cajaSeleccion, setCajaSeleccion] = useState<number>(7)
   const [cajaCantidad,  setCajaCantidad]  = useState(1)
+  const [activeTab,     setActiveTab]     = useState('formulario')
 
   const pesoKg = Number(pesoGramos) / 1000
 
@@ -1774,6 +1775,23 @@ function TabServiciosPostales({
     ...(anchoCm ? { anchoCm: Number(anchoCm) } : {}),
     ...(largoCm ? { largoCm: Number(largoCm) } : {}),
   })
+
+  const { data: clienteData } = useCliente(clienteId ?? 0)
+  useEffect(() => {
+    if (!clienteData) return
+    setRemitente(prev =>
+      prev.nombre !== '' ? prev : {
+        nombre:    clienteData.nombreCompleto,
+        empresa:   '',
+        documento: clienteData.numeroDocumento,
+        email:     clienteData.email     ?? '',
+        telefono:  clienteData.telefono  ?? '',
+        pais:      'CO',
+        cp:        clienteData.codigoPostal ?? '',
+        dir: { ...dirVacia(), modo: 'libre', textoLibre: clienteData.direccion ?? '', ciudad: clienteData.ciudad ?? '' },
+      },
+    )
+  }, [clienteData])
 
   const crearEnvio  = useCrearEnvio(cajaId)
   const agregarProd = useAgregarProducto(ventaId ?? 0, cajaId)
@@ -1830,20 +1848,23 @@ function TabServiciosPostales({
     ].filter(Boolean)
     if (obsPartes.length) body.observaciones = obsPartes.join(' | ')
 
-    const result: Envio = await crearEnvio.mutateAsync(body)
+    const result = await crearEnvio.mutateAsync(body)
+    setGuiaActual(result.guia)
+    setActiveTab('envios')
     setEnviosGenerados(prev => [...prev, {
-      guia:            result.numeroGuia,
+      guia:            result.envio.numeroGuia,
       servicioNombre:  selectedService?.nombre ?? '—',
-      destinatario:    result.destinatarioNombre ?? destinatario.nombre.trim(),
-      ciudad:          result.destinatarioCiudad ?? destinatario.dir.ciudad.trim() ?? destino.trim(),
+      destinatario:    result.envio.destinatarioNombre ?? destinatario.nombre.trim(),
+      ciudad:          result.envio.destinatarioCiudad ?? destinatario.dir.ciudad.trim() ?? destino.trim(),
       cantidad:        cantidadPiezas,
-      pesoFisico:      result.pesoFisicoKg,
+      pesoFisico:      result.envio.pesoFisicoKg,
       pesoVolumetrico: cotizacion?.pesoVolumetricoKg ?? null,
-      pesoFacturado:   result.pesoTarificadoKg,
-      valorServicio:   result.valorServicio,
-      valorTotal:      result.valorTotal,
+      pesoFacturado:   result.envio.pesoTarificadoKg,
+      valorServicio:   result.envio.valorServicio,
+      valorTotal:      result.envio.valorTotal,
+      guiaData:        result.guia,
     }])
-    toast.success(`Guía ${result.numeroGuia} generada`)
+    toast.success(`Guía ${result.envio.numeroGuia} generada`)
     resetForm()
   }
 
@@ -1869,16 +1890,26 @@ function TabServiciosPostales({
   const totalEnvios = enviosGenerados.reduce((s, e) => s + e.valorTotal, 0)
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
+        <TabsList className="shrink-0 mx-3 mt-2 mb-0 w-auto self-start">
+          <TabsTrigger value="formulario" className="text-xs">Formulario</TabsTrigger>
+          <TabsTrigger value="envios" className="text-xs">
+            Envíos
+            {enviosGenerados.length > 0 && (
+              <span className="ml-1.5 rounded-full bg-primary text-primary-foreground text-[10px] px-1.5 py-px font-medium">
+                {enviosGenerados.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ── Panel izquierdo: Formulario ──────────────────────────────────── */}
-      <div className="w-72 xl:w-80 shrink-0 border-r flex flex-col">
-        <div className="px-3 py-2 border-b shrink-0">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Nuevo envío</p>
-        </div>
+        {/* ── Tab 1: Formulario ─────────────────────────────────────────── */}
+        <TabsContent value="formulario" className="flex flex-col flex-1 overflow-hidden m-0 border-t">
+        <div className="flex flex-col flex-1 overflow-hidden">
 
-        <ScrollArea className="flex-1">
-          <div className="p-3 space-y-2.5">
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-4 py-3 space-y-2.5">
 
             {/* 1. País / Destino */}
             <div className="space-y-1">
@@ -2212,63 +2243,99 @@ function TabServiciosPostales({
           )}
         </div>
       </div>
+        </TabsContent>
 
-      {/* ── Panel derecho: Envíos generados ──────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center gap-3 px-3 py-2 border-b shrink-0 text-xs">
-          <span className="font-semibold">
-            Cant. envíos: <span className="text-primary">{enviosGenerados.length}</span>
-          </span>
-          <Separator orientation="vertical" className="h-3.5" />
-          <span className="font-semibold">
-            Total: <span className="text-primary">{fmt(totalEnvios)}</span>
-          </span>
-        </div>
+        {/* ── Tab 2: Envíos generados ───────────────────────────────────── */}
+        <TabsContent value="envios" className="flex flex-col flex-1 overflow-hidden m-0 border-t">
+          <div className="flex items-center gap-3 px-3 py-2 border-b shrink-0 text-xs">
+            <span className="font-semibold">
+              Cant. envíos: <span className="text-primary">{enviosGenerados.length}</span>
+            </span>
+            <Separator orientation="vertical" className="h-3.5" />
+            <span className="font-semibold">
+              Total: <span className="text-primary">{fmt(totalEnvios)}</span>
+            </span>
+          </div>
 
-        <div className="flex-1 overflow-auto">
-          {enviosGenerados.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
-              <Truck className="size-8 opacity-20" />
-              <p className="text-xs">No hay envíos generados en esta sesión</p>
-            </div>
-          ) : (
-            <table className="w-full text-[11px] border-collapse">
-              <thead>
-                <tr className="border-b bg-muted/50 sticky top-0 z-10">
-                  <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Guía</th>
-                  <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Servicio</th>
-                  <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Destino</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Cant.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Fís.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Vol.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Tar.</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Valor Flete</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Total</th>
-                  <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Desc.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {enviosGenerados.map((e, i) => (
-                  <tr key={`${e.guia}-${i}`} className="border-b hover:bg-muted/30">
-                    <td className="px-2 py-2 font-mono font-semibold whitespace-nowrap">{e.guia}</td>
-                    <td className="px-2 py-2 max-w-[120px] truncate">{e.servicioNombre}</td>
-                    <td className="px-2 py-2 max-w-[100px] truncate">{e.ciudad || e.destinatario}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{e.cantidad}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{(e.pesoFisico * 1000).toFixed(0)} g</td>
-                    <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
-                      {e.pesoVolumetrico != null ? `${e.pesoVolumetrico} kg` : '—'}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular-nums">{e.pesoFacturado} kg</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{fmt(e.valorServicio)}</td>
-                    <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmt(e.valorTotal)}</td>
-                    <td className="px-2 py-2 text-right text-muted-foreground">—</td>
+          <ScrollArea className="flex-1">
+            {enviosGenerados.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
+                <Truck className="size-8 opacity-20" />
+                <p className="text-xs">No hay envíos generados en esta sesión</p>
+              </div>
+            ) : (
+              <table className="w-full text-[11px] border-collapse">
+                <thead>
+                  <tr className="border-b bg-muted/50 sticky top-0 z-10">
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Guía</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Servicio</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Destino</th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Cant.</th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Fís.</th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Vol.</th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Tar.</th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Valor Flete</th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Total</th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Guía</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {enviosGenerados.map((e, i) => (
+                    <tr key={`${e.guia}-${i}`} className="border-b hover:bg-muted/30">
+                      <td className="px-2 py-2 font-mono font-semibold whitespace-nowrap">{e.guia}</td>
+                      <td className="px-2 py-2 max-w-[120px] truncate">{e.servicioNombre}</td>
+                      <td className="px-2 py-2 max-w-[100px] truncate">{e.ciudad || e.destinatario}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{e.cantidad}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{(e.pesoFisico * 1000).toFixed(0)} g</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                        {e.pesoVolumetrico != null ? `${e.pesoVolumetrico} kg` : '—'}
+                      </td>
+                      <td className="px-2 py-2 text-right tabular-nums">{e.pesoFacturado} kg</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(e.valorServicio)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmt(e.valorTotal)}</td>
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          type="button"
+                          className={cn(
+                            'text-[10px] underline-offset-2 hover:underline',
+                            guiaActual?.numeroGuia === e.guiaData.numeroGuia
+                              ? 'text-primary font-semibold'
+                              : 'text-muted-foreground',
+                          )}
+                          onClick={() => setGuiaActual(
+                            guiaActual?.numeroGuia === e.guiaData.numeroGuia ? null : e.guiaData,
+                          )}
+                        >
+                          {guiaActual?.numeroGuia === e.guiaData.numeroGuia ? 'Ocultar' : 'Ver guía'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {/* Preview de guía postal seleccionada */}
+            {guiaActual && (
+              <div className="flex flex-col items-center gap-3 py-4 border-t mt-2">
+                <div className="flex items-center gap-2 w-full max-w-[380px] px-2">
+                  <p className="text-sm font-semibold flex-1">
+                    Guía <span className="font-mono text-primary">{guiaActual.numeroGuia}</span>
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => window.print()}>
+                    Imprimir
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setGuiaActual(null)}>
+                    <X className="size-4" />
+                  </Button>
+                </div>
+                <GuiaPostal guia={guiaActual} />
+              </div>
+            )}
+          </ScrollArea>
+        </TabsContent>
+
+      </Tabs>
 
       {/* ── Modal: Remitente / Destinatario ──────────────────────────────── */}
       <AddressModal
@@ -3080,8 +3147,9 @@ export default function CarritoVenta() {
     [flags, flagsLoading],
   )
 
-  const [ventaId,   setVentaId]   = useState<number | null>(null)
-  const [cliente,   setCliente]   = useState<ClienteResumen | null>(null)
+  const [ventaId,        setVentaId]        = useState<number | null>(null)
+  const [cliente,        setCliente]        = useState<ClienteResumen | null>(null)
+  const [carritoVisible, setCarritoVisible] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const first = ALL_TABS.find(t => t.value !== 'historial' && t.value !== 'pagar')
     return first?.value ?? 'historial'
@@ -3183,26 +3251,48 @@ export default function CarritoVenta() {
           ) : (
             <>
               {/* Tab bar */}
-              <div className="flex border-b shrink-0">
-                {tabs.map(t => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => handleTabClick(t.value)}
-                    className={cn(
-                      'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
-                      activeTab === t.value
-                        ? t.primary
-                          ? 'border-primary bg-primary/5 text-primary'
-                          : 'border-primary text-primary'
-                        : t.primary
-                          ? 'border-transparent text-primary/70 hover:text-primary hover:bg-primary/5'
-                          : 'border-transparent text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+              <div className="flex border-b shrink-0 items-stretch">
+                <div className="flex flex-1 overflow-x-auto">
+                  {tabs.map(t => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => handleTabClick(t.value)}
+                      className={cn(
+                        'px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap',
+                        activeTab === t.value
+                          ? t.primary
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-primary text-primary'
+                          : t.primary
+                            ? 'border-transparent text-primary/70 hover:text-primary hover:bg-primary/5'
+                            : 'border-transparent text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Toggle carrito */}
+                <button
+                  type="button"
+                  onClick={() => setCarritoVisible(v => !v)}
+                  title={carritoVisible ? 'Ocultar carrito' : 'Mostrar carrito'}
+                  className={cn(
+                    'shrink-0 flex items-center gap-1.5 px-3 border-l -mb-px border-b-2 transition-colors',
+                    carritoVisible
+                      ? 'border-b-primary text-primary bg-primary/5'
+                      : 'border-b-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40',
+                  )}
+                >
+                  <ShoppingCart className="size-3.5" />
+                  {(carrito?.detalle?.length ?? 0) > 0 && (
+                    <span className="min-w-[16px] h-4 rounded-full bg-primary text-primary-foreground text-[9px] px-1 flex items-center justify-center font-bold leading-none">
+                      {carrito?.detalle?.length ?? 0}
+                    </span>
+                  )}
+                </button>
               </div>
 
               {/* Tab content */}
@@ -3262,9 +3352,9 @@ export default function CarritoVenta() {
           )}
         </div>
 
-        {/* Right: cart — solo visible con cliente activo */}
-        {cliente && (
-          <div className="w-80 xl:w-96 flex flex-col overflow-hidden shrink-0">
+        {/* Right: cart — solo visible con cliente activo y carritoVisible */}
+        {cliente && carritoVisible && (
+          <div className="w-80 xl:w-96 flex flex-col overflow-hidden shrink-0 border-l">
             <CarritoPanel
               ventaId={ventaId}
               cajaId={cajaId}
