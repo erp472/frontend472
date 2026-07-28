@@ -15,12 +15,12 @@ import { isTauri } from '@/lib/tauri'
 export function useAcceso() {
   const user     = useSessionStore((s) => s.user)
   const permisos = user?.permisos ?? []
-  const isAdmin  = user?.rol === 'ADMIN_SISTEMA'
+  const isAdmin  = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
 
   const entorno    = import.meta.env.DEV ? 'dev' : (import.meta.env.VITE_ENTORNO ?? 'prod')
   const esTauri    = isTauri()
   const plataforma = esTauri ? 'tauri' : 'web'
-  const { data: flags } = useFeatureFlagsActivos({ entorno, plataforma })
+  const { data: flags, isLoading: flagsLoading, isFetching: flagsFetching } = useFeatureFlagsActivos({ entorno, plataforma })
 
   /** ¿El feature flag está activo? ADMIN_SISTEMA siempre pasa (puede gestionar módulos apagados). */
   const flagActivo = (codigo: string): boolean =>
@@ -34,5 +34,5 @@ export function useAcceso() {
   const puede = (permiso: string, flag?: string): boolean =>
     tiene(permiso) && (!flag || flagActivo(flag))
 
-  return { puede, tiene, flagActivo, isAdmin, esTauri, permisos, flags }
+  return { puede, tiene, flagActivo, isAdmin, esTauri, permisos, flags, flagsLoading, flagsFetching }
 }

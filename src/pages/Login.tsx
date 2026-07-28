@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { useApiForm } from '@/lib/useApiForm'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, ApiError } from '@/lib/api'
 import { useSessionStore, userSchema, type User } from '@/stores/useSessionStore'
 import { isTauri, getMacAddress } from '@/lib/tauri'
 import { Input } from '@/components/ui/input'
@@ -16,10 +16,13 @@ const loginSchema = z.object({
 })
 type LoginData = z.infer<typeof loginSchema>
 
+const WEB_ONLY_ROLES:     User['rol'][] = ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'USUARIO_POST', 'ADMINISTRATIVO', 'INVENTARIOS']
+const DESKTOP_ONLY_ROLES: User['rol'][] = ['CAJERO', 'SUPERVISOR_REGIONAL']
+
 export default function Login() {
   const navigate = useNavigate()
   const setToken = useSessionStore((s) => s.setToken)
-  const setUser = useSessionStore((s) => s.setUser)
+  const setUser  = useSessionStore((s) => s.setUser)
 
   const { form, handleSubmit, isPending, serverError } = useApiForm<typeof loginSchema, void>({
     schema: loginSchema,
@@ -38,13 +41,22 @@ export default function Login() {
         body: JSON.stringify(data),
         headers: extraHeaders,
       })
-      setToken(res.access_token)
-      if (res.user) {
-        setUser(res.user)
-      } else {
-        const user = await apiFetch('/auth/me', {}, userSchema)
-        setUser(user)
+
+      // Resuelve el usuario pasando el token explícitamente — aún no está en el store
+      const resolvedUser = res.user ?? await apiFetch('/auth/me', {
+        headers: { Authorization: `Bearer ${res.access_token}` },
+      }, userSchema)
+
+      if (isTauri() && WEB_ONLY_ROLES.includes(resolvedUser.rol)) {
+        throw new ApiError(403, 'No esta permitido el acceso a la app de escritorio')
       }
+
+      if (!isTauri() && DESKTOP_ONLY_ROLES.includes(resolvedUser.rol)) {
+        throw new ApiError(403, 'Esta cuenta solo puede acceder desde la app de escritorio')
+      }
+
+      setToken(res.access_token)
+      setUser(resolvedUser)
     },
     onSuccess: () => navigate('/', { replace: true }),
   })

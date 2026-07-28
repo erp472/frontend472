@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Monitor, ToggleLeft, ClipboardList, Vault } from 'lucide-react'
+import { Monitor, ToggleLeft, ClipboardList, Vault, Globe } from 'lucide-react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LabGuard } from '@/components/layout/LabGuard'
 import { isTauri } from '@/lib/tauri'
@@ -24,6 +24,7 @@ const EquiposPage    = lazy(() => import('@/pages/admin/Equipos'))
 const ProductosPage    = lazy(() => import('@/pages/admin/Productos'))
 const ServiciosPage    = lazy(() => import('@/pages/admin/Servicios'))
 const ApartadosPage    = lazy(() => import('@/pages/admin/ApartadosAdmin'))
+const AsignacionCajerosPage = lazy(() => import('@/pages/admin/AsignacionCajerosPage'))
 const AuditPage          = lazy(() => import('@/pages/admin/Audit'))
 const PuntoVentasAdminPage = lazy(() => import('@/pages/admin/PuntoVentasAdmin'))
 const PuntoCajasPage    = lazy(() => import('@/pages/cajas/PuntoCajas'))
@@ -171,6 +172,23 @@ function DesktopOnly() {
   )
 }
 
+// ── Pantalla solo-web ─────────────────────────────────────────────────────────
+function WebOnly() {
+  return (
+    <div className="flex min-h-screen items-center justify-center p-8 text-center">
+      <div className="max-w-sm space-y-4">
+        <div className="flex justify-center">
+          <Globe className="h-16 w-16 text-muted-foreground/40" />
+        </div>
+        <h1 className="text-xl font-semibold">No esta permitido el acceso a la app de escritorio</h1>
+        <p className="text-muted-foreground text-sm">
+          Tu rol de administrador solo puede acceder desde el portal web 4-72.
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Guards ────────────────────────────────────────────────────────────────────
 function AuthGuard() {
   const status = useSessionStore((s) => s.status)
@@ -178,8 +196,14 @@ function AuthGuard() {
 
   if (status === 'loading') return <PageLoader />
   if (status === 'unauthenticated') {
+    if (isTauri() && !import.meta.env.DEV) return <Navigate to="/unauthorized" replace />
     return <Navigate to="/login" state={{ from: location }} replace />
   }
+  return <Outlet />
+}
+
+function WebOnlyRoute() {
+  if (isTauri() && !import.meta.env.DEV) return <Unauthorized />
   return <Outlet />
 }
 
@@ -201,13 +225,17 @@ function PermisoGuard({ permiso }: { permiso: string }) {
   return <Outlet />
 }
 
-const DESKTOP_ONLY_ROLES: RolUsuario[] = ['CAJERO', 'USUARIO_POST']
+const DESKTOP_ONLY_ROLES: RolUsuario[] = ['CAJERO', 'SUPERVISOR_REGIONAL']
+const WEB_ONLY_ROLES: RolUsuario[]     = ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'USUARIO_POST', 'ADMINISTRATIVO', 'INVENTARIOS']
 
 function PlatformGuard() {
   const userRol = useSessionStore((s) => s.user?.rol)
 
   if (userRol && DESKTOP_ONLY_ROLES.includes(userRol) && !isTauri()) {
     return <DesktopOnly />
+  }
+  if (userRol && WEB_ONLY_ROLES.includes(userRol) && isTauri()) {
+    return <WebOnly />
   }
   return <Outlet />
 }
@@ -223,7 +251,7 @@ function FlagGuard({ flag }: { flag: string }) {
   const plataforma = isTauri() ? 'tauri' : 'web'
   const { data: activeFlags, isLoading } = useFeatureFlagsActivos({ entorno, plataforma })
 
-  if (userRol === 'ADMIN_SISTEMA') return <Outlet />
+  if (userRol === 'ADMIN_SISTEMA' || userRol === 'ADMIN_NACIONAL') return <Outlet />
   if (isLoading) return <PageLoader />
   if (!activeFlags?.some((f) => f.codigo === flag)) return <ModuleUnavailable />
   return <Outlet />
@@ -288,6 +316,13 @@ export const router = createBrowserRouter(
                       element: <FlagGuard flag="modulo_equipos" />,
                       children: [{ path: '/admin/devices', element: lazySuspense(EquiposPage) }],
                     },
+                  ],
+                },
+
+                // Regionales y Sucursales — solo ADMIN_SISTEMA (super administrador)
+                {
+                  element: <RoleGuard roles={['ADMIN_SISTEMA']} />,
+                  children: [
                     {
                       element: <FlagGuard flag="modulo_sucursales" />,
                       children: [{ path: '/admin/branches', element: lazySuspense(SucursalesPage) }],
@@ -372,7 +407,10 @@ export const router = createBrowserRouter(
                     <RoleGuard roles={['INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />
                   ),
                   children: [
-                    { path: '/inventario', element: lazySuspense(InventarioPage) },
+                    {
+                      element: <FlagGuard flag="modulo_inventario" />,
+                      children: [{ path: '/inventario', element: lazySuspense(InventarioPage) }],
+                    },
                   ],
                 },
 
@@ -387,7 +425,8 @@ export const router = createBrowserRouter(
                       element: <FlagGuard flag="modulo_comercios" />,
                       children: [{ path: '/admin/comercios', element: lazySuspense(ComerciosPage) }],
                     },
-                    { path: '/admin/feature-flags', element: lazySuspense(FeatureFlagsPage) },
+                    { path: '/admin/feature-flags',       element: lazySuspense(FeatureFlagsPage) },
+                    { path: '/admin/asignacion-cajeros',  element: lazySuspense(AsignacionCajerosPage) },
                   ],
                 },
 
@@ -416,8 +455,11 @@ export const router = createBrowserRouter(
       ],
     },
 
-    // Rutas públicas
-    { path: '/login', element: lazySuspense(Login) },
+    // Rutas públicas — login solo en web, no en Tauri
+    {
+      element: <WebOnlyRoute />,
+      children: [{ path: '/login', element: lazySuspense(Login) }],
+    },
     { path: '/unauthorized', element: <Unauthorized /> },
     // Workbench — solo ADMIN_SISTEMA
     {

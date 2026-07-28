@@ -30,6 +30,7 @@ const VENTAS_TAB_FLAGS = [
   'ventas:tab_especiales',
   'ventas:tab_apartado',
   'ventas:tab_servicios',
+  'ventas:tab_historial',
 ]
 
 // Muestra flags de navegación + flags de tabs de ventas

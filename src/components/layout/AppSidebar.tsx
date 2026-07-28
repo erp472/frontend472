@@ -21,6 +21,7 @@ import {
   BarChart2,
   Bell,
   MailOpen,
+  UserCog,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -89,8 +90,8 @@ const navMain: NavGroup[] = [
     items: [
       { title: 'Usuarios',        url: '/admin/users',        icon: Users,       permiso: 'admin:usuarios', roles: ['ADMIN_SISTEMA'],                   flag: 'modulo_usuarios'   },
       { title: 'Comercios',       url: '/admin/comercios',    icon: Building,    roles: ['ADMIN_SISTEMA'],                                                     flag: 'modulo_comercios'  },
-      { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_regionales' },
-      { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_sucursales' },
+      { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_regionales' },
+      { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_sucursales' },
       { title: 'Cajas auxiliares', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_cajas'      },
       { title: 'Equipos',         url: '/admin/devices',      icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_equipos'    },
     ],
@@ -98,7 +99,7 @@ const navMain: NavGroup[] = [
   {
     label: 'Inventario',
     items: [
-      { title: 'Inventario', url: '/inventario', icon: Package, roles: ['INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+      { title: 'Inventario', url: '/inventario', icon: Package, roles: ['ADMIN_SISTEMA'], flag: 'modulo_inventario' },
     ],
   },
   {
@@ -151,7 +152,8 @@ const navMain: NavGroup[] = [
     label:      'Sistema',
     plataforma: 'web',
     items: [
-      { title: 'Permisos', url: '/admin/permisos', icon: ShieldCheck, roles: ['ADMIN_SISTEMA'], permiso: 'admin:usuarios', flag: 'sistema_permisos' },
+      { title: 'Permisos',           url: '/admin/permisos',           icon: ShieldCheck, roles: ['ADMIN_SISTEMA'], permiso: 'admin:usuarios', flag: 'sistema_permisos' },
+      { title: 'Asignación Cajeros', url: '/admin/asignacion-cajeros', icon: UserCog,     roles: ['ADMIN_SISTEMA'] },
       {
         title:    'Configuración',
         icon:     Settings2,
@@ -231,7 +233,7 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
             .filter((item) => {
               if (item.plataforma === 'tauri' && !esTauri) return false
               if (item.plataforma === 'web'   &&  esTauri) return false
-              if (item.roles && !isAdmin && !item.roles.includes(user?.rol as RolUsuario)) return false
+              if (item.roles && !item.roles.includes(user?.rol as RolUsuario)) return false
               if (item.permiso && !puede(item.permiso, item.flag)) return false
               if (!item.permiso && item.flag && !isAdmin && !flagActivo(item.flag)) return false
               return true
@@ -254,7 +256,7 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
                       const visibleChildren = item.children.filter((c) => {
                         if (c.plataforma === 'tauri' && !esTauri) return false
                         if (c.plataforma === 'web'   &&  esTauri) return false
-                        if (c.roles && !isAdmin && !c.roles.includes(user?.rol as RolUsuario)) return false
+                        if (c.roles && !c.roles.includes(user?.rol as RolUsuario)) return false
                         if (c.permiso && !puede(c.permiso, c.flag)) return false
                         if (!c.permiso && c.flag && !isAdmin && !flagActivo(c.flag)) return false
                         return true

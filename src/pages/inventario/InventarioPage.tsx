@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   Package, Search, ClipboardList, History,
   AlertTriangle, CheckCircle, XCircle, ChevronLeft, ChevronRight,
-  Loader2, RefreshCw,
+  Loader2, RefreshCw, PlusCircle, Bell,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useForm } from 'react-hook-form'
@@ -21,30 +21,32 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { useSessionStore } from '@/stores/useSessionStore'
-import { useSucursales }   from '@/queries/sucursales.queries'
 import {
-  useStock, useMovimientos, useAjusteInventario,
-  type StockItem, type MovimientoItem,
+  useInventarioSucursales, useAlertasStock,
+  useStock, useMovimientos,
+  useAjusteInventario, useEntradaInventario,
+  type StockItem, type MovimientoItem, type EstadoStock,
 } from '@/queries/inventario.queries'
 
 // ── Badge de estado ───────────────────────────────────────────────────────────
 
-function EstadoBadge({ estado }: { estado: 'ok' | 'bajo' | 'critico' }) {
+function EstadoBadge({ estado }: { estado: EstadoStock }) {
   if (estado === 'ok')
     return (
-      <Badge className="bg-green-100 text-green-800 border-green-200 gap-1">
+      <Badge className="bg-green-100 text-green-800 border-green-200 gap-1 dark:bg-green-900/30 dark:text-green-400">
         <CheckCircle className="size-3" /> OK
       </Badge>
     )
   if (estado === 'bajo')
     return (
-      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 gap-1">
+      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 gap-1 dark:bg-yellow-900/30 dark:text-yellow-400">
         <AlertTriangle className="size-3" /> Bajo
       </Badge>
     )
   return (
-    <Badge className="bg-red-100 text-red-800 border-red-200 gap-1">
+    <Badge className="bg-red-100 text-red-800 border-red-200 gap-1 dark:bg-red-900/30 dark:text-red-400">
       <XCircle className="size-3" /> Crítico
     </Badge>
   )
@@ -54,10 +56,10 @@ function EstadoBadge({ estado }: { estado: 'ok' | 'bajo' | 'critico' }) {
 
 function TipoMovBadge({ tipo }: { tipo: string }) {
   const map: Record<string, string> = {
-    entrada:   'bg-green-100 text-green-800',
-    salida:    'bg-red-100 text-red-800',
-    ajuste:    'bg-blue-100 text-blue-800',
-    devolucion:'bg-purple-100 text-purple-800',
+    entrada:    'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+    salida:     'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+    ajuste:     'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+    devolucion: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
   }
   return (
     <Badge className={`${map[tipo] ?? 'bg-muted text-muted-foreground'} capitalize text-[10px]`}>
@@ -80,7 +82,7 @@ function AjusteModal({
   const mutation = useAjusteInventario(sucursalId)
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<AjusteForm>({
-    resolver: zodResolver(ajusteSchema),
+    resolver:      zodResolver(ajusteSchema),
     defaultValues: { cantidad_nueva: item.stockActual, observacion: '' },
   })
 
@@ -88,15 +90,8 @@ function AjusteModal({
     mutation.mutate(
       { productoId: item.productoId, cantidad_nueva: data.cantidad_nueva, observacion: data.observacion || undefined },
       {
-        onSuccess: () => {
-          toast.success('Stock actualizado')
-          reset()
-          onClose()
-        },
-        onError: (err: unknown) => {
-          const msg = err instanceof Error ? err.message : 'Error al ajustar'
-          toast.error(msg)
-        },
+        onSuccess: () => { toast.success('Stock actualizado'); reset(); onClose() },
+        onError:   (err: unknown) => toast.error(err instanceof Error ? err.message : 'Error al ajustar'),
       },
     )
   }
@@ -106,38 +101,24 @@ function AjusteModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ClipboardList className="size-4" />
-            Ajuste físico de stock
+            <ClipboardList className="size-4" /> Ajuste físico de stock
           </DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            {item.productoCodigo} — {item.productoNombre}
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">{item.productoCodigo} — {item.productoNombre}</p>
         </DialogHeader>
-
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
           <div className="flex gap-6 text-sm">
-            <span className="text-muted-foreground">Conteo actual: <strong>{item.stockActual}</strong></span>
+            <span className="text-muted-foreground">Actual: <strong>{item.stockActual}</strong></span>
             <span className="text-muted-foreground">Mínimo: <strong>{item.stockMinimo}</strong></span>
           </div>
-
           <div className="space-y-1">
             <Label htmlFor="cantidad_nueva">Conteo físico real</Label>
-            <Input
-              id="cantidad_nueva"
-              type="number"
-              min={0}
-              {...register('cantidad_nueva')}
-            />
-            {errors.cantidad_nueva && (
-              <p className="text-xs text-destructive">{errors.cantidad_nueva.message}</p>
-            )}
+            <Input id="cantidad_nueva" type="number" min={0} {...register('cantidad_nueva')} />
+            {errors.cantidad_nueva && <p className="text-xs text-destructive">{errors.cantidad_nueva.message}</p>}
           </div>
-
           <div className="space-y-1">
-            <Label htmlFor="observacion">Observación (opcional)</Label>
-            <Input id="observacion" {...register('observacion')} placeholder="Motivo del ajuste…" />
+            <Label htmlFor="obs-ajuste">Observación (opcional)</Label>
+            <Input id="obs-ajuste" {...register('observacion')} placeholder="Motivo del ajuste…" />
           </div>
-
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
             <Button type="submit" disabled={mutation.isPending}>
@@ -151,27 +132,108 @@ function AjusteModal({
   )
 }
 
-const ROLES_WRITE = ['INVENTARIOS', 'ADMIN_SISTEMA']
+// ── Modal de entrada de mercancía ─────────────────────────────────────────────
+
+const entradaSchema = z.object({
+  cantidad:    z.coerce.number().int().min(1, 'Debe ser mayor a 0'),
+  observacion: z.string().max(500).optional(),
+})
+type EntradaForm = z.infer<typeof entradaSchema>
+
+function EntradaModal({
+  item, sucursalId, open, onClose,
+}: { item: StockItem; sucursalId: number; open: boolean; onClose: () => void }) {
+  const mutation = useEntradaInventario(sucursalId)
+
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<EntradaForm>({
+    resolver:      zodResolver(entradaSchema),
+    defaultValues: { cantidad: 1, observacion: '' },
+  })
+
+  const onSubmit = (data: EntradaForm) => {
+    mutation.mutate(
+      { productoId: item.productoId, cantidad: data.cantidad, observacion: data.observacion || undefined },
+      {
+        onSuccess: (updated) => {
+          toast.success(`Entrada registrada. Stock ahora: ${updated.stockActual}`)
+          reset()
+          onClose()
+        },
+        onError: (err: unknown) => toast.error(err instanceof Error ? err.message : 'Error al registrar entrada'),
+      },
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PlusCircle className="size-4" /> Entrada de mercancía
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">{item.productoCodigo} — {item.productoNombre}</p>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
+          <div className="flex gap-6 text-sm">
+            <span className="text-muted-foreground">Stock actual: <strong>{item.stockActual}</strong></span>
+            <span className="text-muted-foreground">Mínimo: <strong>{item.stockMinimo}</strong></span>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cantidad-entrada">Cantidad a ingresar</Label>
+            <Input id="cantidad-entrada" type="number" min={1} {...register('cantidad')} />
+            {errors.cantidad && <p className="text-xs text-destructive">{errors.cantidad.message}</p>}
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="obs-entrada">Observación (opcional)</Label>
+            <Input id="obs-entrada" {...register('observacion')} placeholder="Ej: Recepción de pedido #123…" />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
+              Registrar entrada
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Filtros de estado ─────────────────────────────────────────────────────────
+
+const ESTADO_FILTROS: { value: EstadoStock | ''; label: string }[] = [
+  { value: '',        label: 'Todos' },
+  { value: 'ok',     label: 'OK' },
+  { value: 'bajo',   label: 'Bajo' },
+  { value: 'critico', label: 'Crítico' },
+]
 
 // ── Tabla de stock ────────────────────────────────────────────────────────────
 
+const ROLES_WRITE = ['INVENTARIOS', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']
+
 function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: boolean }) {
-  const [buscar,       setBuscar]       = useState('')
-  const [soloConStock, setSoloConStock] = useState(false)
-  const [pagina,       setPagina]       = useState(1)
-  const [selected,     setSelected]     = useState<StockItem | null>(null)
+  const [buscar,        setBuscar]        = useState('')
+  const [soloConStock,  setSoloConStock]  = useState(false)
+  const [estadoFiltro,  setEstadoFiltro]  = useState<EstadoStock | ''>('')
+  const [pagina,        setPagina]        = useState(1)
+  const [ajusteItem,    setAjusteItem]    = useState<StockItem | null>(null)
+  const [entradaItem,   setEntradaItem]   = useState<StockItem | null>(null)
   const limite = 50
+
+  const resetPagina = () => setPagina(1)
 
   const { data, isLoading, isFetching, refetch } = useStock(
     sucursalId,
-    { buscar: buscar || undefined, soloConStock, pagina, limite },
+    { buscar: buscar || undefined, soloConStock, estado: estadoFiltro || undefined, pagina, limite },
   )
 
   const totalPaginas = data ? Math.ceil(data.total / limite) : 1
 
   return (
     <div className="space-y-3">
-      {/* Filters */}
+      {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
@@ -179,19 +241,44 @@ function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: bo
             className="pl-8"
             placeholder="Buscar producto…"
             value={buscar}
-            onChange={(e) => { setBuscar(e.target.value); setPagina(1) }}
+            onChange={(e) => { setBuscar(e.target.value); resetPagina() }}
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Switch id="solo-stock" checked={soloConStock} onCheckedChange={(v) => { setSoloConStock(v); setPagina(1) }} />
-          <Label htmlFor="solo-stock" className="text-sm cursor-pointer">Solo con stock</Label>
+
+        {/* Filtro por estado */}
+        <div className="flex rounded-md border overflow-hidden">
+          {ESTADO_FILTROS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => { setEstadoFiltro(f.value); resetPagina() }}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium transition-colors',
+                estadoFiltro === f.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted',
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
+
+        <div className="flex items-center gap-2">
+          <Switch
+            id="solo-stock"
+            checked={soloConStock}
+            onCheckedChange={(v) => { setSoloConStock(v); resetPagina() }}
+          />
+          <Label htmlFor="solo-stock" className="text-sm cursor-pointer">Con stock</Label>
+        </div>
+
         <Button size="sm" variant="ghost" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`size-4 ${isFetching ? 'animate-spin' : ''}`} />
+          <RefreshCw className={cn('size-4', isFetching && 'animate-spin')} />
         </Button>
       </div>
 
-      {/* Table */}
+      {/* Tabla */}
       <div className="rounded-md border overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -216,7 +303,14 @@ function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: bo
                   </tr>
                 ))
               : data?.datos.map((item) => (
-                  <tr key={item.productoId} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={item.productoId}
+                    className={cn(
+                      'border-b last:border-b-0 hover:bg-muted/30 transition-colors',
+                      item.estado === 'critico' && 'bg-red-50/50 dark:bg-red-950/10',
+                      item.estado === 'bajo'    && 'bg-yellow-50/50 dark:bg-yellow-950/10',
+                    )}
+                  >
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.productoCodigo}</td>
                     <td className="px-4 py-3 font-medium max-w-56 truncate">{item.productoNombre}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground capitalize">{item.productoTipo}</td>
@@ -230,9 +324,14 @@ function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: bo
                     </td>
                     {canWrite && (
                       <td className="px-4 py-3">
-                        <Button size="sm" variant="outline" onClick={() => setSelected(item)}>
-                          Ajustar
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button size="sm" variant="outline" onClick={() => setEntradaItem(item)} className="h-7 text-xs">
+                            <PlusCircle className="size-3 mr-1" /> Entrada
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setAjusteItem(item)} className="h-7 text-xs">
+                            Ajustar
+                          </Button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -249,7 +348,7 @@ function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: bo
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* Paginación */}
       {totalPaginas > 1 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>{data?.total ?? 0} productos</span>
@@ -265,12 +364,20 @@ function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: bo
         </div>
       )}
 
-      {selected && (
+      {ajusteItem && (
         <AjusteModal
-          item={selected}
+          item={ajusteItem}
           sucursalId={sucursalId}
-          open={!!selected}
-          onClose={() => setSelected(null)}
+          open={!!ajusteItem}
+          onClose={() => setAjusteItem(null)}
+        />
+      )}
+      {entradaItem && (
+        <EntradaModal
+          item={entradaItem}
+          sucursalId={sucursalId}
+          open={!!entradaItem}
+          onClose={() => setEntradaItem(null)}
         />
       )}
     </div>
@@ -378,6 +485,51 @@ function MovimientosTable({ sucursalId }: { sucursalId: number }) {
   )
 }
 
+// ── Panel de alertas ──────────────────────────────────────────────────────────
+
+function AlertasPanel({ onSelectSucursal }: { onSelectSucursal: (id: number) => void }) {
+  const { data: alertas, isLoading } = useAlertasStock()
+
+  if (isLoading) return <Skeleton className="h-24 rounded-lg" />
+  if (!alertas?.length) return null
+
+  const totalCritico = alertas.reduce((n, a) => n + a.critico, 0)
+  const totalBajo    = alertas.reduce((n, a) => n + a.bajo,    0)
+
+  return (
+    <div className="rounded-lg border border-orange-200 bg-orange-50/60 dark:border-orange-800 dark:bg-orange-950/20 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Bell className="size-4 text-orange-600 dark:text-orange-400" />
+        <h3 className="text-sm font-semibold text-orange-800 dark:text-orange-300">Alertas de stock</h3>
+        <div className="ml-auto flex items-center gap-2">
+          {totalCritico > 0 && (
+            <Badge className="bg-red-600 hover:bg-red-600 text-[10px]">{totalCritico} crítico{totalCritico !== 1 ? 's' : ''}</Badge>
+          )}
+          {totalBajo > 0 && (
+            <Badge className="bg-yellow-500 hover:bg-yellow-500 text-[10px]">{totalBajo} bajo{totalBajo !== 1 ? 's' : ''}</Badge>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {alertas.map((a) => (
+          <button
+            key={a.sucursalId}
+            type="button"
+            onClick={() => onSelectSucursal(a.sucursalId)}
+            className="flex items-center justify-between rounded-md border border-orange-200 dark:border-orange-800 bg-white dark:bg-background px-3 py-2 text-left text-sm hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors"
+          >
+            <span className="font-medium truncate">{a.sucursalNombre}</span>
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+              {a.critico > 0 && <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px]">{a.critico} crítico</Badge>}
+              {a.bajo    > 0 && <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-[10px]">{a.bajo} bajo</Badge>}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function InventarioPage() {
@@ -385,11 +537,19 @@ export default function InventarioPage() {
 
   const isAdmin  = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
   const canWrite = !!user?.rol && ROLES_WRITE.includes(user.rol)
-  const defaultId = user?.sucursal_id ?? 0
 
+  const { data: sucursalesData, isLoading: loadingSucursales } = useInventarioSucursales()
+
+  const defaultId = user?.sucursal_id ?? 0
   const [sucursalId, setSucursalId] = useState<number>(defaultId)
 
-  const { data: sucursalesData } = useSucursales({ limite: 500 })
+  // Cuando carga la lista y solo hay una sucursal disponible, la selecciona automáticamente
+  const sucursales = sucursalesData ?? []
+  if (sucursales.length === 1 && sucursalId === 0) {
+    setSucursalId(sucursales[0].id)
+  }
+
+  const sucursalSeleccionada = sucursales.find((s) => s.id === sucursalId)
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-6xl mx-auto">
@@ -398,28 +558,53 @@ export default function InventarioPage() {
         <div className="flex items-center gap-2">
           <Package className="size-5 text-primary" />
           <h1 className="text-xl font-semibold">Inventario</h1>
+          {sucursalSeleccionada?.alertas ? (
+            <Badge className="bg-orange-500 hover:bg-orange-500 text-[10px]">
+              {sucursalSeleccionada.alertas} alerta{sucursalSeleccionada.alertas !== 1 ? 's' : ''}
+            </Badge>
+          ) : null}
         </div>
 
-        {isAdmin && (
-          <Select
-            value={String(sucursalId)}
-            onValueChange={(v) => setSucursalId(Number(v))}
-          >
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Seleccionar sucursal…" />
-            </SelectTrigger>
-            <SelectContent>
-              {sucursalesData?.datos.map((s) => (
-                <SelectItem key={s.id} value={String(s.id)}>{s.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        {isAdmin ? (
+          loadingSucursales ? (
+            <Skeleton className="h-9 w-56" />
+          ) : (
+            <Select
+              value={sucursalId > 0 ? String(sucursalId) : ''}
+              onValueChange={(v) => setSucursalId(Number(v))}
+            >
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Seleccionar sucursal…" />
+              </SelectTrigger>
+              <SelectContent>
+                {sucursales.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    <span className="flex items-center gap-2">
+                      {s.nombre}
+                      {s.alertas > 0 && (
+                        <Badge className="bg-orange-500 hover:bg-orange-500 text-[10px] ml-1">
+                          {s.alertas}
+                        </Badge>
+                      )}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )
+        ) : null}
       </div>
+
+      {/* Panel de alertas (solo admin nacional) */}
+      {isAdmin && (
+        <AlertasPanel onSelectSucursal={(id) => setSucursalId(id)} />
+      )}
 
       {sucursalId === 0 ? (
         <div className="rounded-md border px-6 py-10 text-center text-sm text-muted-foreground">
-          Selecciona una sucursal para ver el inventario.
+          {loadingSucursales
+            ? 'Cargando sucursales…'
+            : 'Selecciona una sucursal para ver el inventario.'}
         </div>
       ) : (
         <Tabs defaultValue="stock">

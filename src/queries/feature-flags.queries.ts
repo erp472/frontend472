@@ -56,7 +56,7 @@ export function useFeatureFlagsActivos(
     queryKey: ffKeys.activos(entorno, plataforma),
     queryFn:  () =>
       apiFetch(`/feature-flags/activos?${params}`, {}, z.array(FeatureFlagActivoSchema)),
-    staleTime: 5 * 60_000,
+    staleTime: 0,
   })
 }
 

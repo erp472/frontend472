@@ -20,8 +20,9 @@ export interface ClienteResumen {
 
 export interface DetalleVenta {
   id: number; productoId: number; nombreProducto: string | null
-  tipoProducto: TipoProducto | null; cantidad: number
-  precioUnitario: number; descuento: number; subtotal: number
+  codigoProducto: string | null; tipoProducto: TipoProducto | null
+  cantidad: number; precioUnitario: number; descuento: number
+  subtotal: number; porcentajeTax: number
 }
 
 export interface Venta {
