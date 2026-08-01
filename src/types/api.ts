@@ -12,19 +12,21 @@ export interface PaginaMeta {
 // ── Usuarios ─────────────────────────────────────────────────────────────────
 
 export interface UserResponse {
-  id:           number
-  nombre:       string
-  email:        string
-  rol:          RolUsuario
-  activo:       boolean
-  telefono:     string | null
-  ultimoLogin:  string | null
-  sucursal:     { id: number; codigo: string; nombre: string; ciudad: string | null } | null
-  pais:         { id: number; nombre: string } | null
-  departamento: { id: number; nombre: string } | null
-  ciudad:       { id: number; nombre: string } | null
-  createdAt:    string
-  updatedAt:    string
+  id:              number
+  nombre:          string
+  email:           string
+  rol:             RolUsuario
+  activo:          boolean
+  telefono:        string | null
+  tipoDocumento:   string | null
+  numeroDocumento: string | null
+  ultimoLogin:     string | null
+  sucursal:        { id: number; codigo: string; nombre: string; ciudad: string | null } | null
+  pais:            { id: number; nombre: string } | null
+  departamento:    { id: number; nombre: string } | null
+  ciudad:          { id: number; nombre: string } | null
+  createdAt:       string
+  updatedAt:       string
 }
 
 export interface UserMeta {
@@ -40,19 +42,22 @@ export interface PaginatedUsers {
 }
 
 export interface UserQueryParams {
-  buscar?: string | undefined
-  rol?:    string | undefined
-  activo?: boolean | undefined
-  pagina?: number | undefined
-  limite?: number | undefined
+  buscar?:      string | undefined
+  rol?:         string | undefined
+  sucursal_id?: number | undefined
+  activo?:      boolean | undefined
+  pagina?:      number | undefined
+  limite?:      number | undefined
 }
 
 export interface CreateUserInput {
-  nombre:      string
-  email:       string
-  password:    string
-  rol:         RolUsuario
-  sucursal_id?: number | null | undefined
+  nombre:           string
+  email:            string
+  password:         string
+  rol:              RolUsuario
+  sucursal_id?:     number | null | undefined
+  tipo_documento?:  string | null | undefined
+  numero_documento?: string | null | undefined
 }
 
 export interface UpdateUserInput {

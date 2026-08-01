@@ -19,9 +19,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useSessionStore } from '@/stores/useSessionStore'
 import {
-  useStatusPunto, useAbrirCajaDirecta, useCajaPadre,
+  useStatusPunto, useAbrirCajaDirecta, useCajaPadre, useHistorialSesiones,
   type CardAuxiliar, type PanelPunto, type TipoAlerta,
 } from '@/queries/cajas.queries'
+import { useUsers } from '@/queries/users.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -266,10 +267,10 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
           <p className="text-2xl font-bold tabular-nums leading-none">{fmtOrDash(card.saldoActual)}</p>
           <div className="flex items-center gap-3 text-[11px]">
             <span className="flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400">
-              <TrendingUp className="size-2.5" /> {fmt(card.ingresosTurno)}
+              <TrendingUp className="size-2.5" /> {fmt(card.ingresosSesion)}
             </span>
             <span className="flex items-center gap-0.5 text-red-500">
-              <TrendingDown className="size-2.5" /> {fmt(card.egresosTurno)}
+              <TrendingDown className="size-2.5" /> {fmt(card.egresosSesion)}
             </span>
           </div>
           {card.girosCount > 0 && (
@@ -351,19 +352,31 @@ function CajaModal({ open, onClose, card }: {
   open: boolean; onClose: () => void
   card: CardAuxiliar | null
 }) {
-  const navigate = useNavigate()
-  const user     = useSessionStore(s => s.user)
-  const esCajero = user?.rol === 'CAJERO'
+  const navigate    = useNavigate()
+  const user        = useSessionStore(s => s.user)
+  const esCajero    = user?.rol === 'CAJERO'
+  const esSupervisor = user?.rol === 'SUPERVISOR_REGIONAL' || user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
 
-  const [servicios, setServicios] = useState<string[]>([])
-  const [base,      setBase]      = useState('')
+  const [servicios,  setServicios]  = useState<string[]>([])
+  const [base,       setBase]       = useState('')
+  const [cajeroId,   setCajeroId]   = useState<number | undefined>(undefined)
 
-  const abrir = useAbrirCajaDirecta(card?.cajaId ?? 0)
+  const { data: usuariosSuc } = useUsers({
+    rol:        'CAJERO',
+    sucursal_id: user?.sucursal_id ?? undefined,
+    activo:     true,
+    limite:     50,
+  })
+  const cajeros = usuariosSuc?.datos ?? []
+
+  const abrir    = useAbrirCajaDirecta(card?.cajaId ?? 0)
+  const { data: historial } = useHistorialSesiones(card?.cajaId ?? 0)
 
   useEffect(() => {
     if (card) {
       setServicios([...(SERVICIOS[card.tipo] ?? [])])
       setBase('')
+      setCajeroId(card.cajeroId ?? undefined)
     }
   }, [card?.cajaId])
 
@@ -377,7 +390,7 @@ function CajaModal({ open, onClose, card }: {
   function submitApertura() {
     if (!card) return
     abrir.mutate(
-      { baseAsignada: base },
+      { baseAsignada: base, ...(cajeroId ? { cajeroAsignadoId: cajeroId } : {}) },
       {
         onSuccess: () => { toast.success(`${card.nombre} abierta`); onClose() },
         onError:   (e) => toast.error(e.message),
@@ -448,6 +461,24 @@ function CajaModal({ open, onClose, card }: {
 
                 <Separator />
 
+                {esSupervisor && cajeros.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Cajero asignado
+                    </Label>
+                    <select
+                      value={cajeroId ?? ''}
+                      onChange={e => setCajeroId(e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="">Sin asignar</option>
+                      {cajeros.map(c => (
+                        <option key={c.id} value={c.id}>{c.nombre} — {c.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Base de apertura
@@ -472,10 +503,10 @@ function CajaModal({ open, onClose, card }: {
                   <p className="text-3xl font-bold tabular-nums mt-1">{fmtOrDash(card.saldoActual)}</p>
                   <div className="flex justify-center gap-5 mt-2 text-xs">
                     <span className="flex items-center gap-1 text-emerald-700">
-                      <TrendingUp className="size-3" /> {fmt(card.ingresosTurno)}
+                      <TrendingUp className="size-3" /> {fmt(card.ingresosSesion)}
                     </span>
                     <span className="flex items-center gap-1 text-red-500">
-                      <TrendingDown className="size-3" /> {fmt(card.egresosTurno)}
+                      <TrendingDown className="size-3" /> {fmt(card.egresosSesion)}
                     </span>
                   </div>
                   {card.girosCount > 0 && (
@@ -505,6 +536,66 @@ function CajaModal({ open, onClose, card }: {
               <div className="rounded-lg border bg-muted/30 px-4 py-4 text-center">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Arqueo final</p>
                 <p className="text-3xl font-bold tabular-nums mt-1">{fmtOrDash(card.saldoActual)}</p>
+              </div>
+            )}
+
+            {/* Historial de sesiones */}
+            {historial && historial.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Historial de sesiones
+                </p>
+                <div className="rounded-lg border overflow-hidden divide-y text-xs">
+                  {historial.map(s => {
+                    const diferencia = s.montoCierre != null
+                      ? Number(s.montoCierre) - Number(s.montoApertura)
+                      : null
+                    const esForzada = s.estado === 'forzada'
+                    return (
+                      <div key={s.id} className={cn('px-3 py-2 flex items-center gap-3',
+                        esForzada && 'bg-destructive/5',
+                        s.estado === 'abierta' && 'bg-emerald-50/60 dark:bg-emerald-950/20',
+                      )}>
+                        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn('font-semibold',
+                              s.estado === 'abierta' ? 'text-emerald-600' : esForzada ? 'text-destructive' : 'text-foreground',
+                            )}>
+                              {s.estado === 'abierta' ? 'Abierta' : esForzada ? 'Forzada' : 'Cerrada'}
+                            </span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground tabular-nums">
+                              {new Date(s.fechaApertura).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' })}
+                              {' '}
+                              {new Date(s.fechaApertura).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {s.fechaCierre && (
+                              <>
+                                <span className="text-muted-foreground">→</span>
+                                <span className="text-muted-foreground tabular-nums">
+                                  {new Date(s.fechaCierre).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {s.observaciones && (
+                            <span className="text-muted-foreground truncate">{s.observaciones}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0 tabular-nums">
+                          <span className="text-muted-foreground">{fmt(s.montoApertura)}</span>
+                          {diferencia != null && (
+                            <span className={cn('font-semibold',
+                              diferencia < 0 ? 'text-destructive' : diferencia > 0 ? 'text-amber-600' : 'text-emerald-600',
+                            )}>
+                              {diferencia === 0 ? '✓' : diferencia > 0 ? `+${fmt(diferencia.toString())}` : fmt(diferencia.toString())}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
 

@@ -220,13 +220,13 @@ function Supervisor({ user }: { user: User }) {
                 {c.estado === 'abierta' && (
                   <span className="tabular-nums font-semibold text-right w-28 text-foreground">{fmt(c.saldoActual)}</span>
                 )}
-                {c.estado === 'abierta' && (c.ingresosTurno !== '0' || c.egresosTurno !== '0') && (
+                {c.estado === 'abierta' && (c.ingresosSesion !== '0' || c.egresosSesion !== '0') && (
                   <span className="flex items-center gap-2 text-[11px] text-muted-foreground w-36 justify-end">
                     <span className="flex items-center gap-0.5 text-emerald-600">
-                      <TrendingUp className="size-3" />{fmt(c.ingresosTurno)}
+                      <TrendingUp className="size-3" />{fmt(c.ingresosSesion)}
                     </span>
                     <span className="flex items-center gap-0.5 text-red-500">
-                      <TrendingDown className="size-3" />{fmt(c.egresosTurno)}
+                      <TrendingDown className="size-3" />{fmt(c.egresosSesion)}
                     </span>
                   </span>
                 )}

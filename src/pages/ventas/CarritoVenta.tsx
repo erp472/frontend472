@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ShoppingCart, Trash2, ChevronLeft, RefreshCw,
   Search, CheckCircle2, AlertTriangle, Loader2,
-  Package, MailOpen, Plus, ChevronRight, Tag, Pencil,
-  Truck, X, UserRound,
+  Package, MailOpen, Plus, Tag, Pencil,
+  Truck, X, UserRound, Eye, EyeOff,
 } from 'lucide-react'
 import { Button }      from '@/components/ui/button'
 import { Input }       from '@/components/ui/input'
@@ -25,6 +25,10 @@ import { useSessionStore } from '@/stores/useSessionStore'
 import { useAcceso } from '@/hooks/useAcceso'
 import { ApiError } from '@/lib/api'
 import { useCliente, useUpdateCliente, useCreateCliente, type TipoDocumento } from '@/queries/clientes.queries'
+import { useUser, useCreateUser, useUpdateUser } from '@/queries/users.queries'
+import {
+  useCaja, useStatusPunto, useAsignarCajero,
+} from '@/queries/cajas.queries'
 import {
   useCatalogoProductos,
   useTarifasEspecial,
@@ -236,6 +240,296 @@ const MEDIOS_PAGO_ENVIO: { value: MedioPagoEnvio; label: string }[] = [
   { value: 'efectivo', label: 'Efectivo' },
 ]
 
+// ── Tipos de documento ────────────────────────────────────────────────────────
+
+const TIPOS_DOCUMENTO = [
+  { value: 'cedula',            label: 'Cédula de Ciudadanía' },
+  { value: 'pasaporte',         label: 'Pasaporte' },
+  { value: 'tarjeta_identidad', label: 'Tarjeta de Identidad' },
+  { value: 'extranjeria',       label: 'Cédula de Extranjería' },
+  { value: 'nit',               label: 'NIT' },
+]
+
+// ── Crear cajero dialog ───────────────────────────────────────────────────────
+
+function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
+  open:       boolean
+  onClose:    () => void
+  sucursalId: number
+  sesionId:   number | null
+  onCreado:   () => void
+}) {
+  const crear        = useCreateUser()
+  const asignar      = useAsignarCajero()
+
+  const [nombre,          setNombre]          = useState('')
+  const [tipoDocumento,   setTipoDocumento]   = useState('')
+  const [numeroDocumento, setNumeroDocumento] = useState('')
+  const [email,           setEmail]           = useState('')
+  const [password,        setPassword]        = useState('')
+  const [showPwd,         setShowPwd]         = useState(false)
+  const [confirmando,     setConfirmando]     = useState(false)
+
+  function reset() {
+    setNombre(''); setTipoDocumento(''); setNumeroDocumento('')
+    setEmail(''); setPassword(''); setShowPwd(false); setConfirmando(false)
+  }
+
+  function handleClose() { reset(); onClose() }
+
+  function handleContinuar() {
+    if (!nombre.trim())          { toast.error('El nombre completo es obligatorio'); return }
+    if (!tipoDocumento)          { toast.error('El tipo de documento es obligatorio'); return }
+    if (!numeroDocumento.trim()) { toast.error('El número de documento es obligatorio'); return }
+    if (!email.trim())           { toast.error('El correo electrónico es obligatorio'); return }
+    if (password.length < 8)    { toast.error('La contraseña debe tener al menos 8 caracteres'); return }
+    setConfirmando(true)
+  }
+
+  async function handleConfirmar() {
+    try {
+      const usuario = await crear.mutateAsync({
+        nombre:           nombre.trim(),
+        email:            email.trim().toLowerCase(),
+        password,
+        rol:              'CAJERO',
+        sucursal_id:      sucursalId,
+        tipo_documento:   tipoDocumento,
+        numero_documento: numeroDocumento.trim(),
+      })
+      if (sesionId) {
+        await asignar.mutateAsync({ sesionId, cajeroId: usuario.id })
+      }
+      toast.success(`Cajero ${nombre.trim()} creado y asignado correctamente`)
+      reset()
+      onCreado()
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'Error al crear el cajero')
+      setConfirmando(false)
+    }
+  }
+
+  const tipoLabel = TIPOS_DOCUMENTO.find(t => t.value === tipoDocumento)?.label ?? tipoDocumento
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            {confirmando ? 'Confirmar datos del cajero' : 'Crear cajero'}
+          </DialogTitle>
+        </DialogHeader>
+
+        {!confirmando ? (
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="cj-nombre" className="text-xs">Nombre completo *</Label>
+              <Input id="cj-nombre" placeholder="Ej. María González"
+                value={nombre} onChange={e => setNombre(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-[1fr_1fr] gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipo de documento *</Label>
+                <Select value={tipoDocumento} onValueChange={setTipoDocumento}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Tipo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIPOS_DOCUMENTO.map(t => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cj-doc" className="text-xs">Número *</Label>
+                <Input id="cj-doc" placeholder="Número de doc."
+                  value={numeroDocumento} onChange={e => setNumeroDocumento(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cj-email" className="text-xs">Correo electrónico *</Label>
+              <Input id="cj-email" type="email" placeholder="cajero@4-72.com.co"
+                value={email} onChange={e => setEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cj-pwd" className="text-xs">Contraseña *</Label>
+              <div className="relative">
+                <Input id="cj-pwd" type={showPwd ? 'text' : 'password'}
+                  placeholder="Mínimo 8 caracteres" value={password}
+                  onChange={e => setPassword(e.target.value)} className="pr-9" />
+                <button type="button"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPwd(v => !v)}
+                >
+                  {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 py-1">
+            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-800 dark:text-amber-300 leading-snug">
+                  Verifique estos datos. Una vez creado, el <strong>nombre completo</strong>{' '}
+                  y el <strong>documento</strong> no podrán modificarse.
+                </p>
+              </div>
+              <div className="text-sm space-y-1.5 border-t border-amber-200 dark:border-amber-800 pt-3">
+                <div className="flex justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">Nombre completo:</span>
+                  <span className="font-semibold text-right">{nombre}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">Documento:</span>
+                  <span className="font-semibold text-right">{tipoLabel} · {numeroDocumento}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          {!confirmando ? (
+            <>
+              <Button variant="outline" onClick={handleClose}>Cancelar</Button>
+              <Button onClick={handleContinuar}>Continuar</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setConfirmando(false)}>Volver</Button>
+              <Button onClick={handleConfirmar} disabled={crear.isPending || asignar.isPending}>
+                {(crear.isPending || asignar.isPending) && (
+                  <Loader2 className="mr-1.5 size-4 animate-spin" />
+                )}
+                Confirmar y crear
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Editar cajero dialog ──────────────────────────────────────────────────────
+
+function EditarCajeroDialog({ cajeroId, open, onClose }: {
+  cajeroId: number
+  open:     boolean
+  onClose:  () => void
+}) {
+  const { data: cajero, isLoading } = useUser(cajeroId)
+  const update = useUpdateUser()
+
+  const [email,    setEmail]    = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPwd,  setShowPwd]  = useState(false)
+
+  useEffect(() => {
+    if (cajero) {
+      setEmail(cajero.email)
+      setTelefono(cajero.telefono ?? '')
+      setPassword('')
+    }
+  }, [cajero])
+
+  const tipoLabel = TIPOS_DOCUMENTO.find(t => t.value === cajero?.tipoDocumento)?.label
+    ?? cajero?.tipoDocumento ?? '—'
+
+  async function handleSave() {
+    if (!email.trim()) { toast.error('El correo es obligatorio'); return }
+    if (password && password.length < 8) {
+      toast.error('La nueva contraseña debe tener al menos 8 caracteres')
+      return
+    }
+    try {
+      await update.mutateAsync({
+        id: cajeroId,
+        data: {
+          email:    email.trim().toLowerCase(),
+          telefono: telefono.trim() || null,
+          ...(password && { password }),
+        },
+      })
+      toast.success('Datos del cajero actualizados')
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'Error al actualizar')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Editar cajero</DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="space-y-3 py-1">
+            <div className="rounded-lg bg-muted/40 border px-3 py-2.5 space-y-1.5 text-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Datos no modificables
+              </p>
+              <div className="flex justify-between gap-2">
+                <span className="text-xs text-muted-foreground">Nombre completo:</span>
+                <span className="font-medium text-right">{cajero?.nombre ?? '—'}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-xs text-muted-foreground">Documento:</span>
+                <span className="font-medium text-right">
+                  {cajero?.numeroDocumento ? `${tipoLabel} · ${cajero.numeroDocumento}` : '—'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="ej-email" className="text-xs">Correo electrónico</Label>
+              <Input id="ej-email" type="email" value={email}
+                onChange={e => setEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ej-tel" className="text-xs">Teléfono</Label>
+              <Input id="ej-tel" type="tel" placeholder="Opcional"
+                value={telefono} onChange={e => setTelefono(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ej-pwd" className="text-xs">Nueva contraseña (opcional)</Label>
+              <div className="relative">
+                <Input id="ej-pwd" type={showPwd ? 'text' : 'password'}
+                  placeholder="Dejar vacío para no cambiar" value={password}
+                  onChange={e => setPassword(e.target.value)} className="pr-9" />
+                <button type="button"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPwd(v => !v)}
+                >
+                  {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={isLoading || update.isPending}>
+            {update.isPending && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+            Guardar cambios
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── ResumenBanner ─────────────────────────────────────────────────────────────
 
 function ResumenBanner({ cajaId }: { cajaId: number }) {
@@ -425,8 +719,12 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setNoEncontrado(true)
+      } else if (err instanceof ApiError && err.status === 409) {
+        toast.error('Esta caja no tiene una sesión activa. Contacta al supervisor.')
+      } else if (err instanceof ApiError && err.status === 403) {
+        toast.error(err.message ?? 'Esta caja está asignada a otro cajero')
       } else {
-        toast.error('Error al buscar cliente')
+        toast.error(err instanceof ApiError ? err.message : 'Error al buscar cliente')
       }
     }
   }
@@ -469,13 +767,13 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:text-foreground"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
               onClick={() => setEditOpen(true)}
               title="Editar datos del cliente"
             >
-              <ChevronRight className="size-4" />
+              <Pencil className="size-3" /> Editar
             </Button>
             <Button variant="ghost" size="sm" className="text-xs h-7" onClick={onNuevaVenta}>
               Nueva venta
@@ -527,20 +825,17 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
             : <Search className="size-3.5" />}
           <span className="ml-1.5">Buscar</span>
         </Button>
-        {noEncontrado ? (
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-muted-foreground">No encontrado.</span>
-            <button
-              type="button"
-              onClick={() => setCrearOpen(true)}
-              className="flex items-center gap-0.5 font-medium text-primary hover:underline"
-            >
-              <Plus className="size-3" /> Crear cliente
-            </button>
-          </div>
-        ) : (
-          <span className="text-xs text-muted-foreground hidden sm:block">
-            Busca el cliente por documento para iniciar la venta
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1 text-xs shrink-0"
+          onClick={() => setCrearOpen(true)}
+        >
+          <Plus className="size-3" /> Crear cliente
+        </Button>
+        {noEncontrado && (
+          <span className="text-xs text-amber-600 font-medium shrink-0">
+            No encontrado
           </span>
         )}
       </div>
@@ -608,7 +903,7 @@ function TabProductos({
         </div>
       </div>
       {/* Tipo filter */}
-      <div className="flex gap-1.5 px-3 py-2 flex-wrap border-b shrink-0">
+      <div className="flex gap-1.5 px-3 py-2 overflow-x-auto border-b shrink-0 scrollbar-none">
         {TIPOS_PRODUCTO.map(t => (
           <button
             key={t.value}
@@ -627,7 +922,7 @@ function TabProductos({
       </div>
 
       {/* Catalog grid */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -639,8 +934,9 @@ function TabProductos({
         ) : (
           <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-3">
             {filtrado.map(p => {
-              const iva       = Math.round(p.precio * p.porcentajeTax / 100)
-              const total     = p.precio + iva
+              // p.precio es bruto (incluye IVA) — extraer en lugar de añadir
+              const iva       = Math.round(p.precio * p.porcentajeTax / (100 + p.porcentajeTax))
+              const total     = p.precio
               const sinStock  = p.stockActual !== null && p.stockActual === 0
               return (
                 <button
@@ -1153,7 +1449,7 @@ function TabProductosEspeciales({
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-auto">
+            <ScrollArea className="flex-1 min-h-0">
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="border-b bg-muted/40 sticky top-0 z-10">
@@ -1193,7 +1489,7 @@ function TabProductosEspeciales({
                   })}
                 </tbody>
               </table>
-            </div>
+            </ScrollArea>
             <div className="border-t px-4 py-2 flex justify-end items-center gap-3 bg-muted/20 shrink-0">
               <span className="text-xs text-muted-foreground">Total</span>
               <span className="text-base font-bold tabular-nums text-primary">
@@ -2584,12 +2880,13 @@ function TabResumenPago({
       await confirmar.mutateAsync({
         medioPago,
         emailFactura: email.trim(),
-        ...(showEfectivo && efectivo > 0 ? { efectivoRecibido: efectivo } : {}),
+        // Si no ingresó monto, se asume pago exacto (cambio = 0)
+        ...(showEfectivo ? { efectivoRecibido: efectivo > 0 ? efectivo : (isMixto ? enEc : total) } : {}),
       })
       toast.success('Pago confirmado')
       onExito()
-    } catch {
-      toast.error('No se pudo confirmar el pago')
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'No se pudo confirmar el pago')
     }
   }
 
@@ -2722,22 +3019,34 @@ function TabResumenPago({
 
         {/* Medio de pago */}
         <div className="space-y-1.5">
-          <Label className="text-xs">Medio de pago</Label>
-          <div className="flex flex-wrap gap-1.5">
+          <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Medio de pago
+          </Label>
+          <div className="grid grid-cols-2 gap-1.5">
             {MEDIOS_PAGO.map(m => (
-              <button
+              <label
                 key={m.value}
-                type="button"
-                onClick={() => setMedioPago(m.value)}
                 className={cn(
-                  'rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                  'flex items-center gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition-colors',
                   medioPago === m.value
                     ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                    : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground',
                 )}
               >
-                {m.label}
-              </button>
+                <input
+                  type="radio"
+                  name="medioPago"
+                  value={m.value}
+                  checked={medioPago === m.value}
+                  onChange={() => setMedioPago(m.value)}
+                  className="sr-only"
+                />
+                <span className={cn(
+                  'size-3 rounded-full border-2 shrink-0 transition-colors',
+                  medioPago === m.value ? 'border-primary bg-primary' : 'border-muted-foreground/40',
+                )} />
+                <span className="text-xs font-medium leading-none">{m.label}</span>
+              </label>
             ))}
           </div>
         </div>
@@ -2935,11 +3244,13 @@ function CarritoPanel({
           </div>
         )}
         <Button
-          className="w-full"
+          className="w-full h-10 text-sm font-semibold"
           onClick={onPagar}
           disabled={!ventaId || !detalle.length}
         >
-          Confirmar pago
+          {detalle.length > 0 && carrito
+            ? <>Ir a pagar — {fmt(carrito.total)}</>
+            : 'Confirmar pago'}
         </Button>
       </div>
     </div>
@@ -2986,13 +3297,14 @@ function PagarDialog({
       await confirmar.mutateAsync({
         medioPago,
         emailFactura: email.trim(),
-        ...(showEfectivo && efectivo > 0 ? { efectivoRecibido: efectivo } : {}),
+        // Si no ingresó monto, se asume pago exacto (cambio = 0)
+        ...(showEfectivo ? { efectivoRecibido: efectivo > 0 ? efectivo : total } : {}),
       })
       toast.success('Pago confirmado')
       onSuccess()
       onOpenChange(false)
-    } catch {
-      toast.error('No se pudo confirmar el pago')
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'No se pudo confirmar el pago')
     }
   }
 
@@ -3047,22 +3359,34 @@ function PagarDialog({
 
         {/* Medio de pago */}
         <div className="space-y-2">
-          <Label className="text-xs">Medio de pago</Label>
+          <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Medio de pago
+          </Label>
           <div className="grid grid-cols-2 gap-1.5">
             {MEDIOS_PAGO.map(m => (
-              <button
+              <label
                 key={m.value}
-                type="button"
-                onClick={() => setMedioPago(m.value)}
                 className={cn(
-                  'rounded-md border px-2.5 py-1.5 text-xs font-medium text-left transition-colors',
+                  'flex items-center gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition-colors',
                   medioPago === m.value
                     ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                    : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground',
                 )}
               >
-                {m.label}
-              </button>
+                <input
+                  type="radio"
+                  name="medioPagoDialog"
+                  value={m.value}
+                  checked={medioPago === m.value}
+                  onChange={() => setMedioPago(m.value)}
+                  className="sr-only"
+                />
+                <span className={cn(
+                  'size-3 rounded-full border-2 shrink-0 transition-colors',
+                  medioPago === m.value ? 'border-primary bg-primary' : 'border-muted-foreground/40',
+                )} />
+                <span className="text-xs font-medium leading-none">{m.label}</span>
+              </label>
             ))}
           </div>
         </div>
@@ -3147,9 +3471,18 @@ export default function CarritoVenta() {
     [flags, flagsLoading],
   )
 
-  const [ventaId,        setVentaId]        = useState<number | null>(null)
-  const [cliente,        setCliente]        = useState<ClienteResumen | null>(null)
-  const [carritoVisible, setCarritoVisible] = useState(true)
+  const { data: caja }        = useCaja(cajaId)
+  const { data: statusPunto } = useStatusPunto(sucursalId)
+
+  const cajaCard = statusPunto?.cajas.find(c => c.cajaId === cajaId)
+  const sesionId = cajaCard?.sesionId ?? null
+  const cajeroId = cajaCard?.cajeroId ?? null
+
+  const [crearCajeroOpen,  setCrearCajeroOpen]  = useState(false)
+  const [editarCajeroOpen, setEditarCajeroOpen] = useState(false)
+  const [ventaId,          setVentaId]          = useState<number | null>(null)
+  const [cliente,          setCliente]          = useState<ClienteResumen | null>(null)
+  const [carritoVisible,   setCarritoVisible]   = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const first = ALL_TABS.find(t => t.value !== 'historial' && t.value !== 'pagar')
     return first?.value ?? 'historial'
@@ -3216,12 +3549,55 @@ export default function CarritoVenta() {
         </button>
         <ShoppingCart className="size-4 text-primary shrink-0" />
         <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-bold leading-tight">Caja #{cajaId}</h1>
+          <h1 className="text-sm font-bold leading-tight">
+            {caja?.codigo ?? `Caja #${cajaId}`}
+          </h1>
           <p className="text-[11px] text-muted-foreground">
             {user?.nombre} · {new Date().toLocaleDateString('es-CO')}
           </p>
         </div>
+
+        {/* Gestión del cajero asignado */}
+        <div className="shrink-0 flex items-center gap-1.5">
+          {cajeroId == null ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => setCrearCajeroOpen(true)}
+            >
+              <UserRound className="size-3.5" />
+              Crear cajero
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => setEditarCajeroOpen(true)}
+            >
+              <Pencil className="size-3.5" />
+              Editar cajero
+            </Button>
+          )}
+        </div>
       </header>
+
+      {/* Diálogos de gestión de cajero */}
+      <CrearCajeroDialog
+        open={crearCajeroOpen}
+        onClose={() => setCrearCajeroOpen(false)}
+        sucursalId={sucursalId}
+        sesionId={sesionId}
+        onCreado={() => setCrearCajeroOpen(false)}
+      />
+      {cajeroId != null && (
+        <EditarCajeroDialog
+          cajeroId={cajeroId}
+          open={editarCajeroOpen}
+          onClose={() => setEditarCajeroOpen(false)}
+        />
+      )}
 
       {/* Resumen del turno */}
       <ResumenBanner cajaId={cajaId} />
@@ -3242,11 +3618,12 @@ export default function CarritoVenta() {
         {/* Left: catalog */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {!cliente ? (
-            /* Placeholder sin cliente */
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground select-none">
-              <ShoppingCart className="size-10 opacity-15" />
-              <p className="text-sm font-medium">Busca un cliente para comenzar la venta</p>
-              <p className="text-xs opacity-60">Las pestañas y el carrito se habilitarán una vez identificado el cliente.</p>
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground select-none px-6">
+              <Search className="size-10 opacity-10" />
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium">Busca o crea un cliente para comenzar</p>
+                <p className="text-xs opacity-60">Ingresa el número de documento en la barra de arriba y presiona Buscar.</p>
+              </div>
             </div>
           ) : (
             <>

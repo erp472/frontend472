@@ -45,6 +45,9 @@ function HomeRedirect() {
   if (user?.rol === 'CAJERO' || user?.rol === 'USUARIO_POST') {
     return <Navigate to="/ventas" replace />
   }
+  if (user?.rol === 'SUPERVISOR_REGIONAL') {
+    return <Navigate to="/cajas" replace />
+  }
   return (
     <Suspense fallback={<PageLoader />}>
       <Dashboard />

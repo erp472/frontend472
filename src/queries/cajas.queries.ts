@@ -61,8 +61,8 @@ export interface CardAuxiliar {
   saldoActual:   string | null
   baseDia:       string
   limiteAlerta:  string | null
-  ingresosTurno: string
-  egresosTurno:  string
+  ingresosSesion: string
+  egresosSesion:  string
   girosCount:    number
   girosValor:    string
   alertas:       TipoAlerta[]
@@ -149,8 +149,22 @@ export const CAJAS_KEYS = {
   status:      (sucursalId: number)   => ['cajas', 'status', sucursalId]         as const,
   saldo:       (sesionId: number)     => ['cajas', 'saldo', sesionId]            as const,
   movimientos: (sesionId: number)     => ['cajas', 'movimientos', sesionId]      as const,
+  historial:   (cajaId: number)       => ['cajas', 'historial', cajaId]          as const,
   panel:       ()                     => ['cajas', 'panel-admin']                as const,
   capacidad:   (cajaPadreId: number)  => ['cajas', 'capacidad', cajaPadreId]     as const,
+}
+
+export interface SesionHistorial {
+  id:                number
+  cajaId:            number
+  usuarioAperturaId: number
+  cajeroAsignadoId:  number | null
+  montoApertura:     string
+  montoCierre:       string | null
+  fechaApertura:     string
+  fechaCierre:       string | null
+  estado:            'abierta' | 'cerrada' | 'forzada'
+  observaciones:     string | null
 }
 
 // ── Queries — Superadmin: CajaPadre CRUD ─────────────────────────────────────
@@ -257,11 +271,11 @@ export function useDeleteCaja(id: number, sucursalId: number) {
 // ── Queries — Operación ───────────────────────────────────────────────────────
 
 /** Status del punto buscando por sucursalId (viene del session store) */
-export function useStatusPunto(sucursalId: number) {
+export function useStatusPunto(sucursalId: number, refetchInterval = 30_000) {
   return useQuery({
     queryKey:        CAJAS_KEYS.status(sucursalId),
     queryFn:         () => apiFetch<StatusPunto>(`/cajas/sucursal/${sucursalId}/status`),
-    refetchInterval: 30_000,
+    refetchInterval,
     enabled:         sucursalId > 0,
   })
 }
@@ -283,12 +297,44 @@ export function useMovimientos(sesionId: number) {
   })
 }
 
+export function useHistorialSesiones(cajaId: number) {
+  return useQuery({
+    queryKey: CAJAS_KEYS.historial(cajaId),
+    queryFn:  () => apiFetch<SesionHistorial[]>(`/cajas/auxiliares/${cajaId}/historial`),
+    enabled:  cajaId > 0,
+  })
+}
+
+export interface DiferenciaHistorial {
+  id:        number
+  tipo:      'faltante' | 'sobrante'
+  monto:     string
+  estado:    string
+  createdAt: string
+}
+
+export interface SesionConAlertas extends SesionHistorial {
+  diferencias: DiferenciaHistorial[]
+}
+
+export const CAJAS_ALERTAS_KEY = (cajaId: number) =>
+  ['cajas', 'alertas', cajaId] as const
+
+export function useHistorialAlertas(cajaId: number) {
+  return useQuery({
+    queryKey: CAJAS_ALERTAS_KEY(cajaId),
+    queryFn:  () => apiFetch<SesionConAlertas[]>(`/cajas/auxiliares/${cajaId}/alertas`),
+    enabled:  cajaId > 0,
+    staleTime: 60_000,
+  })
+}
+
 // ── Mutations — Operación ─────────────────────────────────────────────────────
 
 export function useAbrirCajaDirecta(cajaId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { baseAsignada: string }) =>
+    mutationFn: (data: { baseAsignada: string; cajeroAsignadoId?: number }) =>
       apiFetch<SesionResumen>(`/cajas/auxiliares/${cajaId}/abrir`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -412,5 +458,19 @@ export function useToggleServicioSucursal() {
         { method: 'PATCH', body: JSON.stringify({ activo }) },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: CAJAS_KEYS.panel() }),
+  })
+}
+
+export function useAsignarCajero() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sesionId, cajeroId }: { sesionId: number; cajeroId: number | null }) =>
+      apiFetch<unknown>(`/cajas/sesiones/${sesionId}/cajero-asignado`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ cajeroId }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas'] })
+    },
   })
 }

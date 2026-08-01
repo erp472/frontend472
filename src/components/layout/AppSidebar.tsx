@@ -99,7 +99,7 @@ const navMain: NavGroup[] = [
   {
     label: 'Inventario',
     items: [
-      { title: 'Inventario', url: '/inventario', icon: Package, roles: ['ADMIN_SISTEMA'], flag: 'modulo_inventario' },
+      { title: 'Inventario', url: '/inventario', icon: Package, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'INVENTARIOS'], flag: 'modulo_inventario' },
     ],
   },
   {

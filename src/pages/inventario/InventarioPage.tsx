@@ -530,6 +530,35 @@ function AlertasPanel({ onSelectSucursal }: { onSelectSucursal: (id: number) => 
   )
 }
 
+// ── Resumen de stock ──────────────────────────────────────────────────────────
+
+function StockResumen({ sucursalId }: { sucursalId: number }) {
+  const { data: todos }    = useStock(sucursalId, { limite: 1 })
+  const { data: okData }   = useStock(sucursalId, { estado: 'ok',      limite: 1 })
+  const { data: bajoData } = useStock(sucursalId, { estado: 'bajo',    limite: 1 })
+  const { data: crit }     = useStock(sucursalId, { estado: 'critico', limite: 1 })
+
+  const cards = [
+    { label: 'Total productos', value: todos?.total,   className: 'border-border' },
+    { label: 'Stock OK',        value: okData?.total,  className: 'border-green-300 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20' },
+    { label: 'Stock bajo',      value: bajoData?.total, className: 'border-yellow-300 bg-yellow-50/50 dark:border-yellow-800 dark:bg-yellow-950/20' },
+    { label: 'Crítico',         value: crit?.total,    className: 'border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/20' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {cards.map((c) => (
+        <div key={c.label} className={`rounded-lg border p-3 ${c.className}`}>
+          <p className="text-xs text-muted-foreground">{c.label}</p>
+          <p className="text-2xl font-bold mt-0.5">
+            {c.value === undefined ? <Skeleton className="h-8 w-12 mt-1" /> : c.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function InventarioPage() {
@@ -607,6 +636,8 @@ export default function InventarioPage() {
             : 'Selecciona una sucursal para ver el inventario.'}
         </div>
       ) : (
+        <>
+        <StockResumen sucursalId={sucursalId} />
         <Tabs defaultValue="stock">
           <TabsList>
             <TabsTrigger value="stock" className="gap-1.5">
@@ -624,6 +655,7 @@ export default function InventarioPage() {
             <MovimientosTable sucursalId={sucursalId} />
           </TabsContent>
         </Tabs>
+        </>
       )}
     </div>
   )

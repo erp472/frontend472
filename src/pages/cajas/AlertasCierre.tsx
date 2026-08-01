@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, AlertTriangle, TrendingDown, TrendingUp,
   RefreshCw, Lock, Loader2, ShieldCheck, ArrowLeft,
-  Vault, Clock,
+  Vault, Clock, History,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button }    from '@/components/ui/button'
@@ -13,8 +13,9 @@ import { Skeleton }  from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import {
-  useStatusPunto, useCierreMultiple, useCajaPadre,
-  type CardAuxiliar, type PanelPunto,
+  useStatusPunto, useCierreMultipleConArqueo, useCajaPadre,
+  useHistorialAlertas,
+  type CardAuxiliar, type PanelPunto, type SesionConAlertas,
 } from '@/queries/cajas.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -199,6 +200,119 @@ function BannerEstado({ filas }: { filas: FilaCaja[] }) {
         <span className="flex items-center gap-1 text-amber-700 dark:text-amber-400">
           <TrendingUp className="size-3.5" /> {sobrantes.length} con sobrante
         </span>
+      )}
+    </div>
+  )
+}
+
+// ── HistorialAlertasCaja ──────────────────────────────────────────────────────
+
+function fmtFechaCorta(iso: string) {
+  return new Date(iso).toLocaleDateString('es-CO', {
+    day: '2-digit', month: '2-digit', year: '2-digit',
+  })
+}
+
+const ESTADO_LABEL: Record<string, string> = {
+  pendiente: 'Pendiente',
+  aprobada:  'Aprobada',
+  rechazada: 'Rechazada',
+}
+
+function HistorialAlertasCaja({ cajaId, cajaNombre }: { cajaId: number; cajaNombre: string }) {
+  const { data, isLoading } = useHistorialAlertas(cajaId)
+
+  const sesionesConDif = (data ?? []).filter(s => s.diferencias.length > 0)
+
+  return (
+    <div>
+      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 bg-muted/40 text-muted-foreground border-b">
+        <History className="size-3" />
+        {cajaNombre}
+      </div>
+
+      {isLoading ? (
+        <div className="p-3 space-y-1.5">
+          {[1, 2].map(i => <Skeleton key={i} className="h-8 w-full" />)}
+        </div>
+      ) : sesionesConDif.length === 0 ? (
+        <p className="px-3 py-2.5 text-[11px] text-muted-foreground italic">
+          Sin alertas registradas
+        </p>
+      ) : (
+        <div className="divide-y">
+          {sesionesConDif.map(s => (
+            <SesionAlertaRow key={s.id} sesion={s} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SesionAlertaRow({ sesion }: { sesion: SesionConAlertas }) {
+  const [open, setOpen] = useState(false)
+  const neto = sesion.diferencias.reduce((sum, d) => {
+    const v = Number(d.monto)
+    return sum + (d.tipo === 'faltante' ? -v : v)
+  }, 0)
+
+  return (
+    <div className={cn(
+      'text-[11px]',
+      neto < -0.5 ? 'bg-red-50/50 dark:bg-red-950/10' : 'bg-amber-50/50 dark:bg-amber-950/10',
+    )}>
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-black/5 transition-colors text-left"
+        onClick={() => setOpen(v => !v)}
+      >
+        <div className="min-w-0">
+          <p className="font-medium truncate">{fmtFechaCorta(sesion.fechaApertura)}</p>
+          <p className={cn(
+            'font-semibold',
+            neto < -0.5 ? 'text-red-600' : 'text-amber-600',
+          )}>
+            {neto < 0 ? `Faltante ${fmt(Math.abs(neto))}` : `Sobrante +${fmt(neto)}`}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          <Badge variant="outline" className="text-[9px] px-1 py-0">
+            {sesion.diferencias.length}
+          </Badge>
+          {neto < -0.5
+            ? <TrendingDown className="size-3.5 text-red-400" />
+            : <TrendingUp   className="size-3.5 text-amber-400" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-2 space-y-1.5 border-t border-dashed border-current/10">
+          {sesion.diferencias.map(d => (
+            <div key={d.id} className="flex items-center justify-between pt-1.5">
+              <div>
+                <p className={cn(
+                  'font-semibold capitalize',
+                  d.tipo === 'faltante' ? 'text-red-600' : 'text-amber-600',
+                )}>
+                  {d.tipo === 'faltante' ? `−${fmt(d.monto)}` : `+${fmt(d.monto)}`}
+                </p>
+                <p className="text-muted-foreground text-[10px]">
+                  {ESTADO_LABEL[d.estado] ?? d.estado}
+                </p>
+              </div>
+              <span className="text-muted-foreground text-[10px]">
+                {fmtFechaCorta(d.createdAt)}
+              </span>
+            </div>
+          ))}
+          {sesion.montoCierre && (
+            <div className="pt-1 border-t border-dashed border-current/10 flex justify-between text-muted-foreground">
+              <span>Arqueo:</span>
+              <span className="tabular-nums font-medium text-foreground">{fmt(sesion.montoCierre)}</span>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -414,6 +528,25 @@ function PanelCierre({
           </div>
         </div>
       )}
+
+      {/* Historial completo de alertas por caja */}
+      <div className="border-t">
+        <div className="px-3 py-2 bg-muted/60 text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5 text-muted-foreground">
+          <History className="size-3" /> Historial de Alertas por Caja
+        </div>
+        {cajasPos.map(c => (
+          <HistorialAlertasCaja
+            key={c.cajaId}
+            cajaId={c.cajaId}
+            cajaNombre={c.nombre}
+          />
+        ))}
+        {cajasPos.length === 0 && (
+          <p className="px-3 py-2.5 text-[11px] text-muted-foreground italic">
+            No hay cajas POS configuradas
+          </p>
+        )}
+      </div>
     </div>
   )
 }
@@ -427,7 +560,7 @@ export default function AlertasCierre() {
 
   const { data, isLoading, isFetching, refetch } = useStatusPunto(id)
   const { data: cajaPadre } = useCajaPadre(data?.cajaPadreId ?? 0)
-  const cerrar = useCierreMultiple()
+  const cerrar = useCierreMultipleConArqueo()
 
   const [contado,       setContado]       = useState<Record<number, string>>({})
   const [cerrando,      setCerrando]      = useState<Record<number, boolean>>({})

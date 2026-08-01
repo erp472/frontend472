@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   Search, UserPlus, MoreHorizontal, Pencil,
-  UserX, UserCheck, Loader2, AlertCircle,
+  UserX, UserCheck, Loader2, AlertCircle, MapPin,
 } from 'lucide-react'
 import { Button }    from '@/components/ui/button'
 import { Input }     from '@/components/ui/input'
@@ -35,6 +35,7 @@ import {
 } from '@/queries/users.queries'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { rolLabels } from '@/components/layout/AppSidebar'
+import { GeoSelector, type GeoValue } from '@/components/GeoSelector'
 import type { UserResponse } from '@/types/api'
 import { ApiError } from '@/lib/api'
 
@@ -60,6 +61,12 @@ const ROWS_PER_PAGE = 15
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
+const geoSchema = z.object({
+  pais_id:          z.number().int().positive().nullable().optional(),
+  departamento_id:  z.number().int().positive().nullable().optional(),
+  ciudad_id:        z.number().int().positive().nullable().optional(),
+})
+
 const baseSchema = z.object({
   nombre:      z.string().min(2, 'Mínimo 2 caracteres').max(200),
   email:       z.string().email('Correo inválido'),
@@ -68,7 +75,7 @@ const baseSchema = z.object({
     (v) => (v === '' || v === null || v === undefined) ? null : Number(v),
     z.number().int().positive('Debe ser un número positivo').nullable()
   ).optional(),
-})
+}).merge(geoSchema)
 
 const createSchema = baseSchema.extend({
   password: z.string().min(8, 'Mínimo 8 caracteres').max(100),
@@ -106,14 +113,23 @@ function UserForm({ user, open, onClose }: UserFormProps) {
   const updateMutation = useUpdateUser()
   const isPending = createMutation.isPending || updateMutation.isPending
 
+  const [geo, setGeo] = useState<GeoValue>({
+    paisId:         user?.pais?.id         ?? null,
+    departamentoId: user?.departamento?.id ?? null,
+    ciudadId:       user?.ciudad?.id       ?? null,
+  })
+
   const form = useForm<any>({
     resolver: zodResolver((isEdit ? updateSchema : createSchema) as any),
     defaultValues: {
-      nombre:      user?.nombre ?? '',
-      email:       user?.email  ?? '',
-      password:    '',
-      rol:         user?.rol    ?? 'CAJERO',
-      sucursal_id: user?.sucursal?.id ?? null,
+      nombre:          user?.nombre ?? '',
+      email:           user?.email  ?? '',
+      password:        '',
+      rol:             user?.rol    ?? 'CAJERO',
+      sucursal_id:     user?.sucursal?.id ?? null,
+      pais_id:         user?.pais?.id         ?? null,
+      departamento_id: user?.departamento?.id ?? null,
+      ciudad_id:       user?.ciudad?.id       ?? null,
       ...(isEdit ? { activo: user!.activo } : {}),
     } as any,
   })
@@ -123,15 +139,29 @@ function UserForm({ user, open, onClose }: UserFormProps) {
   useEffect(() => {
     if (!open) return
     setServerError(null)
+    const paisId         = user?.pais?.id         ?? null
+    const departamentoId = user?.departamento?.id ?? null
+    const ciudadId       = user?.ciudad?.id       ?? null
+    setGeo({ paisId, departamentoId, ciudadId })
     form.reset({
-      nombre:      user?.nombre ?? '',
-      email:       user?.email  ?? '',
-      password:    '',
-      rol:         user?.rol    ?? 'CAJERO',
-      sucursal_id: user?.sucursal?.id ?? null,
+      nombre:          user?.nombre ?? '',
+      email:           user?.email  ?? '',
+      password:        '',
+      rol:             user?.rol    ?? 'CAJERO',
+      sucursal_id:     user?.sucursal?.id ?? null,
+      pais_id:         paisId,
+      departamento_id: departamentoId,
+      ciudad_id:       ciudadId,
       ...(isEdit ? { activo: user!.activo } : {}),
     } as any)
   }, [open, user])
+
+  function handleGeoChange(v: GeoValue) {
+    setGeo(v)
+    form.setValue('pais_id',         v.paisId)
+    form.setValue('departamento_id', v.departamentoId)
+    form.setValue('ciudad_id',       v.ciudadId)
+  }
 
   async function onSubmit(values: CreateForm | UpdateForm) {
     setServerError(null)
@@ -238,6 +268,15 @@ function UserForm({ user, open, onClose }: UserFormProps) {
             {form.formState.errors.sucursal_id && (
               <p className="text-xs text-destructive">{form.formState.errors.sucursal_id.message as string}</p>
             )}
+          </div>
+
+          {/* Ubicación geográfica */}
+          <div className="space-y-2">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <MapPin className="size-3.5" />
+              Ubicación geográfica
+            </p>
+            <GeoSelector value={geo} onChange={handleGeoChange} />
           </div>
 
           {/* Activo (solo edición) */}

@@ -20,11 +20,12 @@ export const USER_KEYS = {
 
 export function useUsers(params: UserQueryParams = {}) {
   const qs = new URLSearchParams()
-  if (params.buscar)           qs.set('buscar',      params.buscar)
-  if (params.rol)              qs.set('rol',          params.rol)
-  if (params.activo != null)   qs.set('activo',       String(params.activo))
-  if (params.pagina)           qs.set('pagina',       String(params.pagina))
-  if (params.limite)           qs.set('limite',       String(params.limite))
+  if (params.buscar)              qs.set('buscar',      params.buscar)
+  if (params.rol)                 qs.set('rol',          params.rol)
+  if (params.sucursal_id != null) qs.set('sucursal_id',  String(params.sucursal_id))
+  if (params.activo != null)      qs.set('activo',       String(params.activo))
+  if (params.pagina)              qs.set('pagina',       String(params.pagina))
+  if (params.limite)              qs.set('limite',       String(params.limite))
 
   return useQuery({
     queryKey:       USER_KEYS.list(params),
