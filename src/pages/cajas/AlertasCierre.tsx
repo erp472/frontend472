@@ -3,19 +3,27 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   CheckCircle2, AlertTriangle, TrendingDown, TrendingUp,
   RefreshCw, Lock, Loader2, ShieldCheck, ArrowLeft,
-  Vault, Clock, History,
+  Vault, Clock, History, Landmark, Receipt, ChevronDown, RotateCcw,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button }    from '@/components/ui/button'
-import { Input }     from '@/components/ui/input'
-import { Badge }     from '@/components/ui/badge'
-import { Skeleton }  from '@/components/ui/skeleton'
+import { Button }   from '@/components/ui/button'
+import { Input }    from '@/components/ui/input'
+import { Badge }    from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Label }     from '@/components/ui/label'
+import { Textarea }  from '@/components/ui/textarea'
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import {
   useStatusPunto, useCierreMultipleConArqueo, useCajaPadre,
-  useHistorialAlertas,
+  useHistorialAlertas, useConsignaciones, useRegistrarConsignacion,
+  useAprobarConsignacion, usePagoAdministrativo, useResetAutomatico,
+  useCerrarSesionPrincipal, useResolverDiferencia,
   type CardAuxiliar, type PanelPunto, type SesionConAlertas,
+  type DiferenciaHistorial,
 } from '@/queries/cajas.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -36,6 +44,11 @@ interface FilaCaja {
 interface CierreRegistrado {
   nombre:     string
   diferencia: number
+}
+
+interface CierreLocal {
+  contado:    number
+  diferencia: number | null
 }
 
 function calcEstado(dif: number | null): Estado {
@@ -84,14 +97,15 @@ function FilaCajaRow({
   cerrando:   boolean
 }) {
   const { caja, esperado, estado } = fila
-  const yaActiva = caja.estado === 'abierta'
+  const yaActiva      = caja.estado === 'abierta'
+  const recienCerrada = caja.estado === 'cerrada'
 
   const rowCls = cn(
     'grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-center px-4 py-3 border-b last:border-b-0 transition-colors',
-    estado === 'ok'        && 'bg-emerald-50/50 dark:bg-emerald-950/20',
-    estado === 'faltante'  && 'bg-red-50/60 dark:bg-red-950/20',
-    estado === 'sobrante'  && 'bg-amber-50/60 dark:bg-amber-950/20',
-    !yaActiva              && 'opacity-50',
+    (yaActiva || recienCerrada) && estado === 'ok'       && 'bg-emerald-50/50 dark:bg-emerald-950/20',
+    (yaActiva || recienCerrada) && estado === 'faltante' && 'bg-red-50/60 dark:bg-red-950/20',
+    (yaActiva || recienCerrada) && estado === 'sobrante' && 'bg-amber-50/60 dark:bg-amber-950/20',
+    !yaActiva && !recienCerrada && 'opacity-40',
   )
 
   return (
@@ -117,10 +131,17 @@ function FilaCajaRow({
             className="h-8 text-right text-sm tabular-nums font-mono"
             disabled={cerrando || caja.estado !== 'abierta'}
           />
-        ) : (
-          <span className="text-xs text-muted-foreground italic">
-            {caja.estado === 'cerrada' ? 'Cerrada' : 'Sin sesión'}
+        ) : recienCerrada ? (
+          <span className={cn(
+            'text-sm font-mono tabular-nums font-medium',
+            estado === 'ok'       && 'text-emerald-700 dark:text-emerald-400',
+            estado === 'faltante' && 'text-red-700 dark:text-red-400',
+            estado === 'sobrante' && 'text-amber-700 dark:text-amber-400',
+          )}>
+            {fila.contado !== null ? fmt(fila.contado) : '—'}
           </span>
+        ) : (
+          <span className="text-xs text-muted-foreground italic">Sin sesión</span>
         )}
       </div>
 
@@ -148,6 +169,17 @@ function FilaCajaRow({
             )}
             Cerrar
           </Button>
+        ) : recienCerrada ? (
+          <span className={cn(
+            'flex items-center gap-1 text-[11px] font-medium px-1.5',
+            estado === 'ok'       && 'text-emerald-700',
+            estado === 'faltante' && 'text-red-600',
+            estado === 'sobrante' && 'text-amber-600',
+            estado === 'pendiente' && 'text-muted-foreground',
+          )}>
+            <CheckCircle2 className="size-3.5 shrink-0" />
+            Cerrada
+          </span>
         ) : (
           <CheckCircle2 className="size-4 text-muted-foreground/40" />
         )}
@@ -250,6 +282,80 @@ function HistorialAlertasCaja({ cajaId, cajaNombre }: { cajaId: number; cajaNomb
   )
 }
 
+// ── DiferenciaItemRow ─────────────────────────────────────────────────────────
+
+function DiferenciaItemRow({ d }: { d: DiferenciaHistorial }) {
+  const [obs,     setObs]     = useState('')
+  const [showObs, setShowObs] = useState(false)
+  const resolver = useResolverDiferencia()
+
+  const handleResolver = (estado: 'aprobada' | 'rechazada') => {
+    resolver.mutate(
+      { id: d.id, estado, observaciones: obs.trim() || undefined },
+      {
+        onSuccess: () => toast.success(estado === 'aprobada' ? 'Diferencia aprobada' : 'Diferencia rechazada'),
+        onError:   e  => toast.error(e.message),
+      },
+    )
+  }
+
+  return (
+    <div className="pt-1.5 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className={cn('font-semibold capitalize', d.tipo === 'faltante' ? 'text-red-600' : 'text-amber-600')}>
+            {d.tipo === 'faltante' ? `−${fmt(d.monto)}` : `+${fmt(d.monto)}`}
+          </p>
+          <p className="text-muted-foreground text-[10px]">
+            {ESTADO_LABEL[d.estado] ?? d.estado}
+          </p>
+        </div>
+        <span className="text-muted-foreground text-[10px] shrink-0">{fmtFechaCorta(d.createdAt)}</span>
+      </div>
+
+      {d.estado === 'pendiente' && (
+        <div className="space-y-1">
+          {showObs && (
+            <Textarea
+              placeholder="Observaciones (opcional)"
+              value={obs}
+              onChange={e => setObs(e.target.value)}
+              className="h-12 text-[10px] resize-none"
+            />
+          )}
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              className="flex-1 h-5 text-[9px] px-1"
+              disabled={resolver.isPending}
+              onClick={() => handleResolver('aprobada')}
+            >
+              {resolver.isPending && <Loader2 className="size-2.5 animate-spin mr-0.5" />}
+              Aprobar
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="flex-1 h-5 text-[9px] px-1"
+              disabled={resolver.isPending}
+              onClick={() => handleResolver('rechazada')}
+            >
+              Rechazar
+            </Button>
+            <button
+              type="button"
+              className="text-[9px] text-muted-foreground underline shrink-0 ml-0.5"
+              onClick={() => setShowObs(v => !v)}
+            >
+              {showObs ? 'sin obs.' : 'obs.'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SesionAlertaRow({ sesion }: { sesion: SesionConAlertas }) {
   const [open, setOpen] = useState(false)
   const neto = sesion.diferencias.reduce((sum, d) => {
@@ -287,24 +393,9 @@ function SesionAlertaRow({ sesion }: { sesion: SesionConAlertas }) {
       </button>
 
       {open && (
-        <div className="px-3 pb-2 space-y-1.5 border-t border-dashed border-current/10">
+        <div className="px-3 pb-2 space-y-0 border-t border-dashed border-current/10">
           {sesion.diferencias.map(d => (
-            <div key={d.id} className="flex items-center justify-between pt-1.5">
-              <div>
-                <p className={cn(
-                  'font-semibold capitalize',
-                  d.tipo === 'faltante' ? 'text-red-600' : 'text-amber-600',
-                )}>
-                  {d.tipo === 'faltante' ? `−${fmt(d.monto)}` : `+${fmt(d.monto)}`}
-                </p>
-                <p className="text-muted-foreground text-[10px]">
-                  {ESTADO_LABEL[d.estado] ?? d.estado}
-                </p>
-              </div>
-              <span className="text-muted-foreground text-[10px]">
-                {fmtFechaCorta(d.createdAt)}
-              </span>
-            </div>
+            <DiferenciaItemRow key={d.id} d={d} />
           ))}
           {sesion.montoCierre && (
             <div className="pt-1 border-t border-dashed border-current/10 flex justify-between text-muted-foreground">
@@ -318,17 +409,318 @@ function SesionAlertaRow({ sesion }: { sesion: SesionConAlertas }) {
   )
 }
 
+// ── SeccionConsignaciones ─────────────────────────────────────────────────────
+
+function SeccionConsignaciones({ sesionId }: { sesionId: number }) {
+  const [open,         setOpen]         = useState(false)
+  const [medio,        setMedio]        = useState<'banco' | 'transportadora'>('banco')
+  const [bancoNombre,  setBancoNombre]  = useState('')
+  const [tipoCuenta,   setTipoCuenta]   = useState<'ahorros' | 'corriente'>('ahorros')
+  const [numeroCuenta, setNumeroCuenta] = useState('')
+  const [monto,        setMonto]        = useState('')
+  const [proposito,    setProposito]    = useState('')
+
+  const { data: consignaciones = [], refetch } = useConsignaciones(sesionId)
+  const registrar = useRegistrarConsignacion(sesionId)
+  const aprobar   = useAprobarConsignacion()
+
+  const pendientes = consignaciones.filter(c => c.estado === 'pendiente')
+
+  function handleRegistrar() {
+    registrar.mutate(
+      {
+        medio,
+        bancoNombre:  bancoNombre  || undefined,
+        tipoCuenta,
+        numeroCuenta: numeroCuenta || undefined,
+        monto,
+        proposito:    proposito    || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Consignación registrada — pendiente de aprobación')
+          setMonto(''); setBancoNombre(''); setNumeroCuenta(''); setProposito('')
+          refetch()
+        },
+        onError: e => toast.error(e.message),
+      },
+    )
+  }
+
+  function handleAprobar(id: number, estado: 'aprobada' | 'rechazada') {
+    aprobar.mutate(
+      { id, estado },
+      {
+        onSuccess: () => {
+          toast.success(estado === 'aprobada' ? 'Consignación aprobada' : 'Consignación rechazada')
+          refetch()
+        },
+        onError: e => toast.error(e.message),
+      },
+    )
+  }
+
+  return (
+    <div className="border-t">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/30 transition-colors text-left"
+      >
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <Landmark className="size-3" />
+          Consignaciones
+          {pendientes.length > 0 && (
+            <Badge variant="destructive" className="text-[9px] h-4 px-1 ml-1">{pendientes.length} pend.</Badge>
+          )}
+        </div>
+        <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform duration-150', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 space-y-3">
+
+          {/* Form registrar */}
+          <div className="rounded border p-2.5 space-y-2.5 bg-muted/10 text-[11px]">
+            <p className="font-semibold text-[10px] uppercase tracking-wide text-muted-foreground">Nueva consignación</p>
+
+            <div className="flex gap-4">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="medioCons" checked={medio === 'banco'} onChange={() => setMedio('banco')} />
+                Banco
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="medioCons" checked={medio === 'transportadora'} onChange={() => setMedio('transportadora')} />
+                Transportadora
+              </label>
+            </div>
+
+            {medio === 'banco' && (
+              <div className="space-y-2">
+                <div className="space-y-0.5">
+                  <Label className="text-[10px]">Banco</Label>
+                  <Input className="h-7 text-xs" value={bancoNombre} onChange={e => setBancoNombre(e.target.value)} placeholder="Nombre del banco" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-0.5">
+                    <Label className="text-[10px]">Tipo cuenta</Label>
+                    <select
+                      value={tipoCuenta}
+                      onChange={e => setTipoCuenta(e.target.value as 'ahorros' | 'corriente')}
+                      className="w-full h-7 rounded border bg-background px-1.5 text-xs"
+                    >
+                      <option value="ahorros">Ahorros</option>
+                      <option value="corriente">Corriente</option>
+                    </select>
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-[10px]">Nro. cuenta</Label>
+                    <Input className="h-7 text-xs" value={numeroCuenta} onChange={e => setNumeroCuenta(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-0.5">
+              <Label className="text-[10px]">Valor (COP)</Label>
+              <Input type="number" min="0" step="1000" className="h-7 text-xs tabular-nums" value={monto} onChange={e => setMonto(e.target.value)} />
+              {monto && Number(monto) > 0 && (
+                <p className="text-[10px] text-muted-foreground tabular-nums">{fmt(Number(monto))}</p>
+              )}
+            </div>
+            <div className="space-y-0.5">
+              <Label className="text-[10px]">Propósito</Label>
+              <Input className="h-7 text-xs" value={proposito} onChange={e => setProposito(e.target.value)} placeholder="Ej: Reposición diaria" />
+            </div>
+
+            <Button
+              size="sm" className="w-full h-7 text-xs"
+              disabled={!monto || Number(monto) <= 0 || registrar.isPending}
+              onClick={handleRegistrar}
+            >
+              {registrar.isPending && <Loader2 className="size-3 mr-1.5 animate-spin" />}
+              Registrar
+            </Button>
+          </div>
+
+          {/* Lista */}
+          {consignaciones.length > 0 && (
+            <div className="divide-y border rounded overflow-hidden">
+              {consignaciones.map(c => (
+                <div key={c.id} className="p-2 text-[11px] space-y-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-medium truncate">{c.bancoNombre ?? (c.medio === 'banco' ? 'Banco' : 'Transportadora')}</span>
+                    <span className={cn(
+                      'text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0',
+                      c.estado === 'pendiente' && 'bg-amber-100 text-amber-700',
+                      c.estado === 'aprobada'  && 'bg-emerald-100 text-emerald-700',
+                      c.estado === 'rechazada' && 'bg-red-100 text-red-700',
+                    )}>
+                      {c.estado}
+                    </span>
+                  </div>
+                  <p className="font-bold tabular-nums">{fmt(Number(c.monto))}</p>
+                  {c.estado === 'pendiente' && (
+                    <div className="flex gap-1.5 pt-0.5">
+                      <Button size="sm" className="flex-1 h-6 text-[10px]" onClick={() => handleAprobar(c.id, 'aprobada')} disabled={aprobar.isPending}>
+                        Aprobar
+                      </Button>
+                      <Button size="sm" variant="destructive" className="flex-1 h-6 text-[10px]" onClick={() => handleAprobar(c.id, 'rechazada')} disabled={aprobar.isPending}>
+                        Rechazar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── SeccionPagosAdmin ─────────────────────────────────────────────────────────
+
+const TIPOS_PAGO_ADMIN = ['Pago RETEICA', 'Pago RETEFTE', 'Pago IVA', 'Pago CREE', 'Pago de Cuota', 'Servicios Públicos', 'Otro']
+
+function SeccionPagosAdmin({ sesionId }: { sesionId: number }) {
+  const [open,       setOpen]       = useState(false)
+  const [tipoPago,   setTipoPago]   = useState('')
+  const [nit,        setNit]        = useState('')
+  const [lugar,      setLugar]      = useState('')
+  const [numeroCaso, setNumeroCaso] = useState('')
+  const [obs,        setObs]        = useState('')
+  const [valor,      setValor]      = useState('')
+  const [confirmar,  setConfirmar]  = useState('')
+
+  const pago     = usePagoAdministrativo(sesionId)
+  const mismatch = confirmar !== '' && valor !== confirmar
+
+  function handlePago() {
+    if (!tipoPago || !valor || mismatch) return
+    pago.mutate(
+      {
+        tipoPago,
+        valor,
+        nit:        nit        || undefined,
+        lugar:      lugar      || undefined,
+        numeroCaso: numeroCaso || undefined,
+        observacion: obs       || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Pago administrativo registrado')
+          setTipoPago(''); setNit(''); setLugar(''); setNumeroCaso(''); setObs(''); setValor(''); setConfirmar('')
+        },
+        onError: e => toast.error(e.message),
+      },
+    )
+  }
+
+  return (
+    <div className="border-t">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/30 transition-colors text-left"
+      >
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <Receipt className="size-3" />
+          Pagos Administrativos
+        </div>
+        <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform duration-150', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3">
+          <div className="rounded border p-2.5 space-y-2 bg-muted/10 text-[11px]">
+            <div className="space-y-0.5">
+              <Label className="text-[10px]">Tipo de pago</Label>
+              <select
+                value={tipoPago}
+                onChange={e => setTipoPago(e.target.value)}
+                className="w-full h-7 rounded border bg-background px-1.5 text-xs"
+              >
+                <option value="">Seleccione...</option>
+                {TIPOS_PAGO_ADMIN.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-0.5">
+                <Label className="text-[10px]">Nro. caso</Label>
+                <Input className="h-7 text-xs" value={numeroCaso} onChange={e => setNumeroCaso(e.target.value)} />
+              </div>
+              <div className="space-y-0.5">
+                <Label className="text-[10px]">NIT</Label>
+                <Input className="h-7 text-xs" value={nit} onChange={e => setNit(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="space-y-0.5">
+              <Label className="text-[10px]">Lugar</Label>
+              <Input className="h-7 text-xs" value={lugar} onChange={e => setLugar(e.target.value)} />
+            </div>
+
+            <div className="space-y-0.5">
+              <Label className="text-[10px]">Observaciones</Label>
+              <Textarea className="h-14 text-xs resize-none" value={obs} onChange={e => setObs(e.target.value)} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-0.5">
+                <Label className="text-[10px]">Valor</Label>
+                <Input type="number" min="0" step="1000" className="h-7 text-xs tabular-nums" value={valor} onChange={e => setValor(e.target.value)} />
+              </div>
+              <div className="space-y-0.5">
+                <Label className="text-[10px]">Confirmar</Label>
+                <Input
+                  type="number" min="0" step="1000"
+                  className={cn('h-7 text-xs tabular-nums', mismatch && 'border-red-400')}
+                  value={confirmar} onChange={e => setConfirmar(e.target.value)}
+                />
+                {mismatch && <p className="text-[9px] text-red-500">No coincide</p>}
+              </div>
+            </div>
+
+            {valor && Number(valor) > 0 && !mismatch && (
+              <p className="text-[10px] text-muted-foreground tabular-nums">{fmt(Number(valor))}</p>
+            )}
+
+            <Button
+              size="sm" className="w-full h-7 text-xs"
+              disabled={!tipoPago || !valor || mismatch || pago.isPending}
+              onClick={handlePago}
+            >
+              {pago.isPending && <Loader2 className="size-3 mr-1.5 animate-spin" />}
+              Registrar pago
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── PanelCierre: sidebar derecho ──────────────────────────────────────────────
 
 function PanelCierre({
   panel,
   cajasPos,
   cierresConDif,
+  sesionPrincipalId,
 }: {
-  panel:         PanelPunto
-  cajasPos:      CardAuxiliar[]
-  cierresConDif: Record<number, CierreRegistrado>
+  panel:              PanelPunto
+  cajasPos:           CardAuxiliar[]
+  cierresConDif:      Record<number, CierreRegistrado>
+  sesionPrincipalId:  number | null
 }) {
+  const [arqueoFuerte,  setArqueoFuerte]  = useState('')
+  const [confirmarArq,  setConfirmarArq]  = useState('')
+  const [showCierreP,   setShowCierreP]   = useState(false)
+  const cerrarPrincipal = useCerrarSesionPrincipal()
+
   const alertas        = Object.values(cierresConDif)
   const faltantes      = alertas.filter(a => a.diferencia < -0.5)
   const sobrantes      = alertas.filter(a => a.diferencia > 0.5)
@@ -526,6 +918,68 @@ function PanelCierre({
               <span className="font-bold tabular-nums">{fmt(panel.cajaGeneral)}</span>
             </div>
           </div>
+
+          {/* Cierre de sesión principal */}
+          {sesionPrincipalId != null && (
+            <div className="pt-2 space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                <Lock className="size-3" /> Cerrar Caja Fuerte
+              </p>
+              {!showCierreP ? (
+                <Button
+                  variant="outline" size="sm" className="w-full text-xs border-emerald-400 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => setShowCierreP(true)}
+                >
+                  <Lock className="size-3 mr-1.5" />
+                  Cerrar sesión principal
+                </Button>
+              ) : (
+                <div className="space-y-1.5">
+                  <Input
+                    type="number" min="0" step="10000"
+                    placeholder="Total arqueo"
+                    className="h-8 text-xs tabular-nums"
+                    value={arqueoFuerte}
+                    onChange={e => setArqueoFuerte(e.target.value)}
+                  />
+                  <Input
+                    type="number" min="0" step="10000"
+                    placeholder="Confirmar arqueo"
+                    className={cn(
+                      'h-8 text-xs tabular-nums',
+                      confirmarArq && arqueoFuerte !== confirmarArq && 'border-red-400',
+                    )}
+                    value={confirmarArq}
+                    onChange={e => setConfirmarArq(e.target.value)}
+                  />
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm" className="flex-1 text-xs gap-1"
+                      disabled={!arqueoFuerte || arqueoFuerte !== confirmarArq || cerrarPrincipal.isPending}
+                      onClick={() =>
+                        cerrarPrincipal.mutate(
+                          { sesionId: sesionPrincipalId, totalArqueo: arqueoFuerte },
+                          {
+                            onSuccess: () => {
+                              toast.success('Caja Fuerte cerrada — día operativo finalizado')
+                              setShowCierreP(false); setArqueoFuerte(''); setConfirmarArq('')
+                            },
+                            onError: e => toast.error(e.message),
+                          },
+                        )
+                      }
+                    >
+                      {cerrarPrincipal.isPending && <Loader2 className="size-3 animate-spin" />}
+                      Confirmar
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowCierreP(false)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -547,6 +1001,14 @@ function PanelCierre({
           </p>
         )}
       </div>
+
+      {/* Operaciones del supervisor — solo si hay sesión principal activa */}
+      {sesionPrincipalId != null && (
+        <>
+          <SeccionConsignaciones sesionId={sesionPrincipalId} />
+          <SeccionPagosAdmin     sesionId={sesionPrincipalId} />
+        </>
+      )}
     </div>
   )
 }
@@ -561,25 +1023,45 @@ export default function AlertasCierre() {
   const { data, isLoading, isFetching, refetch } = useStatusPunto(id)
   const { data: cajaPadre } = useCajaPadre(data?.cajaPadreId ?? 0)
   const cerrar = useCierreMultipleConArqueo()
+  const reset  = useResetAutomatico()
 
-  const [contado,       setContado]       = useState<Record<number, string>>({})
-  const [cerrando,      setCerrando]      = useState<Record<number, boolean>>({})
-  const [cierresConDif, setCierresConDif] = useState<Record<number, CierreRegistrado>>({})
+  const [contado,        setContado]       = useState<Record<number, string>>({})
+  const [cerrando,       setCerrando]      = useState<Record<number, boolean>>({})
+  const [cierresConDif,  setCierresConDif] = useState<Record<number, CierreRegistrado>>({})
+  const [cierresLocales, setCierresLocales] = useState<Record<number, CierreLocal>>({})
+  const [showReset,      setShowReset]     = useState(false)
 
   const cajasPos: CardAuxiliar[] = useMemo(
     () => (data?.cajas ?? []).filter(c => c.tipo === 'pos'),
     [data],
   )
 
+  const sesionPrincipalId = useMemo(
+    () => data?.cajas.find(c => c.tipo === 'general')?.sesionId ?? null,
+    [data],
+  )
+
   const filas: FilaCaja[] = useMemo(() =>
     cajasPos.map(c => {
+      // Si esta caja fue cerrada durante esta sesión de la página,
+      // mostramos los datos del cierre aunque el backend ya no devuelva la sesión
+      const local = c.sesionId === null ? cierresLocales[c.cajaId] : undefined
+      if (local) {
+        return {
+          caja:       { ...c, estado: 'cerrada' as const },
+          esperado:   0,
+          contado:    local.contado,
+          diferencia: local.diferencia,
+          estado:     calcEstado(local.diferencia),
+        }
+      }
       const esperado = Number(c.saldoActual ?? 0)
       const cStr     = c.sesionId != null ? (contado[c.sesionId] ?? '') : ''
       const contadoN = cStr !== '' ? Number(cStr) : null
       const dif      = contadoN !== null ? contadoN - esperado : null
       return { caja: c, esperado, contado: contadoN, diferencia: dif, estado: calcEstado(dif) }
     }),
-    [cajasPos, contado],
+    [cajasPos, contado, cierresLocales],
   )
 
   const totalEsperado = filas.filter(f => f.caja.estado === 'abierta').reduce((s, f) => s + f.esperado, 0)
@@ -589,12 +1071,19 @@ export default function AlertasCierre() {
   const handleCerrar = async (fila: FilaCaja) => {
     const { caja } = fila
     if (!caja.sesionId || fila.contado === null) return
-    const sid = caja.sesionId
+    const sid   = caja.sesionId
+    const cajaId = caja.cajaId
     setCerrando(p => ({ ...p, [sid]: true }))
     try {
       await cerrar.mutateAsync({ sesionId: sid, totalArqueo: String(fila.contado) })
 
-      // Registrar alerta si hay diferencia
+      // Guardar cierre local (por cajaId) para mostrar la fila con datos de arqueo
+      setCierresLocales(p => ({
+        ...p,
+        [cajaId]: { contado: fila.contado!, diferencia: fila.diferencia },
+      }))
+
+      // Registrar en alertas del panel si hay diferencia significativa
       if (fila.diferencia !== null && Math.abs(fila.diferencia) >= 1) {
         setCierresConDif(p => ({
           ...p,
@@ -645,11 +1134,68 @@ export default function AlertasCierre() {
             </p>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={cn('size-3.5 mr-1.5', isFetching && 'animate-spin')} />
-          Actualizar
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive border-destructive/40 hover:bg-destructive/10"
+            onClick={() => setShowReset(true)}
+            disabled={cajasPos.filter(c => c.estado === 'abierta').length === 0}
+          >
+            <RotateCcw className="size-3.5 mr-1.5" />
+            Reset automático
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={cn('size-3.5 mr-1.5', isFetching && 'animate-spin')} />
+            Actualizar
+          </Button>
+        </div>
       </header>
+
+      {/* Confirmación reset automático */}
+      <Dialog open={showReset} onOpenChange={setShowReset}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <RotateCcw className="size-4" />
+              Reset automático del punto
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción cierra forzadamente <strong>todas las sesiones auxiliares abiertas</strong> del punto,
+              devolviendo el saldo de cada una a la caja principal. Las sesiones quedan marcadas como{' '}
+              <em>Cierre a revisar</em> en el historial de auditoría.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-destructive/5 border-destructive/20 px-3 py-2 text-sm text-destructive">
+            Cajas que se cerrarán:{' '}
+            <strong>
+              {cajasPos.filter(c => c.estado === 'abierta').map(c => c.nombre).join(', ') || '—'}
+            </strong>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReset(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={reset.isPending}
+              onClick={() => {
+                if (!data?.cajaPadreId) return
+                reset.mutate(data.cajaPadreId, {
+                  onSuccess: (res) => {
+                    toast.success(`Reset completado — ${res.auxiliaresCerradas} sesión(es) cerrada(s)`)
+                    setShowReset(false)
+                  },
+                  onError: e => toast.error(e.message),
+                })
+              }}
+            >
+              {reset.isPending && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+              Confirmar reset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Cuerpo: tabla principal + panel lateral */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -732,6 +1278,7 @@ export default function AlertasCierre() {
               panel={data.panel}
               cajasPos={cajasPos}
               cierresConDif={cierresConDif}
+              sesionPrincipalId={sesionPrincipalId}
             />
           </aside>
         )}

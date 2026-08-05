@@ -17,11 +17,17 @@ import { apiFetch } from '@/lib/api'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useInactivityWatcher } from '@/hooks/useInactivityWatcher'
 import { useSessionRefresh } from '@/hooks/useSessionRefresh'
+import { startRealtime, stopRealtime } from '@/realtime/socket'
+import { startBridge, stopBridge } from '@/realtime/bridge'
 import { router } from '@/router'
 import './index.css'
 
 registerTokenProvider(() => useSessionStore.getState().token)
-registerOn401Handler(() => useSessionStore.getState().clearSession())
+registerOn401Handler(() => {
+  stopBridge()
+  stopRealtime()
+  useSessionStore.getState().clearSession()
+})
 
 async function bootstrap() {
   const { token: storedToken, lastActivity } = useSessionStore.getState()
@@ -44,6 +50,8 @@ async function bootstrap() {
   try {
     const user = await apiFetch('/auth/me', {}, userSchema)
     useSessionStore.getState().setUser(user)
+    startBridge()
+    startRealtime()
   } catch {
     useSessionStore.getState().clearSession()
   }

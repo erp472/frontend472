@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
 
 export type TipoProducto = 'estampilla' | 'filatelia' | 'empaque' | 'material_oficina' | 'giro' | 'paquete' | 'otro'
@@ -55,6 +55,8 @@ export interface ServicioCatalogo {
 export interface CotizacionEnvio {
   pesoFisicoKg: number; pesoVolumetricoKg: number | null; pesoTarificadoKg: number
   valorServicio: number
+  fechaEntregaEstimada: string | null
+  servicio: { nombreservicios: string; tiempoEntregaDias: number | null } | null
 }
 
 export interface Envio {
@@ -217,6 +219,7 @@ export function useCotizarEnvio(params: {
   anchoCm?: number
   largoCm?: number
   paisDestino?: string
+  ciudadDestino?: string
 }) {
   const qs = new URLSearchParams()
   qs.set('servicioId', String(params.servicioId))
@@ -225,6 +228,7 @@ export function useCotizarEnvio(params: {
   if (params.anchoCm !== undefined) qs.set('anchoCm', String(params.anchoCm))
   if (params.largoCm !== undefined) qs.set('largoCm', String(params.largoCm))
   if (params.paisDestino) qs.set('paisDestino', params.paisDestino)
+  if (params.ciudadDestino) qs.set('ciudadDestino', params.ciudadDestino)
   return useQuery({
     queryKey: VENTAS_KEYS.cotizacion(params),
     queryFn:  () => apiFetch<CotizacionEnvio>(`/ventas/servicios-postales/cotizar?${qs}`),
@@ -363,5 +367,70 @@ export function useDeleteApartadoAdmin() {
     mutationFn: (id: number) =>
       apiFetch<void>(`/ventas/admin/apartados/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ventas', 'apartados-admin'] }),
+  })
+}
+
+// ── Alertas de apartados (Dashboard Supervisor) ───────────────────────────────
+
+export interface AlertaApartado {
+  id:             number
+  numero:         string
+  sucursalId:     number
+  sucursalNombre: string
+  estado:         string
+  fechaFin:       string | null
+  diasRestantes:  number | null
+}
+
+export interface AlertasApartadosResponse {
+  proximos: AlertaApartado[]
+  vencidos: AlertaApartado[]
+}
+
+export function useAlertasApartados(sucursalId?: number) {
+  return useQuery({
+    queryKey:       ['ventas', 'alertas-apartados', sucursalId],
+    queryFn:        () => apiFetch<AlertasApartadosResponse>(
+      `/ventas/alertas/apartados${sucursalId ? `?sucursalId=${sucursalId}` : ''}`,
+    ),
+    staleTime:      5 * 60_000,
+    refetchInterval: 10 * 60_000,
+  })
+}
+
+// ── Anulaciones pendientes (Dashboard Supervisor) ────────────────────────────
+
+export interface AnulacionPendiente {
+  id:                number
+  referenciaId:      number
+  referenciaTipo:    string
+  motivo:            string
+  estado:            string
+  solicitanteNombre: string | null
+  sucursalId:        number | null
+  createdAt:         string
+}
+
+export function useAnulacionesPendientes(sucursalId?: number) {
+  return useQuery({
+    queryKey:       ['ventas', 'anulaciones-pendientes', sucursalId],
+    queryFn:        () => apiFetch<AnulacionPendiente[]>(
+      `/ventas/alertas/anulaciones${sucursalId ? `?sucursalId=${sucursalId}` : ''}`,
+    ),
+    staleTime:      60_000,
+    refetchInterval: 5 * 60_000,
+  })
+}
+
+// ── Resúmenes del turno para múltiples cajas (Dashboard Supervisor) ───────────
+
+export function useResumenesPunto(cajaIds: number[]) {
+  return useQueries({
+    queries: cajaIds.map(id => ({
+      queryKey:  VENTAS_KEYS.resumen(id),
+      queryFn:   () => apiFetch<ResumenTurno>(`/ventas/punto/${id}/resumen`),
+      enabled:   id > 0,
+      staleTime: 60_000,
+    })),
   })
 }

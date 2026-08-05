@@ -331,6 +331,32 @@ export function useHistorialAlertas(cajaId: number) {
 
 // ── Mutations — Operación ─────────────────────────────────────────────────────
 
+export function useAbrirSesionPrincipal(cajaPadreId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (montoApertura: string) =>
+      apiFetch<SesionResumen>(`/cajas/principales/${cajaPadreId}/sesion/abrir`, {
+        method: 'POST',
+        body:   JSON.stringify({ montoApertura }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas'] }),
+  })
+}
+
+export function useCerrarSesionPrincipal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { sesionId: number } & CierrePayload) => {
+      const { sesionId, ...payload } = data
+      return apiFetch<SesionResumen>(`/cajas/principales/${sesionId}/sesion/cerrar`, {
+        method: 'POST',
+        body:   JSON.stringify(payload),
+      })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas'] }),
+  })
+}
+
 export function useAbrirCajaDirecta(cajaId: number) {
   const qc = useQueryClient()
   return useMutation({
@@ -392,15 +418,40 @@ export function useCierreMultipleConArqueo() {
 }
 
 
+export interface CambioCustodiaResult {
+  reposicionId: number
+  codigoRemesa: string
+  montoEmitido: string
+  saldoOrigen:  string
+  alertas:      TipoAlerta[]
+  estado:       'en_transito'
+}
+
 export function useCambioCustodia(sesionOrigenId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { sesionDestinoId: number; monto: string; motivo?: string }) =>
-      apiFetch(`/cajas/punto/${sesionOrigenId}/cambio-custodia`, {
+      apiFetch<CambioCustodiaResult>(`/cajas/punto/${sesionOrigenId}/cambio-custodia`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas', 'status'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
+      qc.invalidateQueries({ queryKey: ['cajas', 'saldo', sesionOrigenId] })
+      qc.invalidateQueries({ queryKey: ['cajas', 'movimientos', sesionOrigenId] })
+    },
+  })
+}
+
+export function useConfirmarCustodia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { codigoRemesa: string; montoRecibido: string }) =>
+      apiFetch(`/cajas/reposiciones/${data.codigoRemesa}/confirmar`, {
+        method: 'POST',
+        body: JSON.stringify({ montoRecibido: data.montoRecibido }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas'] }),
   })
 }
 
@@ -420,19 +471,130 @@ export function useRegistrarDiferencia(sesionId: number, esAuxiliar = true) {
   })
 }
 
+export const CAJAS_CONSIG_KEY = (sesionId: number) => ['cajas', 'consignaciones', sesionId] as const
+
+export function useConsignaciones(sesionId: number) {
+  return useQuery({
+    queryKey: CAJAS_CONSIG_KEY(sesionId),
+    queryFn:  () => apiFetch<Consignacion[]>(`/cajas/principales/${sesionId}/consignaciones`),
+    enabled:  sesionId > 0,
+    staleTime: 30_000,
+  })
+}
+
 export function useRegistrarConsignacion(sesionId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { medio: 'banco' | 'transportadora'; monto: string; bancoNombre?: string; proposito?: string }) =>
+    mutationFn: (data: {
+      medio: 'banco' | 'transportadora'
+      bancoNombre?: string
+      tipoCuenta?: 'ahorros' | 'corriente'
+      numeroCuenta?: string
+      monto: string
+      proposito?: string
+    }) =>
       apiFetch<Consignacion>(`/cajas/principales/${sesionId}/consignacion`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body:   JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas', 'status'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
+      qc.invalidateQueries({ queryKey: CAJAS_CONSIG_KEY(sesionId) })
+    },
+  })
+}
+
+export function useAprobarConsignacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, estado }: { id: number; estado: 'aprobada' | 'rechazada' }) =>
+      apiFetch<Consignacion>(`/cajas/consignacion/${id}/estado`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ estado }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas'] }),
+  })
+}
+
+export function usePagoAdministrativo(sesionId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      tipoPago: string
+      valor: string
+      nit?: string
+      lugar?: string
+      numeroCaso?: string
+      observacion?: string
+    }) =>
+      apiFetch(`/cajas/principales/${sesionId}/pago-administrativo`, {
+        method: 'POST',
+        body:   JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.movimientos(sesionId) })
+    },
+  })
+}
+
+export function useMedioPagoAuxiliar(sesionId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      tipo: 'transferencia' | 'cheque'
+      valor: string
+      descripcion?: string
+      numeroCheque?: string
+    }) =>
+      apiFetch(`/cajas/punto/${sesionId}/medio-pago`, {
+        method: 'POST',
+        body:   JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.saldo(sesionId) })
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.movimientos(sesionId) })
+    },
   })
 }
 
 // ── Panel Admin — sucursales + POS + servicios ────────────────────────────────
+
+export interface TrasladoBovedaResult {
+  movimiento:   Movimiento
+  saldoAntes:   string
+  saldoDespues: string
+  alertas:      TipoAlerta[]
+}
+
+export function useTrasladoBoveda(sesionId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (monto: string) =>
+      apiFetch<TrasladoBovedaResult>(`/cajas/punto/${sesionId}/traslado-boveda`, {
+        method: 'POST',
+        body:   JSON.stringify({ monto }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.saldo(sesionId) })
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.movimientos(sesionId) })
+    },
+  })
+}
+
+export function useResetAutomatico() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (cajaPadreId: number) =>
+      apiFetch<{ cajaPadreId: number; auxiliaresCerradas: number }>(
+        `/cajas/principales/${cajaPadreId}/reset-automatico`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas'] }),
+  })
+}
 
 export function usePanelAdmin() {
   return useQuery({
@@ -461,6 +623,30 @@ export function useToggleServicioSucursal() {
   })
 }
 
+// ── Balance de Pagos ──────────────────────────────────────────────────────────
+
+export interface BalancePagosRow {
+  regional:                 string
+  punto:                    string
+  fecha:                    string
+  reposicionBanco:          string
+  reposicionTransportadora: string
+  reposicionCheque:         string
+  cantidadColpensiones:     number
+}
+
+export function useBalancePagos(fechaInicio: string, fechaFin: string) {
+  return useQuery({
+    queryKey: ['cajas', 'balance-pagos', fechaInicio, fechaFin],
+    queryFn:  () =>
+      apiFetch<BalancePagosRow[]>(
+        `/cajas/reportes/balance-pagos?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`,
+      ),
+    enabled:   !!fechaInicio && !!fechaFin && fechaInicio < fechaFin,
+    staleTime: 60_000,
+  })
+}
+
 export function useAsignarCajero() {
   const qc = useQueryClient()
   return useMutation({
@@ -472,5 +658,85 @@ export function useAsignarCajero() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cajas'] })
     },
+  })
+}
+
+// ── RF-3.03: resolver diferencias ─────────────────────────────────────────────
+
+export function useResolverDiferencia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, estado, observaciones }: { id: number; estado: 'aprobada' | 'rechazada'; observaciones?: string }) =>
+      apiFetch(`/cajas/diferencias/${id}/resolver`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ estado, observaciones }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas', 'alertas'] })
+      qc.invalidateQueries({ queryKey: ['cajas', 'diferencias-pendientes'] })
+    },
+  })
+}
+
+// ── Diferencias pendientes por sucursal — Dashboard Supervisor ────────────────
+
+export interface DiferenciaPendiente {
+  id:             number
+  sesionCajaId:   number
+  tipoDiferencia: 'faltante' | 'sobrante'
+  monto:          string
+  cajaNombre:     string
+  createdAt:      string
+}
+
+export function useDiferenciasPendientes(sucursalId: number) {
+  return useQuery({
+    queryKey: ['cajas', 'diferencias-pendientes', sucursalId] as const,
+    queryFn:  () => apiFetch<DiferenciaPendiente[]>(`/cajas/sucursal/${sucursalId}/diferencias-pendientes`),
+    enabled:  sucursalId > 0,
+    staleTime: 60_000,
+  })
+}
+
+// ── Cierre automático — Dashboard Supervisor ──────────────────────────────────
+
+export interface SesionCierreAutomatico {
+  sesionId:     number
+  cajaId:       number
+  cajaNombre:   string
+  cajaPadreId:  number | null
+  horaReset:    string | null
+  abiertaDesde: string
+}
+
+export function useAlertasCierreAutomatico(sucursalId: number) {
+  return useQuery({
+    queryKey: ['cajas', 'cierre-automatico', sucursalId] as const,
+    queryFn:  () => apiFetch<SesionCierreAutomatico[]>(`/cajas/alertas/cierre-automatico?sucursalId=${sucursalId}`),
+    enabled:  sucursalId > 0,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  })
+}
+
+// ── Consolidado Comercio — Dashboard Gerencia ─────────────────────────────────
+
+export type MedioPagoConsolidado =
+  | 'efectivo' | 'tarjetaDebito' | 'tarjetaCredito'
+  | 'transferencia' | 'consignacion' | 'preporteado' | 'mixtoPreporteado'
+
+export interface ConsolidadoComercio {
+  comercioId:    number
+  total:         string
+  porMedio:      Record<MedioPagoConsolidado, string>
+  numRegionales: number
+}
+
+export function useConsolidadoComercio(comercioId = 1) {
+  return useQuery({
+    queryKey:        ['cajas', 'consolidado-comercio', comercioId] as const,
+    queryFn:         () => apiFetch<ConsolidadoComercio>(`/cajas/consolidado-comercio?comercioId=${comercioId}`),
+    staleTime:       2 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
 }

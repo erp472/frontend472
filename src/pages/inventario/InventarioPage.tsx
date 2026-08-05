@@ -211,7 +211,7 @@ const ESTADO_FILTROS: { value: EstadoStock | ''; label: string }[] = [
 
 // ── Tabla de stock ────────────────────────────────────────────────────────────
 
-const ROLES_WRITE = ['INVENTARIOS', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']
+const ROLES_WRITE = ['INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']
 
 function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: boolean }) {
   const [buscar,        setBuscar]        = useState('')
@@ -564,15 +564,16 @@ function StockResumen({ sucursalId }: { sucursalId: number }) {
 export default function InventarioPage() {
   const user = useSessionStore((s) => s.user)
 
-  const isAdmin  = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
-  const canWrite = !!user?.rol && ROLES_WRITE.includes(user.rol)
+  const isAdmin      = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
+  const isSupervisor = user?.rol === 'SUPERVISOR_REGIONAL'
+  const canWrite     = !!user?.rol && ROLES_WRITE.includes(user.rol)
 
   const { data: sucursalesData, isLoading: loadingSucursales } = useInventarioSucursales()
 
+  // Supervisor siempre ve su propia sucursal; admin puede cambiar
   const defaultId = user?.sucursal_id ?? 0
   const [sucursalId, setSucursalId] = useState<number>(defaultId)
 
-  // Cuando carga la lista y solo hay una sucursal disponible, la selecciona automáticamente
   const sucursales = sucursalesData ?? []
   if (sucursales.length === 1 && sucursalId === 0) {
     setSucursalId(sucursales[0].id)
@@ -592,9 +593,12 @@ export default function InventarioPage() {
               {sucursalSeleccionada.alertas} alerta{sucursalSeleccionada.alertas !== 1 ? 's' : ''}
             </Badge>
           ) : null}
+          {isSupervisor && sucursalSeleccionada && (
+            <span className="text-sm text-muted-foreground">— {sucursalSeleccionada.nombre}</span>
+          )}
         </div>
 
-        {isAdmin ? (
+        {isAdmin && (
           loadingSucursales ? (
             <Skeleton className="h-9 w-56" />
           ) : (
@@ -621,10 +625,10 @@ export default function InventarioPage() {
               </SelectContent>
             </Select>
           )
-        ) : null}
+        )}
       </div>
 
-      {/* Panel de alertas (solo admin nacional) */}
+      {/* Panel de alertas (solo admins) */}
       {isAdmin && (
         <AlertasPanel onSelectSucursal={(id) => setSucursalId(id)} />
       )}

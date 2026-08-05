@@ -152,6 +152,81 @@ export function useAjusteInventario(sucursalId: number) {
   })
 }
 
+// ── Órdenes de inventario ─────────────────────────────────────────────────────
+
+export interface OrdenInventarioItem {
+  id:              number
+  productoId:      number
+  productoCodigo:  string | null
+  productoNombre:  string | null
+  cantidadEnviada: number
+  cantidadRecibida: number | null
+  estado:          string
+}
+
+export interface OrdenInventario {
+  id:             number
+  sucursalId:     number
+  sucursalNombre: string | null
+  estado:         string
+  createdAt:      string
+  items:          OrdenInventarioItem[]
+}
+
+export const ORDENES_KEYS = {
+  list:      (sucursalId?: number, estado?: string) => ['inventario', 'ordenes', sucursalId, estado] as const,
+  pendientes: (sucursalId?: number)                 => ['inventario', 'ordenes-pendientes', sucursalId] as const,
+}
+
+export function useOrdenesPendientes(sucursalId?: number) {
+  return useQuery({
+    queryKey:       ORDENES_KEYS.pendientes(sucursalId),
+    queryFn:        () => apiFetch<OrdenInventario[]>(
+      `/inventario/ordenes/pendientes${sucursalId ? `?sucursalId=${sucursalId}` : ''}`,
+    ),
+    staleTime:      60_000,
+    refetchInterval: 5 * 60_000,
+  })
+}
+
+export function useOrdenes(sucursalId?: number, estado?: string) {
+  return useQuery({
+    queryKey: ORDENES_KEYS.list(sucursalId, estado),
+    queryFn:  () => {
+      const qs = new URLSearchParams()
+      if (sucursalId) qs.set('sucursalId', String(sucursalId))
+      if (estado)     qs.set('estado', estado)
+      return apiFetch<OrdenInventario[]>(`/inventario/ordenes?${qs}`)
+    },
+    staleTime: 30_000,
+  })
+}
+
+export function useCrearOrden() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { sucursalId: number; items: { productoId: number; cantidadEnviada: number }[] }) =>
+      apiFetch<OrdenInventario>('/inventario/ordenes', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventario', 'ordenes'] })
+    },
+  })
+}
+
+export function useActualizarEstadoOrden() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, estado }: { id: number; estado: string }) =>
+      apiFetch<OrdenInventario>(`/inventario/ordenes/${id}/estado`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ estado }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventario', 'ordenes'] })
+    },
+  })
+}
+
 export function useEntradaInventario(sucursalId: number) {
   const qc = useQueryClient()
   return useMutation({

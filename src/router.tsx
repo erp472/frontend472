@@ -27,11 +27,13 @@ const ApartadosPage    = lazy(() => import('@/pages/admin/ApartadosAdmin'))
 const AsignacionCajerosPage = lazy(() => import('@/pages/admin/AsignacionCajerosPage'))
 const AuditPage          = lazy(() => import('@/pages/admin/Audit'))
 const PuntoVentasAdminPage = lazy(() => import('@/pages/admin/PuntoVentasAdmin'))
-const PuntoCajasPage    = lazy(() => import('@/pages/cajas/PuntoCajas'))
-const DetalleCajaPage   = lazy(() => import('@/pages/cajas/DetalleCaja'))
-const AlertasCierrePage = lazy(() => import('@/pages/cajas/AlertasCierre'))
+const PuntoCajasPage           = lazy(() => import('@/pages/cajas/PuntoCajas'))
+const DetalleCajaPage          = lazy(() => import('@/pages/cajas/DetalleCaja'))
+const AlertasCierrePage        = lazy(() => import('@/pages/cajas/AlertasCierre'))
+const ConsolidadoComercioPage  = lazy(() => import('@/pages/cajas/ConsolidadoComercio'))
 const PuntoVentasPage   = lazy(() => import('@/pages/ventas/PuntoVentas'))
 const CarritoVentaPage  = lazy(() => import('@/pages/ventas/CarritoVenta'))
+const GirosPage         = lazy(() => import('@/pages/ventas/GirosPage'))
 const ReportesPage      = lazy(() => import('@/pages/Reportes'))
 const ClientesPage      = lazy(() => import('@/pages/clientes/index'))
 const TiposClientePage  = lazy(() => import('@/pages/clientes/TiposClientePage'))
@@ -350,6 +352,19 @@ export const router = createBrowserRouter(
                   ],
                 },
 
+                // Dashboard Gerencia — consolidado por comercio
+                {
+                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA']} />,
+                  children: [
+                    {
+                      element: <FlagGuard flag="modulo:tesoreria" />,
+                      children: [
+                        { path: '/cajas/consolidado', element: lazySuspense(ConsolidadoComercioPage) },
+                      ],
+                    },
+                  ],
+                },
+
                 // Cajas — caja principal: SUPERVISOR_REGIONAL, TESORERIA
                 {
                   element: <RoleGuard roles={['SUPERVISOR_REGIONAL', 'TESORERIA']} />,
@@ -381,8 +396,9 @@ export const router = createBrowserRouter(
                         {
                           element: <FlagGuard flag="modulo:ventas" />,
                           children: [
-                            { path: '/ventas',              element: lazySuspense(PuntoVentasPage) },
-                            { path: '/ventas/caja/:cajaId', element: lazySuspense(CarritoVentaPage) },
+                            { path: '/ventas',                        element: lazySuspense(PuntoVentasPage) },
+                            { path: '/ventas/caja/:cajaId',           element: lazySuspense(CarritoVentaPage) },
+                            { path: '/ventas/caja/:cajaId/giros',     element: lazySuspense(GirosPage) },
                           ],
                         },
                       ],

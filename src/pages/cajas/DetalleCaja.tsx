@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, RefreshCw, Loader2, Printer, Lock,
-  AlertTriangle, ChevronRight, ChevronDown,
+  AlertTriangle, ChevronRight, ChevronDown, Vault,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button }   from '@/components/ui/button'
@@ -18,8 +18,9 @@ import { cn } from '@/lib/utils'
 import { useSessionStore } from '@/stores/useSessionStore'
 import {
   useSaldoSesion, useMovimientos, useCerrarAuxiliar,
-  useRegistrarDiferencia, useCaja,
-  type Movimiento,
+  useRegistrarDiferencia, useCaja, useStatusPunto,
+  useCambioCustodia, useConfirmarCustodia, useMedioPagoAuxiliar, useTrasladoBoveda,
+  type Movimiento, type CambioCustodiaResult,
 } from '@/queries/cajas.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ const MODULE_TABS = [
 ] as const
 
 type ModuleId  = typeof MODULE_TABS[number]['id']
-type AdminTab  = 'cierre' | 'diferencias' | 'reportes' | 'custodia' | 'medios'
+type AdminTab  = 'cierre' | 'diferencias' | 'reportes' | 'custodia' | 'medios' | 'boveda'
 
 const ADMIN_SUBTABS: { id: AdminTab; label: string }[] = [
   { id: 'cierre',       label: 'Cierre' },
@@ -84,6 +85,7 @@ const ADMIN_SUBTABS: { id: AdminTab; label: string }[] = [
   { id: 'reportes',     label: 'Reportes' },
   { id: 'custodia',     label: 'Cambio de Custodia' },
   { id: 'medios',       label: 'Medios de Pago' },
+  { id: 'boveda',       label: 'Traslado Bóveda' },
 ]
 
 // ── Panel derecho — resumen en vivo ───────────────────────────────────────────
@@ -607,29 +609,381 @@ function TabReportes({ movs }: { movs: Movimiento[] }) {
 
 // ── Tab: Cambio de Custodia ───────────────────────────────────────────────────
 
-function TabCustodia() {
+function TabCustodia({ sesionId, sucursalId, saldoActual }: {
+  sesionId:   number
+  sucursalId: number
+  saldoActual: string | null
+}) {
   const user = useSessionStore(s => s.user)
-  const [valor,     setValor]     = useState('')
-  const [confirmar, setConfirmar] = useState('')
 
-  const mismatch = confirmar !== '' && valor !== confirmar
+  // ── Fase 1: Enviar ────────────────────────────────────────────────────────
+  const [destiId,    setDestiId]    = useState<string>('')
+  const [monto,      setMonto]      = useState('')
+  const [motivo,     setMotivo]     = useState('')
+  const [resultado,  setResultado]  = useState<CambioCustodiaResult | null>(null)
+
+  // ── Fase 2: Confirmar ────────────────────────────────────────────────────
+  const [codigoIn,   setCodigoIn]   = useState('')
+  const [montoRec,   setMontoRec]   = useState('')
+  const [confirmado, setConfirmado] = useState(false)
+
+  const { data: status } = useStatusPunto(sucursalId)
+  const enviar    = useCambioCustodia(sesionId)
+  const confirmar = useConfirmarCustodia()
+
+  // Otras sesiones abiertas en la misma sucursal (excluye la actual)
+  const sesionesDestino = (status?.cajas ?? []).filter(
+    c => c.estado === 'abierta' && c.sesionId !== null && c.sesionId !== sesionId,
+  )
+
+  const montoNum = Number(monto.replace(/\./g, '').replace(/,/g, ''))
+  const saldoNum = Number(saldoActual ?? 0)
+  const montoValido = montoNum > 0 && montoNum <= saldoNum
+
+  function handleEnviar() {
+    if (!destiId || !montoValido) return
+    enviar.mutate(
+      {
+        sesionDestinoId: Number(destiId),
+        monto:           String(montoNum),
+        ...(motivo.trim() ? { motivo: motivo.trim() } : {}),
+      },
+      {
+        onSuccess: (res) => {
+          setResultado(res)
+          toast.success('Remesa generada. Comparte el código con el receptor.')
+        },
+        onError: (err: unknown) =>
+          toast.error(err instanceof Error ? err.message : 'Error al generar remesa'),
+      },
+    )
+  }
+
+  function handleConfirmar() {
+    if (!codigoIn.trim() || !montoRec) return
+    confirmar.mutate(
+      { codigoRemesa: codigoIn.trim().toUpperCase(), montoRecibido: montoRec },
+      {
+        onSuccess: () => {
+          setConfirmado(true)
+          toast.success('Custodia confirmada — saldo acreditado en esta caja.')
+        },
+        onError: (err: unknown) =>
+          toast.error(err instanceof Error ? err.message : 'Error al confirmar'),
+      },
+    )
+  }
+
+  function resetEnviar() {
+    setDestiId(''); setMonto(''); setMotivo(''); setResultado(null)
+  }
+
+  return (
+    <div className="space-y-5 max-w-lg">
+
+      {/* ── Fase 1: Generar remesa ─────────────────────────────────────────── */}
+      <div className="rounded border p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold">Enviar efectivo (Fase 1)</p>
+          <span className="text-xs text-muted-foreground">
+            Saldo disponible: <strong className="tabular-nums">{fmt(saldoActual)}</strong>
+          </span>
+        </div>
+
+        {resultado ? (
+          /* ── Estado POST-éxito ── */
+          <div className="space-y-3">
+            <div className="rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-4 text-center space-y-2">
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Código de remesa</p>
+              <p className="text-2xl font-mono font-bold tracking-widest text-emerald-800 dark:text-emerald-300">
+                {resultado.codigoRemesa}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Monto emitido: <strong>{fmt(resultado.montoEmitido)}</strong>
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Entrega este código al cajero receptor para que confirme la recepción.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                size="sm" variant="outline" className="flex-1"
+                onClick={() => {
+                  void navigator.clipboard.writeText(resultado.codigoRemesa)
+                  toast.success('Código copiado')
+                }}
+              >
+                Copiar código
+              </Button>
+              <Button size="sm" variant="ghost" onClick={resetEnviar}>
+                Nueva remesa
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* ── Formulario envío ── */
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Cajero receptor</Label>
+              {sesionesDestino.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No hay otras cajas abiertas en este punto.</p>
+              ) : (
+                <Select value={destiId} onValueChange={setDestiId}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Seleccionar caja destino…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sesionesDestino.map(c => (
+                      <SelectItem key={c.sesionId} value={String(c.sesionId)}>
+                        {c.codigo} — {c.nombre} ({fmt(c.saldoActual)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Monto a transferir (COP)</Label>
+              <Input
+                className="h-8 text-sm tabular-nums"
+                placeholder="Ej: 50000"
+                value={monto}
+                onChange={e => setMonto(e.target.value.replace(/[^0-9.,]/g, ''))}
+              />
+              {monto && !montoValido && (
+                <p className="text-xs text-destructive">
+                  {montoNum <= 0 ? 'Ingrese un monto mayor a 0' : `Supera el saldo disponible (${fmt(saldoActual)})`}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Motivo (opcional)</Label>
+              <Input
+                className="h-8 text-sm"
+                placeholder="Ej: Abastecimiento de caja…"
+                value={motivo}
+                onChange={e => setMotivo(e.target.value)}
+                maxLength={300}
+              />
+            </div>
+
+            <div className="pt-1">
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={!destiId || !montoValido || enviar.isPending}
+                onClick={handleEnviar}
+              >
+                {enviar.isPending && <Loader2 className="size-3.5 mr-2 animate-spin" />}
+                Generar remesa
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Fase 2: Confirmar recepción ────────────────────────────────────── */}
+      <div className="rounded border p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold">Confirmar recepción (Fase 2)</p>
+          <span className="text-xs text-muted-foreground">— ingresa el código que te enviaron</span>
+        </div>
+
+        {confirmado ? (
+          <div className="rounded bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 text-center">
+            <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+              ✓ Custodia confirmada — saldo acreditado
+            </p>
+            <Button size="sm" variant="ghost" className="mt-2" onClick={() => {
+              setCodigoIn(''); setMontoRec(''); setConfirmado(false)
+            }}>
+              Confirmar otra remesa
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Código de remesa</Label>
+              <Input
+                className="h-8 text-sm font-mono tracking-widest uppercase"
+                placeholder="Ej: A1B2C3D4E5F6G7H8"
+                value={codigoIn}
+                onChange={e => setCodigoIn(e.target.value.replace(/\s/g, ''))}
+                maxLength={16}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Monto físico recibido (COP)</Label>
+              <Input
+                className="h-8 text-sm tabular-nums"
+                type="number"
+                min="0"
+                step="1000"
+                placeholder="Ingrese el monto exacto recibido"
+                value={montoRec}
+                onChange={e => setMontoRec(e.target.value)}
+              />
+            </div>
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!codigoIn.trim() || !montoRec || confirmar.isPending}
+              onClick={handleConfirmar}
+            >
+              {confirmar.isPending && <Loader2 className="size-3.5 mr-2 animate-spin" />}
+              Confirmar recepción
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Operador: <strong>{user?.nombre ?? '—'}</strong>
+      </p>
+    </div>
+  )
+}
+
+// ── Tab: Medios de Pago ───────────────────────────────────────────────────────
+
+function TabMedios({ sesionId }: { sesionId: number }) {
+  const user = useSessionStore(s => s.user)
+  const [modo,          setModo]          = useState<'transferencia' | 'cheque'>('transferencia')
+  const [banco,         setBanco]         = useState('')
+  const [tipoCuenta,    setTipoCuenta]    = useState<'ahorros' | 'corriente'>('ahorros')
+  const [numeroCuenta,  setNumeroCuenta]  = useState('')
+  const [fecha,         setFecha]         = useState('')
+  const [comprobante,   setComprobante]   = useState('')
+  const [tipoIdCliente, setTipoIdCliente] = useState('CC')
+  const [nroIdCliente,  setNroIdCliente]  = useState('')
+  const [nroCheque,     setNroCheque]     = useState('')
+  const [banco2,        setBanco2]        = useState('')
+  const [valor,         setValor]         = useState('')
+  const [confirmar,     setConfirmar]     = useState('')
+  const [obs,           setObs]           = useState('')
+
+  const registrar = useMedioPagoAuxiliar(sesionId)
+  const mismatch  = confirmar !== '' && valor !== confirmar
+
+  function reset() {
+    setBanco(''); setTipoCuenta('ahorros'); setNumeroCuenta(''); setFecha('')
+    setComprobante(''); setNroIdCliente(''); setNroCheque(''); setBanco2('')
+    setValor(''); setConfirmar(''); setObs('')
+  }
+
+  function handleSubmit() {
+    if (!valor || mismatch) return
+    const descripcion = modo === 'transferencia'
+      ? [`Banco: ${banco}`, `Cta ${tipoCuenta}`, numeroCuenta, fecha, comprobante].filter(Boolean).join(' · ')
+      : [`Cheque #${nroCheque}`, banco2, `Cliente: ${tipoIdCliente} ${nroIdCliente}`].filter(Boolean).join(' · ')
+
+    registrar.mutate(
+      {
+        tipo:         modo,
+        valor,
+        descripcion:  descripcion || undefined,
+        numeroCheque: modo === 'cheque' ? nroCheque || undefined : undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success('Pago registrado correctamente')
+          reset()
+        },
+        onError: e => toast.error(e.message),
+      },
+    )
+  }
 
   return (
     <div className="space-y-4 max-w-lg">
-      <p className="text-sm text-muted-foreground">Cambio de Custodia</p>
+      <p className="text-sm text-muted-foreground">
+        Usted está realizando una solicitud por:{' '}
+        <strong>{modo === 'transferencia' ? 'Transferencia / Consignación' : 'Cheque'}</strong>
+      </p>
+
+      <div className="flex gap-6 text-sm">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="medioModo" checked={modo === 'transferencia'} onChange={() => { setModo('transferencia'); reset() }} />
+          Transferencia / Consignación
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="medioModo" checked={modo === 'cheque'} onChange={() => { setModo('cheque'); reset() }} />
+          Cheques
+        </label>
+      </div>
 
       <div className="rounded border p-4 space-y-4">
-        <div className="rounded bg-muted/30 px-3 py-2 text-sm font-medium">
-          {user?.nombre ?? '—'}
+
+        {/* Datos del cliente */}
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Datos del cliente</Label>
+          <div className="grid grid-cols-[120px_1fr] gap-2">
+            <Select value={tipoIdCliente} onValueChange={setTipoIdCliente}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {['CC','CE','NIT','PA','TI'].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input className="h-8 text-sm" placeholder="Número de identificación" value={nroIdCliente} onChange={e => setNroIdCliente(e.target.value)} />
+          </div>
         </div>
 
-        <div className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-3 items-center text-sm">
+        {modo === 'transferencia' ? (
+          /* ── Transferencia ── */
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs">Banco</Label>
+              <Input className="h-8 text-sm" value={banco} onChange={e => setBanco(e.target.value)} placeholder="Nombre del banco" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Tipo de cuenta</Label>
+              <Select value={tipoCuenta} onValueChange={v => setTipoCuenta(v as 'ahorros' | 'corriente')}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ahorros">Ahorros</SelectItem>
+                  <SelectItem value="corriente">Corriente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Nro. cuenta</Label>
+              <Input className="h-8 text-sm" value={numeroCuenta} onChange={e => setNumeroCuenta(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Fecha</Label>
+              <Input type="date" className="h-8 text-sm" value={fecha} onChange={e => setFecha(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Comprobante</Label>
+              <Input className="h-8 text-sm" value={comprobante} onChange={e => setComprobante(e.target.value)} placeholder="Nro. comprobante" />
+            </div>
+          </div>
+        ) : (
+          /* ── Cheque ── */
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs">Banco girador</Label>
+              <Input className="h-8 text-sm" value={banco2} onChange={e => setBanco2(e.target.value)} placeholder="Nombre del banco" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs">Nro. cheque</Label>
+              <Input className="h-8 text-sm font-mono" value={nroCheque} onChange={e => setNroCheque(e.target.value)} placeholder="Número del cheque" />
+            </div>
+          </div>
+        )}
+
+        {/* Valor */}
+        <div className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-3 items-center text-sm">
+          <Label className="text-xs">Responsable:</Label>
+          <span className="text-sm font-medium">{user?.nombre ?? '—'}</span>
+
           <Label className="text-xs">Valor:</Label>
           <Input
             type="number" min="0" step="1000"
             className="h-8 w-40 text-sm tabular-nums"
-            value={valor}
-            onChange={e => setValor(e.target.value)}
+            value={valor} onChange={e => setValor(e.target.value)}
           />
 
           <Label className="text-xs">Confirmar valor:</Label>
@@ -637,56 +991,120 @@ function TabCustodia() {
             <Input
               type="number" min="0" step="1000"
               className={cn('h-8 w-40 text-sm tabular-nums', mismatch && 'border-red-400')}
-              value={confirmar}
-              onChange={e => setConfirmar(e.target.value)}
+              value={confirmar} onChange={e => setConfirmar(e.target.value)}
             />
             {mismatch && <p className="text-xs text-red-500 mt-1">Los valores no coinciden</p>}
           </div>
+
+          <Label className="text-xs self-start pt-1">Observaciones:</Label>
+          <Input className="h-8 text-sm" value={obs} onChange={e => setObs(e.target.value)} placeholder="Opcional" />
         </div>
+
+        {valor && Number(valor) > 0 && !mismatch && (
+          <p className="text-sm font-bold text-primary tabular-nums">{COP.format(Number(valor))}</p>
+        )}
 
         <div className="flex justify-end gap-2">
           <Button
             size="sm"
-            disabled={!valor || mismatch}
-            onClick={() => toast.info('Funcionalidad en desarrollo')}
+            disabled={!valor || mismatch || registrar.isPending}
+            onClick={handleSubmit}
+            className="gap-1.5"
           >
-            Registrar Cambio de Custodia
+            {registrar.isPending && <Loader2 className="size-3.5 animate-spin" />}
+            Registrar
           </Button>
-          <Button size="sm" variant="outline"
-            onClick={() => { setValor(''); setConfirmar('') }}>
-            Cancelar
-          </Button>
+          <Button size="sm" variant="outline" onClick={reset}>Cancelar</Button>
         </div>
       </div>
     </div>
   )
 }
 
-// ── Tab: Medios de Pago ───────────────────────────────────────────────────────
+// ── Tab: Traslado a Bóveda ────────────────────────────────────────────────────
 
-function TabMedios() {
-  const [modo, setModo] = useState<'transferencia' | 'cheque'>('transferencia')
+function TabBoveda({ sesionId, saldoActual }: { sesionId: number; saldoActual: string }) {
+  const [monto,    setMonto]    = useState('')
+  const [confirmar, setConfirmar] = useState('')
+  const traslado = useTrasladoBoveda(sesionId)
+  const mismatch = confirmar !== '' && monto !== confirmar
+
+  const saldo = Number(saldoActual)
+
+  function reset() { setMonto(''); setConfirmar('') }
+
+  function handleSubmit() {
+    if (!monto || mismatch || Number(monto) <= 0) return
+    traslado.mutate(monto, {
+      onSuccess: (res) => {
+        toast.success(
+          `Traslado registrado — nuevo saldo: ${COP.format(Number(res.saldoDespues))}`,
+        )
+        reset()
+      },
+      onError: e => toast.error(e.message),
+    })
+  }
 
   return (
-    <div className="space-y-4 max-w-lg">
+    <div className="space-y-4 max-w-sm">
+      <div className="rounded-lg border bg-muted/20 px-4 py-3 flex items-center gap-3">
+        <Vault className="size-5 text-muted-foreground shrink-0" />
+        <div>
+          <p className="text-xs text-muted-foreground">Saldo disponible</p>
+          <p className="text-xl font-bold tabular-nums">{fmt(saldoActual)}</p>
+        </div>
+      </div>
+
       <p className="text-sm text-muted-foreground">
-        Usted está realizando una solicitud por: {modo === 'transferencia' ? 'Transferencia / Consignación' : 'Cheque'}
+        Mueve efectivo de tu cajón a la bóveda física sin cerrar la sesión. El saldo se reduce
+        inmediatamente. No puedes quedar por debajo del mínimo operativo configurado.
       </p>
 
-      <div className="flex gap-6 text-sm">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="radio" name="medioModo" checked={modo === 'transferencia'} onChange={() => setModo('transferencia')} />
-          Transferencia / Consignación
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="radio" name="medioModo" checked={modo === 'cheque'} onChange={() => setModo('cheque')} />
-          Cheques
-        </label>
+      <div className="rounded border p-4 space-y-3">
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Monto a trasladar
+          </Label>
+          <Input
+            type="number" min="1" step="1000"
+            placeholder="0"
+            className="tabular-nums"
+            value={monto}
+            onChange={e => setMonto(e.target.value)}
+          />
+          {monto && Number(monto) > 0 && (
+            <p className="text-xs text-muted-foreground tabular-nums">{fmt(monto)}</p>
+          )}
+          {monto && Number(monto) > saldo && (
+            <p className="text-xs text-red-500">Supera el saldo disponible</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Confirmar monto
+          </Label>
+          <Input
+            type="number" min="1" step="1000"
+            placeholder="0"
+            className={cn('tabular-nums', mismatch && 'border-red-400')}
+            value={confirmar}
+            onChange={e => setConfirmar(e.target.value)}
+          />
+          {mismatch && <p className="text-xs text-red-500">Los montos no coinciden</p>}
+        </div>
       </div>
 
-      <div className="rounded border p-6 text-center text-sm text-muted-foreground">
-        Funcionalidad disponible próximamente
-      </div>
+      <Button
+        className="w-full gap-2"
+        disabled={!monto || !confirmar || mismatch || Number(monto) <= 0 || Number(monto) > saldo || traslado.isPending}
+        onClick={handleSubmit}
+      >
+        {traslado.isPending && <Loader2 className="size-4 animate-spin" />}
+        <Vault className="size-4" />
+        Confirmar traslado a bóveda
+      </Button>
     </div>
   )
 }
@@ -860,12 +1278,21 @@ export default function DetalleCaja() {
                 {adminTab === 'custodia' && (
                   isClosed
                     ? <p className="text-sm text-muted-foreground">La caja está cerrada.</p>
-                    : <TabCustodia />
+                    : <TabCustodia
+                        sesionId={id}
+                        sucursalId={caja?.sucursalId ?? user?.sucursal_id ?? 0}
+                        saldoActual={sesion.saldoActual}
+                      />
                 )}
                 {adminTab === 'medios' && (
                   isClosed
                     ? <p className="text-sm text-muted-foreground">La caja está cerrada.</p>
-                    : <TabMedios />
+                    : <TabMedios sesionId={id} />
+                )}
+                {adminTab === 'boveda' && (
+                  isClosed
+                    ? <p className="text-sm text-muted-foreground">La caja está cerrada.</p>
+                    : <TabBoveda sesionId={id} saldoActual={sesion.saldoActual ?? '0'} />
                 )}
               </div>
             </>

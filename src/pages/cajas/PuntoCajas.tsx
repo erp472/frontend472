@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   RefreshCw, AlertTriangle, Eye, Loader2, Vault, PackageCheck,
-  TrendingUp, TrendingDown, ChevronDown, ChevronRight, ShieldAlert, ShoppingCart,
+  TrendingUp, TrendingDown, ChevronDown, ChevronRight, ShieldAlert, ShoppingCart, Settings,
+  ArrowLeftRight, Copy,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button }    from '@/components/ui/button'
@@ -13,14 +14,21 @@ import { Skeleton }  from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox }  from '@/components/ui/checkbox'
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { useSessionStore } from '@/stores/useSessionStore'
 import {
-  useStatusPunto, useAbrirCajaDirecta, useCajaPadre, useHistorialSesiones,
-  type CardAuxiliar, type PanelPunto, type TipoAlerta,
+  useStatusPunto, useAbrirCajaDirecta, useCajaPadre, useHistorialSesiones, useUpdateCaja,
+  useCambioCustodia, useConfirmarCustodia, useDiferenciasPendientes,
+  useAbrirSesionPrincipal, useCerrarSesionPrincipal,
+  type CardAuxiliar, type PanelPunto, type TipoAlerta, type CambioCustodiaResult,
+  type DiferenciaPendiente,
 } from '@/queries/cajas.queries'
 import { useUsers } from '@/queries/users.queries'
 
@@ -72,19 +80,43 @@ function PanelLateral({
   panel,
   cajas,
   sucursalId,
+  cajaFuerte,
+  cajaPadreId,
+  diferenciasPendientes,
 }: {
-  panel:      PanelPunto
-  cajas:      CardAuxiliar[]
-  sucursalId: number
+  panel:                 PanelPunto
+  cajas:                 CardAuxiliar[]
+  sucursalId:            number
+  cajaFuerte:            CardAuxiliar | undefined
+  cajaPadreId:           number
+  diferenciasPendientes: DiferenciaPendiente[]
 }) {
   const navigate = useNavigate()
-  const [open, setOpen] = useState(true)
+  const [open,          setOpen]          = useState(true)
+  const [montoFuerte,   setMontoFuerte]   = useState('')
+  const [arqueoFuerte,  setArqueoFuerte]  = useState('')
+  const [confirmarArq,  setConfirmarArq]  = useState('')
+  const [showCierreFuerte, setShowCierreFuerte] = useState(false)
 
-  const alertas = cajas.flatMap(c =>
-    c.alertas.map(a => ({ concepto: ALERTA_LABELS[a] ?? a, observacion: c.nombre }))
+  const abrirPrincipal  = useAbrirSesionPrincipal(cajaPadreId)
+  const cerrarPrincipal = useCerrarSesionPrincipal()
+
+  const alertasOperativas = cajas.flatMap(c =>
+    c.alertas.map(a => ({ concepto: ALERTA_LABELS[a] ?? a, observacion: c.nombre, esDiferencia: false }))
   )
+  const alertasDiferencias = diferenciasPendientes.map(d => ({
+    concepto:     d.tipoDiferencia === 'faltante'
+      ? `Faltante: ${COP.format(Number(d.monto))}`
+      : `Sobrante: +${COP.format(Number(d.monto))}`,
+    observacion:  d.cajaNombre,
+    esDiferencia: true,
+  }))
+  const alertas = [...alertasOperativas, ...alertasDiferencias]
 
   const irACierre = () => navigate(`/cajas/cierre/${sucursalId}`)
+
+  const fuerteAbierta = cajaFuerte?.estado === 'abierta'
+  const fuerteSinSesion = !cajaFuerte || cajaFuerte.estado === 'sin_sesion'
 
   const panelRows = [
     { label: 'Base',                 valor: panel.baseGeneral },
@@ -163,7 +195,14 @@ function PanelLateral({
                       onClick={irACierre}
                       className="border-t cursor-pointer hover:bg-red-50/60 dark:hover:bg-red-950/20 transition-colors"
                     >
-                      <td className="px-3 py-1.5 font-medium text-red-700 dark:text-red-400">
+                      <td className={cn(
+                        'px-3 py-1.5 font-medium',
+                        a.esDiferencia
+                          ? a.concepto.startsWith('Faltante')
+                            ? 'text-red-700 dark:text-red-400'
+                            : 'text-amber-700 dark:text-amber-400'
+                          : 'text-red-700 dark:text-red-400',
+                      )}>
                         {a.concepto}
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground">{a.observacion}</td>
@@ -213,6 +252,115 @@ function PanelLateral({
             </tr>
           </tbody>
         </table>
+      </div>
+
+      {/* Caja Fuerte — apertura / cierre */}
+      <div className="border-t">
+        <div className="px-3 py-2 bg-muted/50 text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
+          <Vault className="size-3" />
+          Caja Fuerte
+          {fuerteAbierta && <span className="ml-auto text-emerald-600">Abierta</span>}
+          {fuerteSinSesion && <span className="ml-auto text-muted-foreground">Sin sesión</span>}
+          {cajaFuerte?.estado === 'cerrada' && <span className="ml-auto text-amber-600">Cerrada</span>}
+        </div>
+
+        {/* Sin sesión: abrir */}
+        {fuerteSinSesion && (
+          <div className="px-3 py-2 space-y-2">
+            <Input
+              type="number" min="0" step="10000"
+              placeholder="Monto de apertura"
+              className="h-8 text-sm tabular-nums"
+              value={montoFuerte}
+              onChange={e => setMontoFuerte(e.target.value)}
+            />
+            {montoFuerte && Number(montoFuerte) > 0 && (
+              <p className="text-[11px] text-muted-foreground tabular-nums">{fmt(montoFuerte)}</p>
+            )}
+            <Button
+              size="sm" className="w-full gap-1.5"
+              disabled={!montoFuerte || Number(montoFuerte) < 0 || abrirPrincipal.isPending}
+              onClick={() =>
+                abrirPrincipal.mutate(montoFuerte, {
+                  onSuccess: () => { toast.success('Caja Fuerte abierta'); setMontoFuerte('') },
+                  onError:   e  => toast.error(e.message),
+                })
+              }
+            >
+              {abrirPrincipal.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              Abrir Caja Fuerte
+            </Button>
+          </div>
+        )}
+
+        {/* Abierta: mostrar saldo + botón cierre */}
+        {fuerteAbierta && (
+          <div className="px-3 py-2 space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Saldo</span>
+              <span className="font-semibold tabular-nums">{fmt(cajaFuerte?.saldoActual)}</span>
+            </div>
+            {!showCierreFuerte ? (
+              <Button
+                variant="outline" size="sm" className="w-full text-xs"
+                onClick={() => setShowCierreFuerte(true)}
+              >
+                Cerrar Caja Fuerte
+              </Button>
+            ) : (
+              <div className="space-y-2">
+                <Input
+                  type="number" min="0" step="10000"
+                  placeholder="Total arqueo"
+                  className="h-8 text-sm tabular-nums"
+                  value={arqueoFuerte}
+                  onChange={e => setArqueoFuerte(e.target.value)}
+                />
+                <Input
+                  type="number" min="0" step="10000"
+                  placeholder="Confirmar arqueo"
+                  className={cn('h-8 text-sm tabular-nums', confirmarArq && arqueoFuerte !== confirmarArq && 'border-red-400')}
+                  value={confirmarArq}
+                  onChange={e => setConfirmarArq(e.target.value)}
+                />
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm" className="flex-1 text-xs gap-1"
+                    disabled={
+                      !arqueoFuerte || arqueoFuerte !== confirmarArq ||
+                      !cajaFuerte?.sesionId || cerrarPrincipal.isPending
+                    }
+                    onClick={() => {
+                      if (!cajaFuerte?.sesionId) return
+                      cerrarPrincipal.mutate(
+                        { sesionId: cajaFuerte.sesionId, totalArqueo: arqueoFuerte },
+                        {
+                          onSuccess: () => {
+                            toast.success('Caja Fuerte cerrada')
+                            setShowCierreFuerte(false); setArqueoFuerte(''); setConfirmarArq('')
+                          },
+                          onError: e => toast.error(e.message),
+                        },
+                      )
+                    }}
+                  >
+                    {cerrarPrincipal.isPending && <Loader2 className="size-3 animate-spin" />}
+                    Confirmar
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowCierreFuerte(false)}>
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {cajaFuerte?.estado === 'cerrada' && (
+          <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+            Sesión cerrada · {fmt(cajaFuerte.saldoActual)}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -346,20 +494,251 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
   )
 }
 
+// ── CustodiaDialog ────────────────────────────────────────────────────────────
+
+function CustodiaDialog({
+  open, onClose, sesionId, sesionesAbiertas, saldoActual, cajaPadreId, cajaFuerte,
+}: {
+  open:             boolean
+  onClose:          () => void
+  sesionId:         number
+  sesionesAbiertas: CardAuxiliar[]
+  saldoActual:      string | null
+  cajaPadreId:      number
+  cajaFuerte:       CardAuxiliar | undefined
+}) {
+  const user      = useSessionStore(s => s.user)
+  const esSupervisor = user?.rol === 'SUPERVISOR_REGIONAL' || user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
+  const enviar    = useCambioCustodia(sesionId)
+  const confirmar = useConfirmarCustodia()
+  const abrirFuerte = useAbrirSesionPrincipal(cajaPadreId)
+  const [montoFuerte, setMontoFuerte] = useState('')
+
+  const [destiId,   setDestiId]   = useState('')
+  const [monto,     setMonto]     = useState('')
+  const [motivo,    setMotivo]    = useState('')
+  const [resultado, setResultado] = useState<CambioCustodiaResult | null>(null)
+
+  const [codigoIn,   setCodigoIn]   = useState('')
+  const [montoRec,   setMontoRec]   = useState('')
+  const [confirmado, setConfirmado] = useState(false)
+
+  // Custodia siempre va a la caja principal (general) del punto, nunca a otras POS
+  const destinos = sesionesAbiertas.filter(c => c.sesionId !== null && c.tipo === 'general')
+  const montoNum = Number(monto.replace(/\./g, '').replace(/,/g, ''))
+  const saldoNum = Number(saldoActual ?? 0)
+  const montoOk  = montoNum > 0 && montoNum <= saldoNum
+
+  function handleClose() {
+    setDestiId(''); setMonto(''); setMotivo(''); setResultado(null)
+    setCodigoIn(''); setMontoRec(''); setConfirmado(false)
+    setMontoFuerte('')
+    onClose()
+  }
+
+  function handleEnviar() {
+    enviar.mutate(
+      { sesionDestinoId: Number(destiId), monto: String(montoNum), ...(motivo.trim() ? { motivo: motivo.trim() } : {}) },
+      {
+        onSuccess: r => { setResultado(r as CambioCustodiaResult); toast.success('Remesa generada') },
+        onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
+      },
+    )
+  }
+
+  function handleConfirmar() {
+    confirmar.mutate(
+      { codigoRemesa: codigoIn.trim().toUpperCase(), montoRecibido: montoRec },
+      {
+        onSuccess: () => { setConfirmado(true); toast.success('Custodia confirmada — saldo acreditado') },
+        onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
+      },
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ArrowLeftRight className="size-4" /> Cambio de Custodia
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            Saldo disponible: <strong className="text-foreground tabular-nums">{fmt(saldoActual)}</strong>
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs defaultValue="enviar" className="w-full">
+          <TabsList className="w-full">
+            <TabsTrigger value="enviar" className="flex-1">Enviar remesa</TabsTrigger>
+            <TabsTrigger value="confirmar" className="flex-1">Confirmar recepción</TabsTrigger>
+          </TabsList>
+
+          {/* Tab: Enviar */}
+          <TabsContent value="enviar" className="mt-4 space-y-3">
+            {resultado ? (
+              <div className="space-y-3">
+                <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-4 text-center space-y-2">
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Código de remesa</p>
+                  <p className="text-2xl font-mono font-bold tracking-widest text-emerald-800 dark:text-emerald-300">{resultado.codigoRemesa}</p>
+                  <p className="text-xs text-muted-foreground">Monto: <strong>{fmt(resultado.montoEmitido)}</strong></p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => { void navigator.clipboard.writeText(resultado.codigoRemesa); toast.success('Código copiado') }}>
+                    <Copy className="size-3.5 mr-1.5" /> Copiar código
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setResultado(null)}>Nueva remesa</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Caja destino</Label>
+                  {destinos.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-3 space-y-2.5 text-center">
+                      <p className="text-xs text-muted-foreground">
+                        La Caja Principal no está abierta. Debe abrirse para recibir el efectivo de custodia.
+                      </p>
+                      {esSupervisor && (!cajaFuerte || cajaFuerte.estado === 'sin_sesion') && (
+                        <div className="space-y-2">
+                          <input
+                            type="number" min="0" step="10000"
+                            className="flex h-8 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                            placeholder="Monto apertura Caja Fuerte"
+                            value={montoFuerte}
+                            onChange={e => setMontoFuerte(e.target.value)}
+                          />
+                          <Button
+                            size="sm" className="w-full"
+                            disabled={!montoFuerte || Number(montoFuerte) <= 0 || abrirFuerte.isPending}
+                            onClick={() => abrirFuerte.mutate(montoFuerte, {
+                              onSuccess: () => { toast.success('Caja Fuerte abierta'); setMontoFuerte('') },
+                              onError:   e  => toast.error(e.message),
+                            })}
+                          >
+                            {abrirFuerte.isPending && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+                            Abrir Caja Fuerte
+                          </Button>
+                        </div>
+                      )}
+                      {!esSupervisor && (
+                        <p className="text-[11px] text-muted-foreground">Solicite al supervisor que abra la Caja Fuerte.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <Select value={destiId} onValueChange={setDestiId}>
+                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Seleccionar caja…" /></SelectTrigger>
+                      <SelectContent>
+                        {destinos.map(c => (
+                          <SelectItem key={c.sesionId} value={String(c.sesionId)}>
+                            {c.nombre} — Caja Principal ({fmt(c.saldoActual)})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Monto (COP)</Label>
+                  <input
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder={`Máx ${fmt(saldoActual)}`}
+                    value={monto}
+                    onChange={e => setMonto(e.target.value.replace(/[^0-9.,]/g, ''))}
+                  />
+                  {monto && !montoOk && (
+                    <p className="text-xs text-destructive">{montoNum <= 0 ? 'Monto inválido' : 'Supera el saldo disponible'}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Motivo (opcional)</Label>
+                  <input
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder="Ej: Abastecimiento…"
+                    value={motivo}
+                    maxLength={300}
+                    onChange={e => setMotivo(e.target.value)}
+                  />
+                </div>
+                <Button className="w-full" disabled={!destiId || !montoOk || enviar.isPending} onClick={handleEnviar}>
+                  {enviar.isPending && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+                  Generar remesa
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Tab: Confirmar */}
+          <TabsContent value="confirmar" className="mt-4 space-y-3">
+            {confirmado ? (
+              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-4 text-center space-y-2">
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">✓ Custodia confirmada</p>
+                <p className="text-xs text-muted-foreground">Saldo acreditado en la caja de origen</p>
+                <Button size="sm" variant="ghost" onClick={() => { setCodigoIn(''); setMontoRec(''); setConfirmado(false) }}>
+                  Confirmar otra
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Código de remesa</Label>
+                  <input
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm font-mono tracking-widest uppercase placeholder:text-muted-foreground placeholder:normal-case focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder="16 caracteres"
+                    maxLength={16}
+                    value={codigoIn}
+                    onChange={e => setCodigoIn(e.target.value.replace(/\s/g, ''))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Monto físico recibido (COP)</Label>
+                  <input
+                    type="number" min="0" step="1000"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    placeholder="Valor exacto recibido"
+                    value={montoRec}
+                    onChange={e => setMontoRec(e.target.value)}
+                  />
+                </div>
+                <Button className="w-full" disabled={!codigoIn.trim() || !montoRec || confirmar.isPending} onClick={handleConfirmar}>
+                  {confirmar.isPending && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+                  Confirmar recepción
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={handleClose}>Cerrar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── CajaModal ─────────────────────────────────────────────────────────────────
 
-function CajaModal({ open, onClose, card }: {
+function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadreId, cajaFuerte }: {
   open: boolean; onClose: () => void
   card: CardAuxiliar | null
+  sucursalId: number
+  sesionesAbiertas: CardAuxiliar[]
+  cajaPadreId: number
+  cajaFuerte: CardAuxiliar | undefined
 }) {
   const navigate    = useNavigate()
   const user        = useSessionStore(s => s.user)
   const esCajero    = user?.rol === 'CAJERO'
   const esSupervisor = user?.rol === 'SUPERVISOR_REGIONAL' || user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
 
-  const [servicios,  setServicios]  = useState<string[]>([])
-  const [base,       setBase]       = useState('')
-  const [cajeroId,   setCajeroId]   = useState<number | undefined>(undefined)
+  const [servicios,    setServicios]    = useState<string[]>([])
+  const [base,         setBase]         = useState('')
+  const [cajeroId,     setCajeroId]     = useState<number | undefined>(undefined)
+  const [showConfig,   setShowConfig]   = useState(false)
+  const [limiteAlerta, setLimiteAlerta] = useState('')
+  const [baseDia,      setBaseDia]      = useState('')
+  const [showCustodia, setShowCustodia] = useState(false)
 
   const { data: usuariosSuc } = useUsers({
     rol:        'CAJERO',
@@ -369,7 +748,8 @@ function CajaModal({ open, onClose, card }: {
   })
   const cajeros = usuariosSuc?.datos ?? []
 
-  const abrir    = useAbrirCajaDirecta(card?.cajaId ?? 0)
+  const abrir      = useAbrirCajaDirecta(card?.cajaId ?? 0)
+  const updateCaja = useUpdateCaja(card?.cajaId ?? 0, sucursalId)
   const { data: historial } = useHistorialSesiones(card?.cajaId ?? 0)
 
   useEffect(() => {
@@ -377,6 +757,9 @@ function CajaModal({ open, onClose, card }: {
       setServicios([...(SERVICIOS[card.tipo] ?? [])])
       setBase('')
       setCajeroId(card.cajeroId ?? undefined)
+      setLimiteAlerta(card.limiteAlerta ?? '')
+      setBaseDia(card.baseDia ?? '')
+      setShowConfig(false)
     }
   }, [card?.cajaId])
 
@@ -386,6 +769,20 @@ function CajaModal({ open, onClose, card }: {
   const abierta   = card.estado === 'abierta'
   const cerrada   = card.estado === 'cerrada'
   const catServ   = SERVICIOS[card.tipo] ?? []
+
+  function submitConfig() {
+    if (!card) return
+    updateCaja.mutate(
+      {
+        limiteAlerta: limiteAlerta ? limiteAlerta : null,
+        baseDia:      baseDia      ? baseDia      : undefined,
+      },
+      {
+        onSuccess: () => { toast.success('Configuración guardada'); setShowConfig(false) },
+        onError:   (e) => toast.error(e.message),
+      },
+    )
+  }
 
   function submitApertura() {
     if (!card) return
@@ -539,6 +936,62 @@ function CajaModal({ open, onClose, card }: {
               </div>
             )}
 
+            {/* Configurar límites — solo supervisores */}
+            {esSupervisor && (
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowConfig(o => !o)}
+                  className="w-full flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Settings className="size-3.5" />
+                  Configurar límites
+                  <ChevronDown className={cn('size-3 ml-auto transition-transform duration-150', showConfig && 'rotate-180')} />
+                </button>
+                {showConfig && (
+                  <div className="rounded-lg border bg-muted/20 p-3 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Base del día
+                      </Label>
+                      <Input
+                        type="number" min="0" step="1000" placeholder="Sin base configurada"
+                        value={baseDia} onChange={e => setBaseDia(e.target.value)}
+                        className="h-9 tabular-nums"
+                      />
+                      {baseDia && Number(baseDia) > 0 && (
+                        <p className="text-[11px] text-muted-foreground tabular-nums">{fmt(baseDia)}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Límite de alerta de efectivo
+                      </Label>
+                      <Input
+                        type="number" min="0" step="10000" placeholder="Sin límite (dejar vacío para desactivar)"
+                        value={limiteAlerta} onChange={e => setLimiteAlerta(e.target.value)}
+                        className="h-9 tabular-nums"
+                      />
+                      {limiteAlerta && Number(limiteAlerta) > 0 && (
+                        <p className="text-[11px] text-muted-foreground tabular-nums">{fmt(limiteAlerta)}</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground">
+                        Genera una alerta cuando el efectivo supera este monto. Vacío = sin límite.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm" className="w-full"
+                      disabled={updateCaja.isPending}
+                      onClick={submitConfig}
+                    >
+                      {updateCaja.isPending && <Loader2 className="mr-2 size-3.5 animate-spin" />}
+                      Guardar configuración
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Historial de sesiones */}
             {historial && historial.length > 0 && (
               <div className="space-y-2">
@@ -617,6 +1070,9 @@ function CajaModal({ open, onClose, card }: {
 
           {abierta && (
             <>
+              <Button variant="outline" onClick={() => setShowCustodia(true)}>
+                <ArrowLeftRight className="mr-2 size-4" /> Cambio de Custodia
+              </Button>
               <Button variant="outline" onClick={() => { onClose(); navigate(`/cajas/punto/${card.sesionId}`) }}>
                 <Eye className="mr-2 size-4" /> Ver movimientos
               </Button>
@@ -635,6 +1091,19 @@ function CajaModal({ open, onClose, card }: {
           )}
         </div>
       </DialogContent>
+
+      {/* Dialog de custodia — se monta desde CajaModal para tener acceso a card y sesionesAbiertas */}
+      {abierta && card.sesionId && (
+        <CustodiaDialog
+          open={showCustodia}
+          onClose={() => setShowCustodia(false)}
+          sesionId={card.sesionId}
+          sesionesAbiertas={sesionesAbiertas ?? []}
+          saldoActual={card.saldoActual}
+          cajaPadreId={cajaPadreId}
+          cajaFuerte={cajaFuerte}
+        />
+      )}
     </Dialog>
   )
 }
@@ -648,6 +1117,7 @@ export default function PuntoCajas() {
 
   const { data, isLoading, isError, refetch, isFetching } = useStatusPunto(id)
   const { data: cajaPadre } = useCajaPadre(data?.cajaPadreId ?? 0)
+  const { data: diferenciasPendientes = [] } = useDiferenciasPendientes(id)
   const user = useSessionStore(s => s.user)
 
   const [cajaTarget, setCajaTarget] = useState<CardAuxiliar | null>(null)
@@ -676,7 +1146,8 @@ export default function PuntoCajas() {
   }
 
   const cajas         = data.cajas.filter(c => c.tipo === 'pos')
-  const totalAlertas  = cajas.reduce((a, c) => a + c.alertas.length, 0)
+  const cajaFuerte    = data.cajas.find(c => c.tipo === 'general')
+  const totalAlertas  = cajas.reduce((a, c) => a + c.alertas.length, 0) + diferenciasPendientes.length
   const totalAbiertas = cajas.filter(c => c.estado === 'abierta').length
 
   return (
@@ -743,7 +1214,14 @@ export default function PuntoCajas() {
 
         {/* Panel derecho */}
         <aside className="w-72 shrink-0 border-l overflow-hidden">
-          <PanelLateral panel={data.panel} cajas={cajas} sucursalId={id} />
+          <PanelLateral
+            panel={data.panel}
+            cajas={cajas}
+            sucursalId={id}
+            cajaFuerte={cajaFuerte}
+            cajaPadreId={data.cajaPadreId}
+            diferenciasPendientes={diferenciasPendientes}
+          />
         </aside>
       </div>
 
@@ -751,6 +1229,13 @@ export default function PuntoCajas() {
         open={!!cajaTarget}
         onClose={() => setCajaTarget(null)}
         card={cajaTarget}
+        sucursalId={id}
+        cajaPadreId={data.cajaPadreId}
+        cajaFuerte={cajaFuerte}
+        sesionesAbiertas={[
+          ...cajas.filter(c => c.estado === 'abierta'),
+          ...(cajaFuerte && cajaFuerte.estado === 'abierta' ? [cajaFuerte] : []),
+        ]}
       />
     </div>
   )

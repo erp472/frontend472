@@ -4,7 +4,8 @@ import {
   ShoppingCart, Trash2, ChevronLeft, RefreshCw,
   Search, CheckCircle2, AlertTriangle, Loader2,
   Package, MailOpen, Plus, Tag, Pencil,
-  Truck, X, UserRound, Eye, EyeOff,
+  Truck, X, UserRound, Eye, EyeOff, ArrowRightLeft,
+  ChevronsUpDown, Check,
 } from 'lucide-react'
 import { Button }      from '@/components/ui/button'
 import { Input }       from '@/components/ui/input'
@@ -14,12 +15,17 @@ import { Separator }   from '@/components/ui/separator'
 import { ScrollArea }  from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { toast } from 'sonner'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { useAcceso } from '@/hooks/useAcceso'
@@ -37,7 +43,6 @@ import {
   useVentasTurno,
   useApartadosDisponibles,
   useServiciosPostales,
-  useCotizarEnvio,
   useIniciarVenta,
   useAgregarProducto,
   useEliminarProducto,
@@ -52,6 +57,7 @@ import {
   type GuiaEnvio,
 } from '@/queries/ventas.queries'
 import { GuiaPostal } from '@/components/GuiaPostal'
+import { usePaises, useDepartamentos, useCiudades } from '@/queries/geo.queries'
 
 // ── Validación de email ───────────────────────────────────────────────────────
 
@@ -1503,6 +1509,54 @@ function TabProductosEspeciales({
   )
 }
 
+// ── PaisCombobox ──────────────────────────────────────────────────────────────
+
+function PaisCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const { data: paises = [], isLoading } = usePaises()
+
+  const selected = paises.find(p => (p.iso2 ?? '') === value)
+  const label = selected?.nombre ?? (value === 'CO' ? 'Colombia' : value || 'Seleccionar país…')
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-7 w-full items-center justify-between rounded-md border border-input bg-background px-2 text-xs ring-offset-background hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronsUpDown className="ml-1 size-3 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar país…" className="h-8 text-xs" />
+          <CommandList>
+            <CommandEmpty className="py-2 text-center text-xs text-muted-foreground">
+              {isLoading ? 'Cargando…' : 'Sin resultados'}
+            </CommandEmpty>
+            <CommandGroup>
+              {paises.map(p => (
+                <CommandItem
+                  key={p.id}
+                  value={p.nombre}
+                  onSelect={() => { onChange(p.iso2 ?? p.nombre); setOpen(false) }}
+                  className="text-xs"
+                >
+                  <Check className={cn('mr-1.5 size-3', (p.iso2 ?? '') === value ? 'opacity-100' : 'opacity-0')} />
+                  {p.nombre}
+                  {p.iso2 && <span className="ml-auto font-mono text-muted-foreground text-[10px]">{p.iso2}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 // ── TabServiciosPostales ──────────────────────────────────────────────────────
 
 interface PersonaDir {
@@ -1568,10 +1622,13 @@ interface DirState {
   placa:       string
   // Libre
   textoLibre:  string
-  // Compartido
-  departamento: string
-  ciudad:       string
-  adicion:      string
+  // Compartido — strings (para composición y envío al backend)
+  departamento:   string
+  ciudad:         string
+  adicion:        string
+  // Compartido — IDs de BD para los selects cascada
+  departamentoId: number | null
+  ciudadId:       number | null
 }
 
 const dirVacia = (): DirState => ({
@@ -1579,6 +1636,7 @@ const dirVacia = (): DirState => ({
   tipoVia: 'CLL', numVia: '', letraVia: '', bis: false, cuadrante1: '',
   numGen: '', letraGen: '', cuadrante2: '', placa: '',
   textoLibre: '', departamento: '', ciudad: '', adicion: '',
+  departamentoId: null, ciudadId: null,
 })
 
 function composeAddress(d: DirState): string {
@@ -1593,7 +1651,85 @@ function composeAddress(d: DirState): string {
   return [main, d.adicion.trim()].filter(Boolean).join(', ')
 }
 
-function DireccionInput({ value, onChange }: { value: DirState; onChange: (s: DirState) => void }) {
+const COLOMBIA_PAIS_ID = 82
+
+function GeoSelectsCascade({
+  paisId,
+  departamentoId,
+  ciudadId,
+  onDeptChange,
+  onCityChange,
+}: {
+  paisId: number | null
+  departamentoId: number | null
+  ciudadId: number | null
+  onDeptChange: (id: number | null, nombre: string) => void
+  onCityChange: (id: number | null, nombre: string) => void
+}) {
+  const { data: deptos, isLoading: loadingDeptos } = useDepartamentos(paisId)
+  const { data: ciudades, isLoading: loadingCiudades } = useCiudades(departamentoId)
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <div className="space-y-1">
+        <Label className="text-xs">
+          Departamento {loadingDeptos && <Loader2 className="inline size-2.5 animate-spin ml-1" />}
+        </Label>
+        <Select
+          value={departamentoId ? String(departamentoId) : ''}
+          onValueChange={v => {
+            const id = Number(v) || null
+            const nombre = deptos?.find(d => d.id === id)?.nombre ?? ''
+            onDeptChange(id, nombre)
+            // no llamar onCityChange aquí: onDeptChange ya limpia ciudadId
+          }}
+          disabled={!deptos?.length}
+        >
+          <SelectTrigger className="h-7 text-xs px-2">
+            <SelectValue placeholder={loadingDeptos ? 'Cargando...' : 'Seleccionar...'} />
+          </SelectTrigger>
+          <SelectContent className="max-h-52">
+            {deptos?.map(d => (
+              <SelectItem key={d.id} value={String(d.id)} className="text-xs">{d.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">
+          Ciudad <span className="text-destructive">*</span>
+          {loadingCiudades && <Loader2 className="inline size-2.5 animate-spin ml-1" />}
+        </Label>
+        <Select
+          value={ciudadId ? String(ciudadId) : ''}
+          onValueChange={v => {
+            const id = Number(v) || null
+            const nombre = ciudades?.find(c => c.id === id)?.nombre ?? ''
+            onCityChange(id, nombre)
+          }}
+          disabled={!ciudades?.length}
+        >
+          <SelectTrigger className="h-7 text-xs px-2">
+            <SelectValue placeholder={!departamentoId ? 'Primero depto.' : loadingCiudades ? 'Cargando...' : 'Seleccionar...'} />
+          </SelectTrigger>
+          <SelectContent className="max-h-52">
+            {ciudades?.map(c => (
+              <SelectItem key={c.id} value={String(c.id)} className="text-xs">{c.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  )
+}
+
+function DireccionInput({
+  value, onChange, paisId = COLOMBIA_PAIS_ID,
+}: {
+  value: DirState
+  onChange: (s: DirState) => void
+  paisId?: number | null
+}) {
   const set = <K extends keyof DirState>(k: K, v: DirState[K]) => onChange({ ...value, [k]: v })
   const preview = composeAddress(value)
 
@@ -1743,27 +1879,38 @@ function DireccionInput({ value, onChange }: { value: DirState; onChange: (s: Di
         </div>
       )}
 
-      {/* Geografía (compartido) */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <Label className="text-xs">Departamento</Label>
-          <Input
-            className="h-7 text-xs"
-            placeholder="Cundinamarca"
-            value={value.departamento}
-            onChange={e => set('departamento', e.target.value)}
-          />
+      {/* Geografía cascada: Departamento → Ciudad */}
+      {paisId != null ? (
+        <GeoSelectsCascade
+          paisId={paisId}
+          departamentoId={value.departamentoId}
+          ciudadId={value.ciudadId}
+          onDeptChange={(id, nombre) => onChange({ ...value, departamentoId: id, departamento: nombre, ciudadId: null, ciudad: '' })}
+          onCityChange={(id, nombre) => onChange({ ...value, ciudadId: id, ciudad: nombre })}
+        />
+      ) : (
+        /* Internacional sin datos BD — texto libre */
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Departamento / Estado</Label>
+            <Input
+              className="h-7 text-xs"
+              placeholder="Estado / Región"
+              value={value.departamento}
+              onChange={e => set('departamento', e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Ciudad <span className="text-destructive">*</span></Label>
+            <Input
+              className="h-7 text-xs"
+              placeholder="Ciudad"
+              value={value.ciudad}
+              onChange={e => set('ciudad', e.target.value)}
+            />
+          </div>
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Ciudad <span className="text-destructive">*</span></Label>
-          <Input
-            className="h-7 text-xs"
-            placeholder="Bogotá"
-            value={value.ciudad}
-            onChange={e => set('ciudad', e.target.value)}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Adición */}
       <div className="space-y-1">
@@ -1785,12 +1932,13 @@ function hasAddressData(d: DirState): boolean {
   return d.modo === 'normalizada' ? d.numVia.trim() !== '' : d.textoLibre.trim() !== ''
 }
 
-function AddressModal({ open, onClose, onSave, title, initial }: {
+function AddressModal({ open, onClose, onSave, title, initial, paisContexto = 'CO' }: {
   open: boolean
   onClose: () => void
   onSave: (p: PersonaDir) => void
   title: string
   initial: PersonaDir
+  paisContexto?: string
 }) {
   const [nombre,    setNombre]    = useState('')
   const [empresa,   setEmpresa]   = useState('')
@@ -1804,6 +1952,9 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
   const [selPhIdx,  setSelPhIdx]  = useState<number | null>(null)
   const [phTipo,    setPhTipo]    = useState('CELULAR')
   const [phNum,     setPhNum]     = useState('')
+
+  // Colombia siempre tiene departamentos/ciudades en BD; otros países usan texto libre
+  const paisId = paisContexto === 'CO' ? COLOMBIA_PAIS_ID : null
 
   useEffect(() => {
     if (!open) return
@@ -1840,7 +1991,7 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
   const handleOk = () => {
     const dir      = selDirIdx !== null ? addresses[selDirIdx].dir : draftDir
     const telefono = selPhIdx  !== null ? phones[selPhIdx].numero  : phones[0]?.numero ?? ''
-    onSave({ nombre, empresa, documento, email, cp, pais: 'CO', dir, telefono })
+    onSave({ nombre, empresa, documento, email, cp, pais: paisContexto || 'CO', dir, telefono })
     onClose()
   }
 
@@ -1851,7 +2002,7 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
           <DialogTitle className="text-sm">{title}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-6 pb-6">
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
         <div className="space-y-4 py-4">
           {/* Datos de la persona */}
           <div className="grid grid-cols-2 gap-2">
@@ -1875,6 +2026,11 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
               <Label className="text-xs">Código postal</Label>
               <Input className="h-7 text-xs" value={cp} onChange={e => setCp(e.target.value)} placeholder="111011" />
             </div>
+            {paisContexto !== 'CO' && (
+              <div className="col-span-2 rounded bg-muted/50 border px-2 py-1 text-[10px] text-muted-foreground">
+                País destino: <span className="font-medium text-foreground">{paisContexto}</span> — departamento y ciudad en texto libre
+              </div>
+            )}
           </div>
 
           <Separator />
@@ -1941,7 +2097,7 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
               {addresses.length === 0 ? 'Dirección' : 'Agregar otra dirección'}
             </p>
-            <DireccionInput value={draftDir} onChange={setDraftDir} />
+            <DireccionInput value={draftDir} onChange={setDraftDir} paisId={paisId} />
             <Button
               type="button" variant="outline" size="sm"
               onClick={handleAddDir}
@@ -2018,7 +2174,7 @@ function AddressModal({ open, onClose, onSave, title, initial }: {
             )}
           </div>
         </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="px-6 pb-6 shrink-0 border-t pt-4">
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
@@ -2033,11 +2189,11 @@ function TabServiciosPostales({
   sucursalId, cajaId, clienteId, ventaId,
 }: { sucursalId: number; cajaId: number; clienteId: number | null; ventaId: number | null }) {
   const [pais,          setPais]          = useState('CO')
-  const [destino,       setDestino]       = useState('')
   const [servicioId,    setServicioId]    = useState(0)
   const [apartadoP,     setApartadoP]     = useState('')
   const [remitente,     setRemitente]     = useState<PersonaDir>(personaDirVacia())
   const [destinatario,  setDestinatario]  = useState<PersonaDir>(personaDirVacia())
+  const [esCorrespondencia, setEsCorrespondencia] = useState(false)
   const [pesoGramos,    setPesoGramos]    = useState('')
   const [altoCm,        setAltoCm]        = useState('')
   const [anchoCm,       setAnchoCm]       = useState('')
@@ -2062,15 +2218,7 @@ function TabServiciosPostales({
   const { data: servicios, isLoading: loadingServicios } = useServiciosPostales(sucursalId)
   const serviciosFiltrados = servicios?.filter((s: ServicioCatalogo) => s.tipo !== 'apartado_postal')
   const selectedService    = serviciosFiltrados?.find((s: ServicioCatalogo) => s.id === servicioId)
-  const esInternacional    = !!selectedService?.tipo?.includes('internacional')
-
-  const { data: cotizacion, isLoading: cotizando } = useCotizarEnvio({
-    servicioId,
-    pesoFisicoKg: pesoKg,
-    ...(altoCm  ? { altoCm:  Number(altoCm)  } : {}),
-    ...(anchoCm ? { anchoCm: Number(anchoCm) } : {}),
-    ...(largoCm ? { largoCm: Number(largoCm) } : {}),
-  })
+  const esInternacional    = pais !== 'CO'
 
   const { data: clienteData } = useCliente(clienteId ?? 0)
   useEffect(() => {
@@ -2092,17 +2240,18 @@ function TabServiciosPostales({
   const crearEnvio  = useCrearEnvio(cajaId)
   const agregarProd = useAgregarProducto(ventaId ?? 0, cajaId)
 
-  const puedeGuardar = servicioId > 0 && pesoKg > 0 && !!cotizacion
+  const puedeGuardar = servicioId > 0 && pesoKg > 0
     && remitente.nombre.trim() !== '' && destinatario.nombre.trim() !== ''
 
   const resetForm = () => {
-    setServicioId(0); setPais('CO'); setDestino(''); setApartadoP('')
+    setServicioId(0); setPais('CO'); setApartadoP('')
     setPesoGramos(''); setAltoCm(''); setAnchoCm(''); setLargoCm('')
     setValorDeclarado(''); setDiceContener(''); setConsecutivo('')
     setRemitente(personaDirVacia()); setDestinatario(personaDirVacia())
     setObservaciones(''); setMedioPago('efectivo')
     setSeguroAdicional(false); setCantidadPiezas(1)
     setCajaCantidad(1); setCajaSeleccion(7)
+    setEsCorrespondencia(false)
   }
 
   const ejecutarGenerar = async () => {
@@ -2125,15 +2274,16 @@ function TabServiciosPostales({
         email:        destinatario.email.trim()             || undefined,
         telefono:     destinatario.telefono.trim()          || undefined,
         direccion:    dirTexto                              || undefined,
-        ciudad:       destinatario.dir.ciudad.trim() || destino.trim() || undefined,
+        ciudad:       destinatario.dir.ciudad.trim()       || undefined,
         departamento: destinatario.dir.departamento.trim() || undefined,
         pais:         esInternacional ? destinatario.pais : 'CO',
         codigoPostal: destinatario.cp.trim()               || undefined,
       },
     }
-    if (altoCm)                    body.altoCm         = Number(altoCm)
-    if (anchoCm)                   body.anchoCm        = Number(anchoCm)
-    if (largoCm)                   body.largoCm        = Number(largoCm)
+    if (esCorrespondencia)         body.esCorrespondencia = true
+    if (!esCorrespondencia && altoCm)   body.altoCm    = Number(altoCm)
+    if (!esCorrespondencia && anchoCm)  body.anchoCm   = Number(anchoCm)
+    if (!esCorrespondencia && largoCm)  body.largoCm   = Number(largoCm)
     if (valorDeclarado)            body.valorDeclarado = Number(valorDeclarado)
     if (diceContener.trim())       body.contenido      = diceContener.trim()
     if (seguroAdicional)           body.seguroPostal   = true
@@ -2151,16 +2301,19 @@ function TabServiciosPostales({
       guia:            result.envio.numeroGuia,
       servicioNombre:  selectedService?.nombre ?? '—',
       destinatario:    result.envio.destinatarioNombre ?? destinatario.nombre.trim(),
-      ciudad:          result.envio.destinatarioCiudad ?? destinatario.dir.ciudad.trim() ?? destino.trim(),
+      ciudad:          result.envio.destinatarioCiudad ?? destinatario.dir.ciudad.trim(),
       cantidad:        cantidadPiezas,
       pesoFisico:      result.envio.pesoFisicoKg,
-      pesoVolumetrico: cotizacion?.pesoVolumetricoKg ?? null,
+      pesoVolumetrico: result.envio.pesoVolumetricoKg ?? null,
       pesoFacturado:   result.envio.pesoTarificadoKg,
       valorServicio:   result.envio.valorServicio,
       valorTotal:      result.envio.valorTotal,
       guiaData:        result.guia,
     }])
     toast.success(`Guía ${result.envio.numeroGuia} generada`)
+    if (result.alertas?.length) {
+      result.alertas.forEach(a => toast.warning(a, { duration: 8000 }))
+    }
     resetForm()
   }
 
@@ -2207,30 +2360,12 @@ function TabServiciosPostales({
         <ScrollArea className="flex-1 min-h-0">
           <div className="px-4 py-3 space-y-2.5">
 
-            {/* 1. País / Destino */}
+            {/* 1. País */}
             <div className="space-y-1">
               <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">1.</span> País / Destino
+                <span className="text-primary mr-1">1.</span> País destino
               </Label>
-              <div className="grid grid-cols-[90px_1fr] gap-1.5">
-                <Select value={pais} onValueChange={setPais}>
-                  <SelectTrigger className="h-7 text-xs px-2"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CO" className="text-xs">Colombia</SelectItem>
-                    <SelectItem value="US" className="text-xs">EE.UU.</SelectItem>
-                    <SelectItem value="VE" className="text-xs">Venezuela</SelectItem>
-                    <SelectItem value="EC" className="text-xs">Ecuador</SelectItem>
-                    <SelectItem value="PE" className="text-xs">Perú</SelectItem>
-                    <SelectItem value="XX" className="text-xs">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  className="h-7 text-xs"
-                  placeholder="Ciudad destino"
-                  value={destino}
-                  onChange={e => setDestino(e.target.value.toUpperCase())}
-                />
-              </div>
+              <PaisCombobox value={pais} onChange={setPais} />
             </div>
 
             {/* 2. Servicio */}
@@ -2248,11 +2383,38 @@ function TabServiciosPostales({
                     <SelectValue placeholder="Seleccionar servicio..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {serviciosFiltrados?.map((s: ServicioCatalogo) => (
-                      <SelectItem key={s.id} value={String(s.id)} className="text-xs">
-                        {s.nombre} — {s.codigo}
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      const noPrior  = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.codigo.startsWith('NP-')) ?? []
+                      const prior    = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.codigo.startsWith('P-'))  ?? []
+                      const otros    = serviciosFiltrados?.filter((s: ServicioCatalogo) => !s.codigo.startsWith('NP-') && !s.codigo.startsWith('P-')) ?? []
+                      const item = (s: ServicioCatalogo) => (
+                        <SelectItem key={s.id} value={String(s.id)} className="text-xs">
+                          {s.nombre}
+                        </SelectItem>
+                      )
+                      return (
+                        <>
+                          {noPrior.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">No Prioritaria</SelectLabel>
+                              {noPrior.map(item)}
+                            </SelectGroup>
+                          )}
+                          {prior.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Prioritaria</SelectLabel>
+                              {prior.map(item)}
+                            </SelectGroup>
+                          )}
+                          {otros.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Otros</SelectLabel>
+                              {otros.map(item)}
+                            </SelectGroup>
+                          )}
+                        </>
+                      )
+                    })()}
                   </SelectContent>
                 </Select>
               )}
@@ -2338,9 +2500,9 @@ function TabServiciosPostales({
                         {composeAddress(destinatario.dir)}
                       </p>
                     )}
-                    {(destinatario.dir.ciudad || destino || destinatario.telefono) && (
+                    {(destinatario.dir.ciudad || destinatario.telefono) && (
                       <p className="text-[10px] text-muted-foreground truncate">
-                        {[destinatario.dir.ciudad || destino, destinatario.telefono].filter(Boolean).join(' · ')}
+                        {[destinatario.dir.ciudad, destinatario.telefono].filter(Boolean).join(' · ')}
                       </p>
                     )}
                   </div>
@@ -2350,14 +2512,26 @@ function TabServiciosPostales({
               </button>
             </div>
 
+            {/* Correspondencia */}
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={esCorrespondencia}
+                onChange={e => setEsCorrespondencia(e.target.checked)}
+                className="size-3.5 accent-primary"
+              />
+              <span className="text-xs">Es correspondencia (máx. 5 kg, sin volumétrico)</span>
+            </label>
+
             {/* 5. Peso físico (gramos) */}
             <div className="space-y-1">
               <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                 <span className="text-primary mr-1">5.</span> Peso físico (gramos)
+                {esCorrespondencia && <span className="ml-1 text-amber-600">máx. 5000 g</span>}
               </Label>
               <div className="flex items-center gap-2">
                 <Input
-                  type="number" step="1" min="1"
+                  type="number" step="1" min="1" max={esCorrespondencia ? 5000 : undefined}
                   className="h-7 text-xs w-28"
                   placeholder="500"
                   value={pesoGramos}
@@ -2368,29 +2542,34 @@ function TabServiciosPostales({
                     = {(Number(pesoGramos) / 1000).toFixed(3)} kg
                   </span>
                 )}
+                {esCorrespondencia && pesoGramos && Number(pesoGramos) > 5000 && (
+                  <span className="text-[10px] text-red-500">Excede 5 kg</span>
+                )}
               </div>
             </div>
 
-            {/* 6. Peso volumétrico */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">6.</span> Peso volumétrico (cm)
-              </Label>
-              <div className="grid grid-cols-3 gap-1.5">
-                <div className="space-y-0.5">
-                  <p className="text-[9px] text-muted-foreground text-center">Alto</p>
-                  <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={altoCm}  onChange={e => setAltoCm(e.target.value)} />
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-[9px] text-muted-foreground text-center">Ancho</p>
-                  <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={anchoCm} onChange={e => setAnchoCm(e.target.value)} />
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-[9px] text-muted-foreground text-center">Largo</p>
-                  <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={largoCm} onChange={e => setLargoCm(e.target.value)} />
+            {/* 6. Peso volumétrico — oculto para correspondencia */}
+            {!esCorrespondencia && (
+              <div className="space-y-1">
+                <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  <span className="text-primary mr-1">6.</span> Peso volumétrico (cm)
+                </Label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] text-muted-foreground text-center">Alto</p>
+                    <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={altoCm}  onChange={e => setAltoCm(e.target.value)} />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] text-muted-foreground text-center">Ancho</p>
+                    <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={anchoCm} onChange={e => setAnchoCm(e.target.value)} />
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] text-muted-foreground text-center">Largo</p>
+                    <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={largoCm} onChange={e => setLargoCm(e.target.value)} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* 7. Valor declarado */}
             <div className="space-y-1">
@@ -2461,32 +2640,6 @@ function TabServiciosPostales({
               />
             </div>
 
-            {/* Cotización / Tarifa */}
-            {servicioId > 0 && pesoKg > 0 && (
-              <div className="rounded-lg bg-muted/40 border p-2.5">
-                <p className="text-[10px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wide">Tarifa</p>
-                {cotizando ? (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="size-3 animate-spin" /> Calculando...
-                  </div>
-                ) : cotizacion ? (
-                  <div className="space-y-0.5 text-xs">
-                    {cotizacion.pesoVolumetricoKg != null && (
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Peso vol.:</span>
-                        <span className="font-mono">{cotizacion.pesoVolumetricoKg} kg</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-semibold text-sm">
-                      <span>Valor flete:</span>
-                      <span className="text-primary">{fmt(cotizacion.valorServicio)}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Ingresa el peso para tarifar</p>
-                )}
-              </div>
-            )}
 
             {/* Medio de pago */}
             <div className="space-y-1.5">
@@ -2639,6 +2792,7 @@ function TabServiciosPostales({
         onClose={() => setModalPersona(null)}
         title={modalPersona === 'remitente' ? 'Remitente' : 'Destinatario'}
         initial={modalPersona === 'remitente' ? remitente : destinatario}
+        paisContexto={modalPersona === 'remitente' ? 'CO' : pais}
         onSave={p => {
           if (modalPersona === 'remitente') setRemitente(p)
           else setDestinatario(p)
@@ -2836,11 +2990,30 @@ function TabResumenPago({
   cajaId: number
   onExito: () => void
 }) {
+  const { user } = useSessionStore()
+  const canAnular = ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA'].includes(user?.rol ?? '')
+
   const [medioPago,        setMedioPago]        = useState<MedioPagoVenta>('efectivo')
   const [email,            setEmail]            = useState(cliente?.email ?? '')
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
   const [preporteadoMonto, setPreporteadoMonto] = useState('')
+  const [anularOpen,       setAnularOpen]       = useState(false)
+  const [motivoAnular,     setMotivoAnular]     = useState('')
+
   const confirmar = useConfirmarVenta(ventaId, cajaId)
+  const anular    = useAnularVenta(ventaId, cajaId)
+
+  const handleAnular = async () => {
+    if (!motivoAnular.trim()) return
+    try {
+      await anular.mutateAsync({ motivo: motivoAnular.trim() })
+      toast.success('Venta anulada')
+      setAnularOpen(false)
+      onExito()
+    } catch {
+      toast.error('No se pudo anular la venta')
+    }
+  }
 
   const isMixto      = medioPago === 'mixto_preporteado'
   const showEfectivo = medioPago === 'efectivo' || isMixto
@@ -3116,11 +3289,49 @@ function TabResumenPago({
             {confirmar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
             Confirmar pago — {fmt(carrito.total)}
           </Button>
-          <Button variant="destructive" size="sm" disabled={confirmar.isPending} onClick={() => {/* anulación pendiente */}}>
-            Anular
-          </Button>
+          {canAnular && (
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={confirmar.isPending || anular.isPending}
+              onClick={() => { setAnularOpen(true); setMotivoAnular('') }}
+            >
+              Anular
+            </Button>
+          )}
         </div>
       </div>
+
+      <Dialog open={anularOpen} onOpenChange={open => !open && setAnularOpen(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Anular venta #{ventaId}</DialogTitle>
+            <DialogDescription>
+              Se revertirá el carrito y el saldo de la caja será ajustado. Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Motivo</Label>
+            <Textarea
+              placeholder="Ingresa el motivo de la anulación"
+              value={motivoAnular}
+              onChange={e => setMotivoAnular(e.target.value)}
+              className="resize-none h-20 text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAnularOpen(false)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              disabled={!motivoAnular.trim() || anular.isPending}
+              onClick={handleAnular}
+            >
+              {anular.isPending && <Loader2 className="size-3.5 animate-spin mr-1" />}
+              Confirmar anulación
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -3556,6 +3767,17 @@ export default function CarritoVenta() {
             {user?.nombre} · {new Date().toLocaleDateString('es-CO')}
           </p>
         </div>
+
+        {/* Giros */}
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1.5 shrink-0"
+          onClick={() => navigate(`/ventas/caja/${cajaId}/giros`)}
+        >
+          <ArrowRightLeft className="size-3.5" />
+          Giros
+        </Button>
 
         {/* Gestión del cajero asignado */}
         <div className="shrink-0 flex items-center gap-1.5">

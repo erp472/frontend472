@@ -22,6 +22,7 @@ import {
   Bell,
   MailOpen,
   UserCog,
+  TrendingUp,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -93,6 +94,7 @@ const navMain: NavGroup[] = [
       { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_regionales' },
       { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_sucursales' },
       { title: 'Cajas auxiliares', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_cajas'      },
+      { title: 'Consolidado',     url: '/cajas/consolidado',  icon: TrendingUp,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA'],                          flag: 'modulo:tesoreria'  },
       { title: 'Equipos',         url: '/admin/devices',      icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_equipos'    },
     ],
   },
@@ -253,16 +255,24 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
                 <SidebarMenu>
                   {visibleItems.map((item) => {
                     if (item.children) {
-                      const visibleChildren = item.children.filter((c) => {
-                        if (c.plataforma === 'tauri' && !esTauri) return false
-                        if (c.plataforma === 'web'   &&  esTauri) return false
-                        if (c.roles && !c.roles.includes(user?.rol as RolUsuario)) return false
-                        if (c.permiso && !puede(c.permiso, c.flag)) return false
-                        if (!c.permiso && c.flag && !isAdmin && !flagActivo(c.flag)) return false
-                        return true
-                      })
+                      const sid = user?.sucursal_id ?? 1
+                      const rewriteUrl = (url: string) => {
+                        if (url === '/cajas') return `/cajas/principales/${sid}`
+                        if (url === '/cajas/cierre') return `/cajas/cierre/${sid}`
+                        return url
+                      }
+                      const visibleChildren = item.children
+                        .filter((c) => {
+                          if (c.plataforma === 'tauri' && !esTauri) return false
+                          if (c.plataforma === 'web'   &&  esTauri) return false
+                          if (c.roles && !c.roles.includes(user?.rol as RolUsuario)) return false
+                          if (c.permiso && !puede(c.permiso, c.flag)) return false
+                          if (!c.permiso && c.flag && !isAdmin && !flagActivo(c.flag)) return false
+                          return true
+                        })
+                        .map((c) => ({ ...c, url: rewriteUrl(c.url) }))
                       if (visibleChildren.length === 0) return null
-                      const childActive = visibleChildren.some((c) => pathname === c.url)
+                      const childActive = visibleChildren.some((c) => pathname.startsWith(c.url))
                       const isOpen      = openItems[item.title] ?? childActive
 
                       return (
@@ -283,16 +293,19 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
                           </SidebarMenuButton>
                           {isOpen && !collapsed && (
                             <SidebarMenuSub>
-                              {visibleChildren.map((child) => (
+                              {visibleChildren.map((child) => {
+                                const isChildActive = pathname === child.url || pathname.startsWith(child.url + '/')
+                                return (
                                 <SidebarMenuSubItem key={child.url}>
-                                  <SidebarMenuSubButton asChild isActive={pathname === child.url}>
-                                    <Link to={child.url} className={cn(pathname === child.url && 'font-medium')}>
+                                  <SidebarMenuSubButton asChild isActive={isChildActive}>
+                                    <Link to={child.url} className={cn(isChildActive && 'font-medium')}>
                                       <child.icon />
                                       <span>{child.title}</span>
                                     </Link>
                                   </SidebarMenuSubButton>
                                 </SidebarMenuSubItem>
-                              ))}
+                                )
+                              })}
                             </SidebarMenuSub>
                           )}
                         </SidebarMenuItem>

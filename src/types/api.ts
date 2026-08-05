@@ -101,6 +101,7 @@ export interface RolEntry {
 export interface PaisResponse {
   id:     number
   nombre: string
+  iso2:   string | null
 }
 
 export interface DepartamentoResponse {
@@ -354,7 +355,7 @@ export interface UpdateProductoInput {
 
 // ── Servicios ─────────────────────────────────────────────────────────────────
 
-export type TipoServicio = 'nacional' | 'internacional_ms' | 'internacional_courier' | 'apartado_postal'
+export type TipoServicio = 'nacional' | 'internacional_ms' | 'internacional_courier' | 'apartado_postal' | 'alistamiento'
 
 export interface ServicioResponse {
   id:                     number
