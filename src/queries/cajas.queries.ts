@@ -142,16 +142,19 @@ export interface SucursalPanelItem {
 // ── Keys ──────────────────────────────────────────────────────────────────────
 
 export const CAJAS_KEYS = {
-  padres:      ()                     => ['cajas', 'padres']                     as const,
-  padre:       (id: number)           => ['cajas', 'padres', id]                 as const,
-  auxiliares:  (sucursalId: number)   => ['cajas', 'auxiliares', sucursalId]     as const,
-  auxiliar:    (id: number)           => ['cajas', 'auxiliares', 'item', id]     as const,
-  status:      (sucursalId: number)   => ['cajas', 'status', sucursalId]         as const,
-  saldo:       (sesionId: number)     => ['cajas', 'saldo', sesionId]            as const,
-  movimientos: (sesionId: number)     => ['cajas', 'movimientos', sesionId]      as const,
-  historial:   (cajaId: number)       => ['cajas', 'historial', cajaId]          as const,
-  panel:       ()                     => ['cajas', 'panel-admin']                as const,
-  capacidad:   (cajaPadreId: number)  => ['cajas', 'capacidad', cajaPadreId]     as const,
+  padres:           ()                    => ['cajas', 'padres']                          as const,
+  padre:            (id: number)          => ['cajas', 'padres', id]                      as const,
+  auxiliares:       (sucursalId: number)  => ['cajas', 'auxiliares', sucursalId]          as const,
+  auxiliar:         (id: number)          => ['cajas', 'auxiliares', 'item', id]          as const,
+  status:           (sucursalId: number)  => ['cajas', 'status', sucursalId]              as const,
+  saldo:            (sesionId: number)    => ['cajas', 'saldo', sesionId]                 as const,
+  movimientos:      (sesionId: number)    => ['cajas', 'movimientos', sesionId]           as const,
+  historial:        (cajaId: number)      => ['cajas', 'historial', cajaId]               as const,
+  panel:            ()                    => ['cajas', 'panel-admin']                     as const,
+  capacidad:        (cajaPadreId: number) => ['cajas', 'capacidad', cajaPadreId]          as const,
+  habilitadas:      (sucursalId: number)  => ['cajas', 'habilitadas', sucursalId]         as const,
+  saldoFuerte:      (cajaPadreId: number) => ['cajas', 'saldo-fuerte', cajaPadreId]       as const,
+  reposicionSugerida:(sesionId: number)   => ['cajas', 'reposicion-sugerida', sesionId]   as const,
 }
 
 export interface SesionHistorial {
@@ -698,6 +701,28 @@ export function useDiferenciasPendientes(sucursalId: number) {
   })
 }
 
+// ── Registro histórico de diferencias — informativo ──────────────────────────
+
+import type { DiferenciaRegistro, DiferenciaRegistroFiltros } from '@/types/api'
+
+export function useDiferenciasBySucursal(sucursalId: number, filtros: DiferenciaRegistroFiltros = {}) {
+  const params = new URLSearchParams()
+  if (filtros.tipo)   params.set('tipo',   filtros.tipo)
+  if (filtros.estado) params.set('estado', filtros.estado)
+  if (filtros.desde)  params.set('desde',  filtros.desde)
+  if (filtros.hasta)  params.set('hasta',  filtros.hasta)
+  if (filtros.limite) params.set('limite', String(filtros.limite))
+  if (filtros.pagina) params.set('pagina', String(filtros.pagina))
+  const qs = params.toString()
+
+  return useQuery({
+    queryKey: ['cajas', 'diferencias-registro', sucursalId, filtros] as const,
+    queryFn:  () => apiFetch<DiferenciaRegistro[]>(`/cajas/sucursal/${sucursalId}/diferencias${qs ? `?${qs}` : ''}`),
+    enabled:  sucursalId > 0,
+    staleTime: 60_000,
+  })
+}
+
 // ── Cierre automático — Dashboard Supervisor ──────────────────────────────────
 
 export interface SesionCierreAutomatico {
@@ -725,11 +750,22 @@ export type MedioPagoConsolidado =
   | 'efectivo' | 'tarjetaDebito' | 'tarjetaCredito'
   | 'transferencia' | 'consignacion' | 'preporteado' | 'mixtoPreporteado'
 
+export interface SesionConsolidado {
+  sesionId:       number
+  cajaId:         number
+  cajaNombre:     string
+  sucursalNombre: string
+  cajeroNombre:   string | null
+  total:          string
+  porMedio:       Record<MedioPagoConsolidado, string>
+}
+
 export interface ConsolidadoComercio {
   comercioId:    number
   total:         string
   porMedio:      Record<MedioPagoConsolidado, string>
   numRegionales: number
+  sesiones:      SesionConsolidado[]
 }
 
 export function useConsolidadoComercio(comercioId = 1) {
@@ -738,5 +774,76 @@ export function useConsolidadoComercio(comercioId = 1) {
     queryFn:         () => apiFetch<ConsolidadoComercio>(`/cajas/consolidado-comercio?comercioId=${comercioId}`),
     staleTime:       2 * 60_000,
     refetchInterval: 5 * 60_000,
+  })
+}
+
+// ── Nuevos endpoints de dominio ───────────────────────────────────────────────
+
+export interface GrupoCajas {
+  tipo:     TipoCaja
+  total:    number
+  activas:  number
+  inactivas: number
+  cajas:    { cajaId: number; activaEnSesion: boolean }[]
+}
+
+export type CajasHabilitadasResult = Partial<Record<TipoCaja, GrupoCajas>>
+
+export function useCajasHabilitadas(sucursalId: number) {
+  return useQuery({
+    queryKey:        CAJAS_KEYS.habilitadas(sucursalId),
+    queryFn:         () => apiFetch<CajasHabilitadasResult>(`/cajas/sucursal/${sucursalId}/habilitadas`),
+    enabled:         sucursalId > 0,
+    staleTime:       60_000,
+    refetchInterval: 2 * 60_000,
+  })
+}
+
+export interface SaldoCajaFuerte {
+  saldo:        string
+  sesionId?:    number
+  cajaPadreId?: number
+  sesionActiva: boolean
+}
+
+export function useSaldoCajaFuerte(cajaPadreId: number) {
+  return useQuery({
+    queryKey:        CAJAS_KEYS.saldoFuerte(cajaPadreId),
+    queryFn:         () => apiFetch<SaldoCajaFuerte>(`/cajas/principales/${cajaPadreId}/saldo-fuerte`),
+    enabled:         cajaPadreId > 0,
+    staleTime:       30_000,
+    refetchInterval: 60_000,
+  })
+}
+
+export interface ReposicionSugerida {
+  montoRecomendado: string
+  saldoActual:      string
+  baseDia:          string
+  estado:           'pendiente'
+  tipoMovimiento:   'reposicion'
+}
+
+export function useReposicionSugerida(sesionId: number) {
+  return useQuery({
+    queryKey: CAJAS_KEYS.reposicionSugerida(sesionId),
+    queryFn:  () => apiFetch<ReposicionSugerida>(`/cajas/punto/${sesionId}/reposicion-sugerida`),
+    enabled:  sesionId > 0,
+    staleTime: 30_000,
+  })
+}
+
+export function useMonedaCirculante() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sesionId, acumuladoCentavos }: { sesionId: number; acumuladoCentavos: string }) =>
+      apiFetch<{ ajuste: { id: number; tipo: string; monto: string } | null; mensaje?: string }>(
+        `/cajas/principales/${sesionId}/moneda-circulante`,
+        { method: 'POST', body: JSON.stringify({ acumuladoCentavos }) },
+      ),
+    onSuccess: (_, { sesionId }) => {
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.saldo(sesionId) })
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.movimientos(sesionId) })
+    },
   })
 }

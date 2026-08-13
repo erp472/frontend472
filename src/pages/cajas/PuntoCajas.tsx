@@ -797,9 +797,9 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
 
-        <DialogHeader className="px-5 pt-5 pb-3 border-b shrink-0">
+        <DialogHeader className="pl-6 pr-14 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-center gap-2.5">
             <span className={cn('size-2.5 rounded-full shrink-0', dotCls(card))} />
             <div className="min-w-0">
@@ -815,7 +815,7 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
         </DialogHeader>
 
         <ScrollArea className="flex-1 overflow-auto">
-          <div className="px-5 py-4 space-y-5">
+          <div className="px-6 py-5 space-y-5">
 
             {/* Sin sesión: servicios + base */}
             {sinSesion && (
@@ -995,11 +995,22 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
             {/* Historial de sesiones */}
             {historial && historial.length > 0 && (
               <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Historial de sesiones
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Historial de sesiones
+                  </p>
+                  {historial.length > 5 && (
+                    <button
+                      type="button"
+                      onClick={() => { onClose(); navigate(`/cajas/cierre/${sucursalId}`) }}
+                      className="flex items-center gap-0.5 text-[11px] text-primary hover:underline"
+                    >
+                      Ver todas ({historial.length}) <ChevronRight className="size-3" />
+                    </button>
+                  )}
+                </div>
                 <div className="rounded-lg border overflow-hidden divide-y text-xs">
-                  {historial.map(s => {
+                  {historial.slice(0, 5).map(s => {
                     const diferencia = s.montoCierre != null
                       ? Number(s.montoCierre) - Number(s.montoApertura)
                       : null
@@ -1049,13 +1060,18 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
                     )
                   })}
                 </div>
+                {historial.length > 5 && (
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    +{historial.length - 5} sesión{historial.length - 5 !== 1 ? 'es' : ''} anterior{historial.length - 5 !== 1 ? 'es' : ''} en Alertas Generales
+                  </p>
+                )}
               </div>
             )}
 
           </div>
         </ScrollArea>
 
-        <div className="px-5 py-4 border-t shrink-0 flex items-center justify-end gap-2 bg-muted/20">
+        <div className="px-6 py-4 border-t shrink-0 flex items-center justify-end gap-2 bg-muted/20">
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
 
           {sinSesion && (

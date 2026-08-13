@@ -1,7 +1,46 @@
 import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, ApiError } from '@/lib/api'
 
-export type TipoProducto = 'estampilla' | 'filatelia' | 'empaque' | 'material_oficina' | 'giro' | 'paquete' | 'otro'
+export type TipoProducto  = 'estampilla' | 'filatelia' | 'empaque' | 'material_oficina' | 'giro' | 'paquete' | 'otro'
+export type TipoTrayecto  = 'NACIONAL' | 'URBANO' | 'ESPECIAL'
+export type MedioPagoEnvio = 'efectivo' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'consignacion' | 'preporteado' | 'mixto_preporteado'
+
+export interface PersonaEnvio {
+  nombre:        string
+  empresa?:      string
+  documento?:    string
+  tipoDocumento?: string
+  email?:        string
+  telefono?:     string
+  direccion?:    string
+  ciudad?:       string
+  departamento?: string
+  pais?:         string
+  codigoPostal?: string
+}
+
+export interface CrearEnvioPayload {
+  servicioId:       number
+  sucursalId:       number
+  remitente:        PersonaEnvio
+  destinatario:     PersonaEnvio
+  pesoFisicoKg:     number
+  cantidadPiezas?:  number
+  altoCm?:          number
+  anchoCm?:         number
+  largoCm?:         number
+  valorDeclarado?:  number
+  seguroAdicional?: boolean
+  contenido?:       string
+  observaciones?:   string
+  medioPago:        MedioPagoEnvio
+  montoEstampillas?: number
+  montoEfectivo?:    number
+  guiaCp?:           string
+  esCorrespondencia?: boolean
+  tipoTrayecto?:     TipoTrayecto
+  clienteId?:        number
+}
 export type MedioPagoVenta = 'efectivo' | 'cheque' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'consignacion' | 'preporteado' | 'mixto_preporteado'
 export type EstadoVenta = 'activa' | 'anulada'
 export type TamanoApartado = 'pequeno' | 'mediano' | 'grande'
@@ -31,12 +70,27 @@ export interface Venta {
   medioPago: MedioPagoVenta; estado: EstadoVenta
   emailFactura: string | null; createdAt: string
   detalle: DetalleVenta[]
+  enviosPendientes: Envio[]
+  apartadosPendientes: ApartadoPostal[]
+}
+
+export interface VentaDiaDetalle {
+  id: number; ventaId: number; productoId: number
+  nombreProducto: string; codigoProducto: string | null
+  cantidad: number; precioUnitario: number; subtotal: number
+}
+
+export interface VentaDia {
+  id: number; sesionCajaId: number; total: number
+  medioPago: string; estado: string; createdAt: string
+  detalle: VentaDiaDetalle[]
 }
 
 export interface ApartadoPostal {
   id: number; sucursalId: number; numero: string; tamano: TamanoApartado
-  estado: string; clienteId: number | null; fechaInicio: string | null
-  fechaFin: string | null; valor: number | null; incluyeIva: boolean
+  estado: string; clienteId: number | null; ventaId: number | null
+  fechaInicio: string | null; fechaFin: string | null
+  valor: number | null; incluyeIva: boolean
   diasAlertaVencimiento: number
 }
 
@@ -49,13 +103,14 @@ export interface ServicioCatalogo {
   id: number; codigo: string; nombre: string; tipo: string
   requiereEstampilla: boolean; requiereDimensiones: boolean
   requiereValorDeclarado: boolean; pesoMaximoKg: number | null
-  tiempoEntregaDias: number | null
+  tiempoEntregaDias: number | null; minimoSeguroPostal: number | null
 }
 
 export interface CotizacionEnvio {
   pesoFisicoKg: number; pesoVolumetricoKg: number | null; pesoTarificadoKg: number
-  valorServicio: number
+  valorServicio: number; valorCertificacion?: number
   fechaEntregaEstimada: string | null
+  aduanaEstimadoUSD: string | null
   servicio: { nombreservicios: string; tiempoEntregaDias: number | null } | null
 }
 
@@ -64,13 +119,15 @@ export interface Envio {
   remitenteNombre: string | null; destinatarioNombre: string | null
   destinatarioCiudad: string | null; destinatarioPais: string
   pesoFisicoKg: number; pesoTarificadoKg: number
-  valorServicio: number; valorTotal: number; estado: string; createdAt: string
+  valorServicio: number; valorSeguro: number; valorEstampillas: number
+  valorCertificacion: number; valorTotal: number; estado: string; createdAt: string
 }
 
 export interface GuiaPersona {
   nombre: string | null; documento: string | null
   telefono: string | null; email: string | null
-  direccion: string | null; ciudad: string | null; pais: string
+  direccion: string | null; ciudad: string | null
+  codigoPostal: string | null; pais: string
 }
 
 export interface GuiaEnvio {
@@ -83,13 +140,17 @@ export interface GuiaEnvio {
   peso: {
     fisicoKg: number; tarificadoKg: number
     altoCm: number | null; anchoCm: number | null; largoCm: number | null
+    volumetricoKg?: number | null
   }
   valores: {
-    servicio: number; seguro: number
+    servicio: number; manejo: number; seguro: number
     declarado: number | null; total: number
   }
   estado:     string
   generadoEn: string
+  ordenServicio?:        number | null
+  fechaEntregaEstimada?: string | null
+  centroOperativo?:      string | null
 }
 
 export interface CrearEnvioResult {
@@ -125,8 +186,27 @@ export interface ConfirmarVentaResult {
   cambio: number | null
 }
 
+export interface DireccionFrecuente {
+  id:           number
+  clienteId:    number
+  rol:          'remitente' | 'destinatario'
+  nombre:       string
+  empresa:      string | null
+  telefono:     string | null
+  email:        string | null
+  direccion:    string | null
+  ciudad:       string | null
+  departamento: string | null
+  pais:         string
+  codigoPostal: string | null
+  documento:    string | null
+  usos:         number
+  ultimoUso:    string
+}
+
 export const VENTAS_KEYS = {
-  catalogo:        (sucursalId: number, tipo?: string) => ['ventas', 'catalogo', sucursalId, tipo] as const,
+  catalogo:            (sucursalId: number, tipo?: string) => ['ventas', 'catalogo', sucursalId, tipo] as const,
+  direccionesFrecuentes: (clienteId: number, rol?: string) => ['ventas', 'direcciones-frecuentes', clienteId, rol] as const,
   cliente:         (tipo: string, numero: string) => ['ventas', 'cliente', tipo, numero] as const,
   carrito:         (ventaId: number) => ['ventas', 'carrito', ventaId] as const,
   turno:           (cajaId: number, fecha?: string) => ['ventas', 'turno', cajaId, fecha] as const,
@@ -136,6 +216,7 @@ export const VENTAS_KEYS = {
   servicios:       (sucursalId: number) => ['ventas', 'servicios', sucursalId] as const,
   cotizacion:      (params: object) => ['ventas', 'cotizacion', params] as const,
   tarifasEspecial: (productoId: number) => ['ventas', 'tarifas-especial', productoId] as const,
+  dia:             (sucursalId: number) => ['ventas', 'dia', sucursalId] as const,
 }
 
 export function useTarifasEspecial(productoId: number) {
@@ -144,6 +225,18 @@ export function useTarifasEspecial(productoId: number) {
     queryFn:  () => apiFetch<TarifaEspecial[]>(`/ventas/catalogo/especiales/${productoId}/tarifas`),
     enabled:  productoId > 0,
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useSetTarifasEspecial(productoId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (tarifas: Array<{ minCantidad: number; maxCantidad: number | null; precio: number }>) =>
+      apiFetch<TarifaEspecial[]>(`/ventas/catalogo/especiales/${productoId}/tarifas`, {
+        method: 'PUT',
+        body: JSON.stringify(tarifas),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VENTAS_KEYS.tarifasEspecial(productoId) }),
   })
 }
 
@@ -170,7 +263,11 @@ export function useCarrito(ventaId: number) {
     queryKey:        VENTAS_KEYS.carrito(ventaId),
     queryFn:         () => apiFetch<Venta>(`/ventas/${ventaId}/carrito`),
     enabled:         ventaId > 0,
-    refetchInterval: 5_000,
+    refetchInterval: (q) => (q.state.status === 'error' ? false : 5_000),
+    retry:           (count, error) => {
+      if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return false
+      return count < 2
+    },
   })
 }
 
@@ -194,13 +291,27 @@ export function useVentasTurno(cajaId: number, fecha?: string) {
   })
 }
 
+export interface ApartadosDisponiblesResponse {
+  totalDisponibles: number
+  lista:            ApartadoPostal[]
+}
+
 export function useApartadosDisponibles(sucursalId: number, tamano?: string) {
   const params = new URLSearchParams({ sucursalId: String(sucursalId) })
   if (tamano) params.set('tamano', tamano)
   return useQuery({
     queryKey: VENTAS_KEYS.apartados(sucursalId, tamano),
-    queryFn:  () => apiFetch<ApartadoPostal[]>(`/ventas/apartados/disponibles?${params}`),
+    queryFn:  () => apiFetch<ApartadosDisponiblesResponse>(`/ventas/apartados/disponibles?${params}`),
     enabled:  sucursalId > 0,
+  })
+}
+
+export function usePaisesDestino(servicioId: number) {
+  return useQuery({
+    queryKey: ['ventas', 'paises-destino', servicioId],
+    queryFn:  () => apiFetch<string[]>(`/ventas/servicios-postales/${servicioId}/paises-destino`),
+    enabled:  servicioId > 0,
+    staleTime: 10 * 60_000,
   })
 }
 
@@ -220,6 +331,7 @@ export function useCotizarEnvio(params: {
   largoCm?: number
   paisDestino?: string
   ciudadDestino?: string
+  tipoTrayecto?: TipoTrayecto
 }) {
   const qs = new URLSearchParams()
   qs.set('servicioId', String(params.servicioId))
@@ -229,6 +341,7 @@ export function useCotizarEnvio(params: {
   if (params.largoCm !== undefined) qs.set('largoCm', String(params.largoCm))
   if (params.paisDestino) qs.set('paisDestino', params.paisDestino)
   if (params.ciudadDestino) qs.set('ciudadDestino', params.ciudadDestino)
+  if (params.tipoTrayecto) qs.set('tipoTrayecto', params.tipoTrayecto)
   return useQuery({
     queryKey: VENTAS_KEYS.cotizacion(params),
     queryFn:  () => apiFetch<CotizacionEnvio>(`/ventas/servicios-postales/cotizar?${qs}`),
@@ -268,6 +381,20 @@ export function useEliminarProducto(ventaId: number, cajaId: number) {
         method: 'DELETE',
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: VENTAS_KEYS.carrito(ventaId) }),
+  })
+}
+
+export function useEliminarEnvioDelCarrito(ventaId: number, cajaId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (envioId: number) =>
+      apiFetch<void>(`/ventas/${ventaId}/carrito/envio/${envioId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: VENTAS_KEYS.carrito(ventaId) })
+      qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) })
+    },
   })
 }
 
@@ -318,15 +445,81 @@ export function useContratarApartado(cajaId: number) {
   })
 }
 
+export interface AgregarApartadoPayload {
+  sucursalId:     number
+  numeroApartado: string
+  tamano:         TamanoApartado
+  meses:          number
+  fechaInicio:    string
+  comentarios?:   string
+}
+
+export function useAgregarApartadoAlCarrito(ventaId: number, cajaId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ clienteId, ...data }: { clienteId: number } & AgregarApartadoPayload) =>
+      apiFetch<{ apartado: ApartadoPostal; cotizacion: { base: number; iva: number; total: number } }>(
+        `/ventas/${ventaId}/carrito/apartado?cajaId=${cajaId}&clienteId=${clienteId}`,
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: VENTAS_KEYS.carrito(ventaId) })
+      qc.invalidateQueries({ queryKey: ['ventas', 'apartados', result.apartado.sucursalId] })
+    },
+  })
+}
+
+export function useEliminarApartadoDelCarrito(ventaId: number | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (apartadoId: number) =>
+      apiFetch<void>(`/ventas/${ventaId}/carrito/apartado/${apartadoId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      if (ventaId != null) qc.invalidateQueries({ queryKey: VENTAS_KEYS.carrito(ventaId) })
+    },
+  })
+}
+
 export function useCrearEnvio(cajaId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
+    mutationFn: (data: CrearEnvioPayload) =>
       apiFetch<CrearEnvioResult>(`/ventas/punto/${cajaId}/envio`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) }),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) })
+      if (variables.clienteId) {
+        qc.invalidateQueries({ queryKey: VENTAS_KEYS.direccionesFrecuentes(variables.clienteId) })
+      }
+    },
+  })
+}
+
+export interface AgregarEnvioResult {
+  guia:       GuiaEnvio
+  envio:      Envio
+  cotizacion: { pesoTarificadoKg: number; valorServicio: number }
+  numeroGuia: string
+  estado:     string
+}
+
+export function useAgregarEnvioAlCarrito(ventaId: number, cajaId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: CrearEnvioPayload) =>
+      apiFetch<AgregarEnvioResult>(`/ventas/${ventaId}/carrito/envio?cajaId=${cajaId}`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: VENTAS_KEYS.carrito(ventaId) })
+      qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) })
+      if (variables.clienteId) {
+        qc.invalidateQueries({ queryKey: VENTAS_KEYS.direccionesFrecuentes(variables.clienteId) })
+      }
+    },
   })
 }
 
@@ -432,5 +625,38 @@ export function useResumenesPunto(cajaIds: number[]) {
       enabled:   id > 0,
       staleTime: 60_000,
     })),
+  })
+}
+
+export function useDireccionesFrecuentes(clienteId: number, rol?: 'remitente' | 'destinatario') {
+  const params = new URLSearchParams()
+  if (rol) params.set('rol', rol)
+  const qs = params.toString() ? `?${params}` : ''
+  return useQuery({
+    queryKey: VENTAS_KEYS.direccionesFrecuentes(clienteId, rol),
+    queryFn:  () => apiFetch<DireccionFrecuente[]>(`/ventas/clientes/${clienteId}/direcciones${qs}`),
+    enabled:  clienteId > 0,
+    staleTime: 60_000,
+  })
+}
+
+export function useDireccionesPorDocumento(documento: string, rol?: 'remitente' | 'destinatario') {
+  const params = new URLSearchParams({ documento })
+  if (rol) params.set('rol', rol)
+  return useQuery({
+    queryKey: ['ventas', 'direcciones-doc', documento, rol],
+    queryFn:  () => apiFetch<DireccionFrecuente[]>(`/ventas/direcciones?${params}`),
+    enabled:  documento.trim().length >= 3,
+    staleTime: 60_000,
+  })
+}
+
+export function useVentasDia(sucursalId: number) {
+  return useQuery({
+    queryKey:        VENTAS_KEYS.dia(sucursalId),
+    queryFn:         () => apiFetch<VentaDia[]>(`/ventas/sucursal/${sucursalId}/dia`),
+    enabled:         sucursalId > 0,
+    staleTime:       30_000,
+    refetchInterval: 60_000,
   })
 }

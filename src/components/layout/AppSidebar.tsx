@@ -9,6 +9,7 @@ import {
   Building,
   Store,
   Package,
+  Layers,
   Truck,
   ToggleLeft,
   ScrollText,
@@ -23,6 +24,7 @@ import {
   MailOpen,
   UserCog,
   TrendingUp,
+  Stamp,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -101,7 +103,12 @@ const navMain: NavGroup[] = [
   {
     label: 'Inventario',
     items: [
-      { title: 'Inventario', url: '/inventario', icon: Package, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'INVENTARIOS'], flag: 'modulo_inventario' },
+      { title: 'Stock',      url: '/inventario',                 icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'INVENTARIOS'], flag: 'modulo_inventario' },
+      { title: 'Productos',  url: '/admin/productos',            icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
+      { title: 'Estampillas', url: '/admin/estampillas',         icon: Stamp,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
+      { title: 'Productos Especiales', url: '/admin/productos-especiales', icon: Layers, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_productos' },
+      { title: 'Servicios',  url: '/admin/servicios',            icon: Truck,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_servicios'  },
+      { title: 'Apartados',  url: '/admin/apartados',            icon: MailOpen, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
     ],
   },
   {
@@ -133,15 +140,6 @@ const navMain: NavGroup[] = [
           { title: 'Tipos / Beneficios', url: '/clientes/tipos', icon: Tag,       permiso: 'clientes:crear'     },
         ],
       },
-    ],
-  },
-  {
-    label:      'Catálogo',
-    plataforma: 'web',
-    items: [
-      { title: 'Productos',  url: '/admin/productos',  icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_productos' },
-      { title: 'Servicios',  url: '/admin/servicios',  icon: Truck,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_servicios' },
-      { title: 'Apartados',  url: '/admin/apartados',  icon: MailOpen, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
     ],
   },
   {

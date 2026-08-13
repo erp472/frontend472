@@ -1,96 +1,142 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
-  ShoppingCart, ArrowRight, AlertTriangle, RefreshCw,
-  TrendingUp, TrendingDown, DollarSign, AlertCircle, Banknote, LogOut,
-  ArrowLeftRight, Loader2, Copy, Send, Inbox,
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeftRight,
+  ArrowRight,
+  Banknote,
+  Copy,
+  DollarSign,
+  Inbox,
+  Loader2,
+  LogOut,
+  RefreshCw,
+  Send,
+  ShoppingCart,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react'
-import { Button }   from '@/components/ui/button'
-import { Badge }    from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Input }    from '@/components/ui/input'
-import { Label }    from '@/components/ui/label'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog,
+  DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-import { useSessionStore } from '@/stores/useSessionStore'
 import {
-  useStatusPunto, useMovimientos, useCerrarAuxiliar, useAbrirCajaDirecta,
-  useCambioCustodia, useConfirmarCustodia,
-  type CardAuxiliar, type CambioCustodiaResult,
+  type CambioCustodiaResult,
+  type CardAuxiliar,
+  useAbrirCajaDirecta,
+  useCambioCustodia,
+  useCerrarAuxiliar,
+  useConfirmarCustodia,
+  useMovimientos,
+  useStatusPunto,
 } from '@/queries/cajas.queries'
 import { useResumenTurno } from '@/queries/ventas.queries'
-import { toast } from 'sonner'
+import { useSessionStore } from '@/stores/useSessionStore'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const COP = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
+const COP = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 0,
+})
 const fmt = (v: string | number | null | undefined) => (v != null ? COP.format(Number(v)) : '$0')
 
 const TIPO_MOV: Record<string, string> = {
-  apertura:            'Apertura',
-  venta_producto:      'Venta producto',
-  venta_servicio:      'Venta servicio',
-  venta_estampilla:    'Estampilla',
-  apartado_postal:     'Apartado postal',
-  giro_pago:           'Pago giro',
-  giro_emision_cobro:  'Emisión giro',
-  consignacion:        'Consignación',
-  reposicion:          'Reposición',
-  cambio_custodia_in:  'Custodia recibida',
+  apertura: 'Apertura',
+  venta_producto: 'Venta producto',
+  venta_servicio: 'Venta servicio',
+  venta_estampilla: 'Estampilla',
+  apartado_postal: 'Apartado postal',
+  giro_pago: 'Pago giro',
+  giro_emision_cobro: 'Emisión giro',
+  consignacion: 'Consignación',
+  reposicion: 'Reposición',
+  cambio_custodia_in: 'Custodia recibida',
   cambio_custodia_out: 'Custodia entregada',
   diferencia_faltante: 'Faltante',
   diferencia_sobrante: 'Sobrante',
-  anulacion:           'Anulación',
-  recaudo:             'Recaudo',
+  anulacion: 'Anulación',
+  recaudo: 'Recaudo',
 }
 
 // ── CustodiaDialog — tab Enviar + tab Recibir ─────────────────────────────────
 
 function CustodiaDialog({
-  open, onClose, sesionId, cajaFuerte, saldoActual,
+  open,
+  onClose,
+  sesionId,
+  cajaFuerte,
+  saldoActual,
+  onCustodiaEmitida,
+  onCustodiaConfirmada,
 }: {
-  open:        boolean
-  onClose:     () => void
-  sesionId:    number
-  cajaFuerte:  CardAuxiliar | undefined
+  open: boolean
+  onClose: () => void
+  sesionId: number
+  cajaFuerte: CardAuxiliar | undefined
   saldoActual: string | null
+  onCustodiaEmitida?: (r: CambioCustodiaResult) => void
+  onCustodiaConfirmada?: (monto: string) => void
 }) {
-  const enviar    = useCambioCustodia(sesionId)
+  const enviar = useCambioCustodia(sesionId)
   const confirmar = useConfirmarCustodia()
 
   // Tab Enviar
-  const [monto,     setMonto]     = useState('')
-  const [motivo,    setMotivo]    = useState('')
+  const [monto, setMonto] = useState('')
+  const [motivo, setMotivo] = useState('')
   const [resultado, setResultado] = useState<CambioCustodiaResult | null>(null)
 
   // Tab Recibir
-  const [codigoIn,   setCodigoIn]   = useState('')
-  const [montoRec,   setMontoRec]   = useState('')
+  const [codigoIn, setCodigoIn] = useState('')
+  const [montoRec, setMontoRec] = useState('')
   const [confirmado, setConfirmado] = useState(false)
 
   const sesionDestinoId = cajaFuerte?.sesionId ?? null
+  const puedeEnviar = sesionDestinoId !== null
 
   const montoNum = Number(monto.replace(/\./g, '').replace(/,/g, ''))
   const saldoNum = Number(saldoActual ?? 0)
-  const montoOk  = montoNum > 0 && montoNum <= saldoNum
+  const montoOk = montoNum > 0 && montoNum <= saldoNum
 
   function handleClose() {
-    setMonto(''); setMotivo(''); setResultado(null)
-    setCodigoIn(''); setMontoRec(''); setConfirmado(false)
+    setMonto('')
+    setMotivo('')
+    setResultado(null)
+    setCodigoIn('')
+    setMontoRec('')
+    setConfirmado(false)
     onClose()
   }
 
   function handleEnviar() {
     if (!sesionDestinoId) return
     enviar.mutate(
-      { sesionDestinoId, monto: String(montoNum), ...(motivo.trim() ? { motivo: motivo.trim() } : {}) },
       {
-        onSuccess: r => { setResultado(r); toast.success('Remesa generada') },
-        onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
+        sesionDestinoId,
+        monto: String(montoNum),
+        ...(motivo.trim() ? { motivo: motivo.trim() } : {}),
+      },
+      {
+        onSuccess: (r) => {
+          setResultado(r)
+          toast.success('Remesa generada')
+          onCustodiaEmitida?.(r)
+        },
+        onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
       },
     )
   }
@@ -99,25 +145,35 @@ function CustodiaDialog({
     confirmar.mutate(
       { codigoRemesa: codigoIn.trim().toUpperCase(), montoRecibido: montoRec },
       {
-        onSuccess: () => { setConfirmado(true); toast.success('Custodia confirmada — saldo acreditado') },
-        onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al confirmar'),
+        onSuccess: () => {
+          setConfirmado(true)
+          toast.success('Custodia confirmada — saldo acreditado')
+          onCustodiaConfirmada?.(montoRec)
+        },
+        onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al confirmar'),
       },
     )
   }
 
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) handleClose()
+      }}
+    >
       <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-5 pt-5 pb-0">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <ArrowLeftRight className="size-4" /> Cambio de Custodia
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Saldo disponible: <strong className="text-foreground tabular-nums">{fmt(saldoActual)}</strong>
+            Saldo disponible:{' '}
+            <strong className="text-foreground tabular-nums">{fmt(saldoActual)}</strong>
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="enviar" className="mt-4">
+        <Tabs defaultValue={cajaFuerte?.sesionId ? 'enviar' : 'recibir'} className="mt-4">
           <TabsList className="mx-5 grid w-[calc(100%-2.5rem)] grid-cols-2">
             <TabsTrigger value="enviar" className="gap-1.5 text-xs">
               <Send className="size-3" /> Enviar remesa
@@ -132,22 +188,38 @@ function CustodiaDialog({
             {resultado ? (
               <div className="space-y-3">
                 <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-4 text-center space-y-2">
-                  <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">Código de remesa generado</p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                    Código de remesa generado
+                  </p>
                   <p className="text-2xl font-mono font-bold tracking-widest text-emerald-800 dark:text-emerald-300">
                     {resultado.codigoRemesa}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Monto: <strong>{fmt(resultado.montoEmitido)}</strong> — entrega este código al receptor
+                    Monto: <strong>{fmt(resultado.montoEmitido)}</strong> — entrega este código al
+                    receptor
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => {
-                    void navigator.clipboard.writeText(resultado.codigoRemesa)
-                    toast.success('Código copiado')
-                  }}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(resultado.codigoRemesa)
+                      toast.success('Código copiado')
+                    }}
+                  >
                     <Copy className="size-3.5 mr-1.5" /> Copiar código
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => { setResultado(null); setMonto(''); setMotivo('') }}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setResultado(null)
+                      setMonto('')
+                      setMotivo('')
+                    }}
+                  >
                     Nueva remesa
                   </Button>
                 </div>
@@ -157,13 +229,28 @@ function CustodiaDialog({
                 <div className="space-y-1">
                   <Label className="text-xs">Caja destino</Label>
                   {cajaFuerte ? (
-                    <div className="flex items-center gap-2 h-8 rounded-md border bg-muted/40 px-3 text-sm text-foreground">
-                      <span className="flex-1 truncate font-medium">{cajaFuerte.nombre}</span>
-                      <span className="tabular-nums text-xs text-muted-foreground shrink-0">{fmt(cajaFuerte.saldoActual)}</span>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 h-8 rounded-md border bg-muted/40 px-3 text-sm text-foreground">
+                        <span className="flex-1 truncate font-medium">{cajaFuerte.nombre}</span>
+                        {cajaFuerte.saldoActual != null ? (
+                          <span className="tabular-nums text-xs text-muted-foreground shrink-0">
+                            {fmt(cajaFuerte.saldoActual)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-amber-500 shrink-0">Sin sesión activa</span>
+                        )}
+                      </div>
+                      {!puedeEnviar && (
+                        <p className="text-xs text-amber-600 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/20 px-3 py-1.5">
+                          La Caja Principal no tiene sesión abierta. Contacta al supervisor para
+                          activarla.
+                        </p>
+                      )}
                     </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground rounded-md border border-dashed px-3 py-2">
-                      Caja Principal no disponible.
+                    <p className="text-xs text-amber-700 dark:text-amber-400 rounded-md border border-amber-200 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2">
+                      Sin Caja General activa. Usa <strong>Confirmar recepción</strong> para
+                      registrar fondos recibidos con un código de remesa.
                     </p>
                   )}
                 </div>
@@ -173,7 +260,7 @@ function CustodiaDialog({
                     className="flex h-8 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder={`Máx ${fmt(saldoActual)}`}
                     value={monto}
-                    onChange={e => setMonto(e.target.value.replace(/[^0-9.,]/g, ''))}
+                    onChange={(e) => setMonto(e.target.value.replace(/[^0-9.,]/g, ''))}
                   />
                   {monto && !montoOk && (
                     <p className="text-xs text-destructive">
@@ -188,18 +275,50 @@ function CustodiaDialog({
                     placeholder="Ej: Abastecimiento de caja…"
                     value={motivo}
                     maxLength={300}
-                    onChange={e => setMotivo(e.target.value)}
+                    onChange={(e) => setMotivo(e.target.value)}
                   />
                 </div>
+                {montoOk && (
+                  <div className="rounded-lg bg-muted/30 border p-3 text-xs space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Tu saldo actual</span>
+                      <span className="tabular-nums font-medium">{fmt(saldoNum)}</span>
+                    </div>
+                    <div className="flex justify-between text-red-500">
+                      <span>Monto a enviar</span>
+                      <span className="tabular-nums font-medium">− {fmt(montoNum)}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1.5 font-semibold">
+                      <span>Tu saldo resultante</span>
+                      <span className="tabular-nums">{fmt(saldoNum - montoNum)}</span>
+                    </div>
+                    {cajaFuerte?.saldoActual != null && (
+                      <>
+                        <div className="flex justify-between pt-1.5 border-t text-muted-foreground">
+                          <span>{cajaFuerte.nombre} actual</span>
+                          <span className="tabular-nums">{fmt(cajaFuerte.saldoActual)}</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-600 font-semibold">
+                          <span>{cajaFuerte.nombre} resultante</span>
+                          <span className="tabular-nums">
+                            + {fmt(Number(cajaFuerte.saldoActual) + montoNum)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
                 <Button
-                  size="sm" className="w-full"
-                  disabled={!montoOk || enviar.isPending}
+                  size="sm"
+                  className="w-full"
+                  disabled={!montoOk || !puedeEnviar || enviar.isPending}
                   onClick={handleEnviar}
                 >
-                  {enviar.isPending
-                    ? <Loader2 className="size-3.5 mr-1.5 animate-spin" />
-                    : <Send className="size-3.5 mr-1.5" />
-                  }
+                  {enviar.isPending ? (
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Send className="size-3.5 mr-1.5" />
+                  )}
                   Generar remesa
                 </Button>
               </>
@@ -210,9 +329,21 @@ function CustodiaDialog({
           <TabsContent value="recibir" className="px-5 pb-5 pt-4 space-y-3">
             {confirmado ? (
               <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-4 text-center space-y-2">
-                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">✓ Custodia confirmada</p>
-                <p className="text-xs text-muted-foreground">El monto fue acreditado en tu saldo.</p>
-                <Button size="sm" variant="ghost" onClick={() => { setCodigoIn(''); setMontoRec(''); setConfirmado(false) }}>
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                  ✓ Custodia confirmada
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  El monto fue acreditado en tu saldo.
+                </p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCodigoIn('')
+                    setMontoRec('')
+                    setConfirmado(false)
+                  }}
+                >
                   Confirmar otra
                 </Button>
               </div>
@@ -228,31 +359,55 @@ function CustodiaDialog({
                     placeholder="16 caracteres"
                     maxLength={16}
                     value={codigoIn}
-                    onChange={e => setCodigoIn(e.target.value.replace(/\s/g, ''))}
+                    onChange={(e) => setCodigoIn(e.target.value.replace(/\s/g, ''))}
                   />
                   {codigoIn.length > 0 && codigoIn.length < 16 && (
-                    <p className="text-[10px] text-muted-foreground">{16 - codigoIn.length} caracteres restantes</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {16 - codigoIn.length} caracteres restantes
+                    </p>
                   )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Monto físico recibido (COP)</Label>
                   <input
-                    type="number" min="0" step="1000"
+                    type="number"
+                    min="0"
+                    step="1000"
                     className="flex h-8 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder="Ingresa el valor exacto recibido"
                     value={montoRec}
-                    onChange={e => setMontoRec(e.target.value)}
+                    onChange={(e) => setMontoRec(e.target.value)}
                   />
                 </div>
+                {montoRec && Number(montoRec) > 0 && saldoActual !== null && (
+                  <div className="rounded-lg bg-muted/30 border p-3 text-xs space-y-1.5">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Tu saldo actual</span>
+                      <span className="tabular-nums font-medium">{fmt(saldoActual)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-600">
+                      <span>Monto a recibir</span>
+                      <span className="tabular-nums font-medium">+ {fmt(Number(montoRec))}</span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1.5 font-semibold">
+                      <span>Tu saldo resultante</span>
+                      <span className="tabular-nums">
+                        {fmt(Number(saldoActual) + Number(montoRec))}
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <Button
-                  size="sm" className="w-full"
+                  size="sm"
+                  className="w-full"
                   disabled={codigoIn.trim().length !== 16 || !montoRec || confirmar.isPending}
                   onClick={handleConfirmar}
                 >
-                  {confirmar.isPending
-                    ? <Loader2 className="size-3.5 mr-1.5 animate-spin" />
-                    : <Inbox className="size-3.5 mr-1.5" />
-                  }
+                  {confirmar.isPending ? (
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Inbox className="size-3.5 mr-1.5" />
+                  )}
                   Confirmar recepción
                 </Button>
               </>
@@ -261,7 +416,9 @@ function CustodiaDialog({
         </Tabs>
 
         <div className="px-5 pb-5 flex justify-end border-t pt-4">
-          <Button variant="outline" size="sm" onClick={handleClose}>Cerrar</Button>
+          <Button variant="outline" size="sm" onClick={handleClose}>
+            Cerrar
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -292,9 +449,7 @@ function CajaCard({ card }: { card: CardAuxiliar }) {
             <p className="text-[11px] text-muted-foreground">{card.codigo}</p>
           </div>
         </div>
-        <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-600 shrink-0">
-          Abierta
-        </Badge>
+        <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-600 shrink-0">Abierta</Badge>
       </div>
 
       <div>
@@ -303,10 +458,12 @@ function CajaCard({ card }: { card: CardAuxiliar }) {
       </div>
 
       <div className="flex items-center justify-end mt-auto">
-        <span className={cn(
-          'flex items-center gap-1 text-[11px] font-medium text-primary',
-          'opacity-0 group-hover:opacity-100 transition-opacity',
-        )}>
+        <span
+          className={cn(
+            'flex items-center gap-1 text-[11px] font-medium text-primary',
+            'opacity-0 group-hover:opacity-100 transition-opacity',
+          )}
+        >
           Ir a caja <ArrowRight className="size-3" />
         </span>
       </div>
@@ -316,27 +473,39 @@ function CajaCard({ card }: { card: CardAuxiliar }) {
 
 // ── CajeroDashboard (vista principal del cajero antes de iniciar venta) ────────
 
-function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; cajaId: number; cajaFuerte: CardAuxiliar | undefined }) {
-  const navigate  = useNavigate()
-  const user      = useSessionStore(s => s.user)
-  const sesionId  = card.sesionId ?? null
+function CajeroDashboard({
+  card,
+  cajaId,
+  cajaFuerte,
+}: {
+  card: CardAuxiliar
+  cajaId: number
+  cajaFuerte: CardAuxiliar | undefined
+}) {
+  const navigate = useNavigate()
+  const sesionId = card.sesionId ?? null
 
   const { data: resumen, isError: resumenError } = useResumenTurno(cajaId)
   const { data: movimientos } = useMovimientos(sesionId ?? 0)
   const cerrar = useCerrarAuxiliar(sesionId ?? 0)
 
-  const saldo    = Number(card.saldoActual ?? 0)
+  const saldo = Number(card.saldoActual ?? 0)
   const ingresos = Number(card.ingresosSesion ?? 0)
-  const egresos  = Number(card.egresosSesion ?? 0)
-  const total    = resumen?.totalGeneral ?? 0
+  const egresos = Number(card.egresosSesion ?? 0)
+  const total = resumen?.totalGeneral ?? 0
 
-  const [showCierre,   setShowCierre]   = useState(false)
+  const [showCierre, setShowCierre] = useState(false)
   const [showCustodia, setShowCustodia] = useState(false)
-  const [arqueoInput,  setArqueoInput]  = useState('')
-  const [obsInput,     setObsInput]     = useState('')
+  const [arqueoInput, setArqueoInput] = useState('')
+  const [obsInput, setObsInput] = useState('')
+  const [custodiaAlert, setCustodiaAlert] = useState<{
+    tipo: 'enviada' | 'recibida'
+    monto: number
+    codigo?: string
+  } | null>(null)
 
-  const arqueo      = Number(arqueoInput.replace(/\./g, '').replace(/,/g, '')) || saldo
-  const diferencia  = arqueo - saldo
+  const arqueo = Number(arqueoInput.replace(/\./g, '').replace(/,/g, '')) || saldo
+  const diferencia = arqueo - saldo
 
   const handleCerrar = async () => {
     try {
@@ -345,9 +514,17 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
         totalArqueo: arqueo.toFixed(2),
         ...(obsInput.trim() ? { observaciones: obsInput.trim() } : {}),
         // RF-3.01: una denominación que cubre el total (desarrollo — producción usará desglose completo)
-        denominaciones: cantidadArqueo > 0
-          ? [{ denominacion: cantidadArqueo, tipo: 'billete' as const, cantidad: 1, valorTotal: cantidadArqueo }]
-          : [{ denominacion: 1, tipo: 'moneda' as const, cantidad: 0, valorTotal: 0 }],
+        denominaciones:
+          cantidadArqueo > 0
+            ? [
+                {
+                  denominacion: cantidadArqueo,
+                  tipo: 'billete' as const,
+                  cantidad: 1,
+                  valorTotal: cantidadArqueo,
+                },
+              ]
+            : [{ denominacion: 1, tipo: 'moneda' as const, cantidad: 0, valorTotal: 0 }],
       })
       toast.success('Turno cerrado correctamente')
       setShowCierre(false)
@@ -358,14 +535,23 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-
       {/* Header de caja */}
       <div className="flex items-center justify-between px-5 py-3 border-b bg-card shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <div className="size-2 rounded-full bg-emerald-500 shrink-0" />
           <div className="min-w-0">
             <h1 className="text-sm font-bold truncate">{card.nombre}</h1>
-            <p className="text-[11px] text-muted-foreground">{card.codigo} · {new Date().toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {card.codigo} ·{' '}
+              {new Date().toLocaleString('es-CO', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+              })}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -379,7 +565,11 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
             size="sm"
             variant="outline"
             className="h-7 text-[11px] gap-1 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-            onClick={() => { setArqueoInput(''); setObsInput(''); setShowCierre(true) }}
+            onClick={() => {
+              setArqueoInput('')
+              setObsInput('')
+              setShowCierre(true)
+            }}
           >
             <LogOut className="size-3" />
             Cerrar turno
@@ -407,12 +597,19 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
                 inputMode="numeric"
                 placeholder={`Ej: ${saldo.toFixed(0)} (sin puntos)`}
                 value={arqueoInput}
-                onChange={e => setArqueoInput(e.target.value)}
+                onChange={(e) => setArqueoInput(e.target.value)}
                 className="h-9"
               />
               {arqueoInput && Math.abs(diferencia) > 0 && (
-                <p className={cn('text-xs font-medium', diferencia < 0 ? 'text-destructive' : 'text-amber-600')}>
-                  {diferencia < 0 ? `Faltante: ${fmt(Math.abs(diferencia))}` : `Sobrante: ${fmt(diferencia)}`}
+                <p
+                  className={cn(
+                    'text-xs font-medium',
+                    diferencia < 0 ? 'text-destructive' : 'text-amber-600',
+                  )}
+                >
+                  {diferencia < 0
+                    ? `Faltante: ${fmt(Math.abs(diferencia))}`
+                    : `Sobrante: ${fmt(diferencia)}`}
                 </p>
               )}
             </div>
@@ -421,7 +618,7 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
               <Input
                 placeholder="Ej. todo cuadra"
                 value={obsInput}
-                onChange={e => setObsInput(e.target.value)}
+                onChange={(e) => setObsInput(e.target.value)}
                 className="h-9"
               />
             </div>
@@ -444,30 +641,68 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
 
       <div className="flex-1 overflow-auto">
         <div className="p-5 space-y-5 max-w-2xl mx-auto">
-
           {/* 4 stat cards */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {([
-              { label: 'Saldo actual',    value: saldo,    icon: DollarSign,  color: 'text-primary',     bg: 'bg-primary/5 border-primary/20' },
-              { label: 'Ingresos turno',  value: ingresos, icon: TrendingUp,  color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800' },
-              { label: 'Egresos turno',   value: egresos,  icon: TrendingDown, color: 'text-orange-500',  bg: 'bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800' },
-              { label: 'Total ventas',    value: total,    icon: Banknote,    color: 'text-blue-600',    bg: 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800' },
-            ] as { label: string; value: number; icon: React.ElementType; color: string; bg: string }[]).map(c => (
+            {(
+              [
+                {
+                  label: 'Saldo actual',
+                  value: saldo,
+                  icon: DollarSign,
+                  color: 'text-primary',
+                  bg: 'bg-primary/5 border-primary/20',
+                },
+                {
+                  label: 'Ingresos turno',
+                  value: ingresos,
+                  icon: TrendingUp,
+                  color: 'text-emerald-600',
+                  bg: 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800',
+                },
+                {
+                  label: 'Egresos turno',
+                  value: egresos,
+                  icon: TrendingDown,
+                  color: 'text-orange-500',
+                  bg: 'bg-orange-50 border-orange-200 dark:bg-orange-950/20 dark:border-orange-800',
+                },
+                {
+                  label: 'Total ventas',
+                  value: total,
+                  icon: Banknote,
+                  color: 'text-blue-600',
+                  bg: 'bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800',
+                },
+              ] as {
+                label: string
+                value: number
+                icon: React.ElementType
+                color: string
+                bg: string
+              }[]
+            ).map((c) => (
               <div key={c.label} className={cn('rounded-xl border p-3 space-y-2', c.bg)}>
                 <div className="flex items-center gap-1.5">
                   <c.icon className={cn('size-3.5 shrink-0', c.color)} />
-                  <p className="text-[10px] font-medium text-muted-foreground leading-none uppercase tracking-wide">{c.label}</p>
+                  <p className="text-[10px] font-medium text-muted-foreground leading-none uppercase tracking-wide">
+                    {c.label}
+                  </p>
                 </div>
-                <p className={cn('text-xl font-bold tabular-nums leading-none', c.color)}>{fmt(c.value)}</p>
+                <p className={cn('text-xl font-bold tabular-nums leading-none', c.color)}>
+                  {fmt(c.value)}
+                </p>
               </div>
             ))}
           </div>
 
-          {/* Alertas */}
+          {/* Alertas de caja */}
           {card.alertas.length > 0 && (
             <div className="space-y-2">
-              {card.alertas.map(a => (
-                <div key={a} className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+              {card.alertas.map((a) => (
+                <div
+                  key={a}
+                  className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive"
+                >
                   <AlertCircle className="size-4 shrink-0 mt-0.5" />
                   <span>
                     {a === 'reposicion_caja'
@@ -476,6 +711,65 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Alerta de custodia activa */}
+          {custodiaAlert && (
+            <div
+              className={cn(
+                'rounded-lg border px-4 py-3 flex items-start gap-3',
+                custodiaAlert.tipo === 'enviada'
+                  ? 'border-amber-300 bg-amber-50/60 dark:bg-amber-950/20'
+                  : 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20',
+              )}
+            >
+              <ArrowLeftRight
+                className={cn(
+                  'size-4 mt-0.5 shrink-0',
+                  custodiaAlert.tipo === 'enviada' ? 'text-amber-600' : 'text-emerald-600',
+                )}
+              />
+              <div className="flex-1 min-w-0">
+                <p
+                  className={cn(
+                    'text-sm font-semibold',
+                    custodiaAlert.tipo === 'enviada'
+                      ? 'text-amber-700 dark:text-amber-400'
+                      : 'text-emerald-700 dark:text-emerald-400',
+                  )}
+                >
+                  {custodiaAlert.tipo === 'enviada'
+                    ? 'Remesa enviada — en tránsito'
+                    : 'Custodia recibida'}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Monto:{' '}
+                  <strong className="text-foreground tabular-nums">
+                    {fmt(custodiaAlert.monto)}
+                  </strong>
+                  {custodiaAlert.codigo && (
+                    <>
+                      {' '}
+                      · Código:{' '}
+                      <strong className="font-mono tracking-widest">{custodiaAlert.codigo}</strong>
+                    </>
+                  )}
+                </p>
+                {custodiaAlert.tipo === 'enviada' && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                    El receptor debe confirmar el código para acreditar los fondos.
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => setCustodiaAlert(null)}
+              >
+                <X className="size-3.5" />
+              </Button>
             </div>
           )}
 
@@ -491,34 +785,42 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
                 <div className="px-4 py-4 text-xs text-muted-foreground text-center">
                   No se pudo cargar el resumen
                 </div>
-              ) : resumen && (
-                <>
-                  <div className="divide-y">
-                    {([
-                      { label: 'Sellos',      data: resumen.sellos },
-                      { label: 'Productos',   data: resumen.productos },
-                      { label: 'Apartados',   data: resumen.apartados },
-                      { label: 'Servicios',   data: resumen.servicios },
-                      { label: 'Anulaciones', data: resumen.anulaciones },
-                    ] as { label: string; data: { cantidad: number; total: number } }[]).map(({ label, data }) => (
-                      <div key={label} className="flex items-center px-4 py-2.5 text-sm">
-                        <span className="flex-1 text-muted-foreground">{label}</span>
-                        {data.cantidad > 0 ? (
-                          <>
-                            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 mr-3">{data.cantidad}</Badge>
-                            <span className="tabular-nums font-semibold w-28 text-right">{fmt(data.total)}</span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground/30 w-28 text-right">—</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-t text-sm font-bold">
-                    <span>Total general</span>
-                    <span className="tabular-nums text-primary">{fmt(resumen.totalGeneral)}</span>
-                  </div>
-                </>
+              ) : (
+                resumen && (
+                  <>
+                    <div className="divide-y">
+                      {(
+                        [
+                          { label: 'Sellos', data: resumen.sellos },
+                          { label: 'Productos', data: resumen.productos },
+                          { label: 'Apartados', data: resumen.apartados },
+                          { label: 'Servicios', data: resumen.servicios },
+                          { label: 'Anulaciones', data: resumen.anulaciones },
+                        ] as { label: string; data: { cantidad: number; total: number } }[]
+                      ).map(({ label, data }) => (
+                        <div key={label} className="flex items-center px-4 py-2.5 text-sm">
+                          <span className="flex-1 text-muted-foreground">{label}</span>
+                          {data.cantidad > 0 ? (
+                            <>
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1.5 mr-3">
+                                {data.cantidad}
+                              </Badge>
+                              <span className="tabular-nums font-semibold w-28 text-right">
+                                {fmt(data.total)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground/30 w-28 text-right">—</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-t text-sm font-bold">
+                      <span>Total general</span>
+                      <span className="tabular-nums text-primary">{fmt(resumen.totalGeneral)}</span>
+                    </div>
+                  </>
+                )
               )}
             </div>
           )}
@@ -532,22 +834,30 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
                 </p>
               </div>
               <div className="divide-y max-h-56 overflow-auto">
-                {[...movimientos].reverse().slice(0, 15).map(m => (
-                  <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    <span className="text-muted-foreground w-12 shrink-0 tabular-nums text-xs">
-                      {new Date(m.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="flex-1 truncate text-foreground/80">
-                      {TIPO_MOV[m.tipo] ?? m.tipo}
-                    </span>
-                    <span className={cn(
-                      'tabular-nums font-semibold shrink-0 text-xs',
-                      Number(m.monto) < 0 ? 'text-red-500' : 'text-emerald-600',
-                    )}>
-                      {fmt(Math.abs(Number(m.monto)))}
-                    </span>
-                  </div>
-                ))}
+                {[...movimientos]
+                  .reverse()
+                  .slice(0, 15)
+                  .map((m) => (
+                    <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      <span className="text-muted-foreground w-12 shrink-0 tabular-nums text-xs">
+                        {new Date(m.createdAt).toLocaleTimeString('es-CO', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      <span className="flex-1 truncate text-foreground/80">
+                        {TIPO_MOV[m.tipo] ?? m.tipo}
+                      </span>
+                      <span
+                        className={cn(
+                          'tabular-nums font-semibold shrink-0 text-xs',
+                          Number(m.monto) < 0 ? 'text-red-500' : 'text-emerald-600',
+                        )}
+                      >
+                        {fmt(Math.abs(Number(m.monto)))}
+                      </span>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
@@ -573,7 +883,6 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
               Cambio de Custodia
             </Button>
           </div>
-
         </div>
       </div>
 
@@ -584,6 +893,18 @@ function CajeroDashboard({ card, cajaId, cajaFuerte }: { card: CardAuxiliar; caj
           sesionId={sesionId}
           cajaFuerte={cajaFuerte}
           saldoActual={card.saldoActual}
+          onCustodiaEmitida={(r) => {
+            setCustodiaAlert({
+              tipo: 'enviada',
+              monto: Number(r.montoEmitido),
+              codigo: r.codigoRemesa,
+            })
+            setShowCustodia(false)
+          }}
+          onCustodiaConfirmada={(monto) => {
+            setCustodiaAlert({ tipo: 'recibida', monto: Number(monto) })
+            setShowCustodia(false)
+          }}
         />
       )}
     </div>
@@ -619,7 +940,9 @@ function AbrirTurnoDashboard({ card }: { card: CardAuxiliar }) {
       <div className="space-y-1">
         <h2 className="text-base font-semibold">{card.nombre}</h2>
         <p className="text-sm text-muted-foreground">
-          {card.estado === 'cerrada' ? 'Turno cerrado — abre uno nuevo para continuar.' : 'Caja disponible — ingresa el monto de apertura.'}
+          {card.estado === 'cerrada'
+            ? 'Turno cerrado — abre uno nuevo para continuar.'
+            : 'Caja disponible — ingresa el monto de apertura.'}
         </p>
       </div>
       <div className="w-full max-w-xs space-y-3">
@@ -630,8 +953,8 @@ function AbrirTurnoDashboard({ card }: { card: CardAuxiliar }) {
             inputMode="numeric"
             placeholder="Ej: 350000"
             value={baseInput}
-            onChange={e => setBaseInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAbrir()}
+            onChange={(e) => setBaseInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAbrir()}
             className="h-10 text-center text-base tabular-nums"
           />
         </div>
@@ -650,9 +973,9 @@ function AbrirTurnoDashboard({ card }: { card: CardAuxiliar }) {
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function PuntoVentas() {
-  const user       = useSessionStore(s => s.user)
+  const user = useSessionStore((s) => s.user)
   const sucursalId = user?.sucursal_id ?? null
-  const esCajero   = user?.rol === 'CAJERO' || user?.rol === 'USUARIO_POST'
+  const esCajero = user?.rol === 'CAJERO' || user?.rol === 'USUARIO_POST'
 
   // Polling rápido cuando el cajero no tiene caja abierta (espera apertura del supervisor)
   const [esperandoApertura, setEsperandoApertura] = useState(false)
@@ -663,18 +986,19 @@ export default function PuntoVentas() {
     intervalo,
   )
 
-  const todasPosCajas = data?.cajas.filter(c => c.tipo === 'pos') ?? []
-  const todasAbiertas = todasPosCajas.filter(c => c.estado === 'abierta')
+  const todasPosCajas = data?.cajas.filter((c) => c.tipo === 'pos') ?? []
+  const todasAbiertas = todasPosCajas.filter((c) => c.estado === 'abierta')
 
   const cajasAbiertas = esCajero
-    ? todasAbiertas.filter(c => c.cajeroId === Number(user?.id))
+    ? todasAbiertas.filter((c) => c.cajeroId === Number(user?.id))
     : todasAbiertas
 
   // Caja cerrada/sin_sesión asignable al cajero (para poder reabrirla)
-  const cajaParaAbrir = esCajero && cajasAbiertas.length === 0
-    ? (todasPosCajas.find(c => c.cajeroId === Number(user?.id) && c.estado !== 'abierta') ??
-       todasPosCajas.find(c => c.estado !== 'abierta'))
-    : null
+  const cajaParaAbrir =
+    esCajero && cajasAbiertas.length === 0
+      ? (todasPosCajas.find((c) => c.cajeroId === Number(user?.id) && c.estado !== 'abierta') ??
+        todasPosCajas.find((c) => c.estado !== 'abierta'))
+      : null
 
   // Activar polling rápido cuando el cajero no tiene caja abierta
   useEffect(() => {
@@ -683,8 +1007,8 @@ export default function PuntoVentas() {
 
   // Para CAJERO con una sola caja: mostrar el dashboard (sin auto-redirect)
   if (esCajero && cajasAbiertas.length === 1) {
-    const card = cajasAbiertas[0]!
-    const cajaFuerte = data?.cajas.find(c => c.tipo === 'general')
+    const [card] = cajasAbiertas
+    const cajaFuerte = data?.cajas.find((c) => c.tipo === 'general')
     return (
       <div className="flex flex-col h-full overflow-hidden">
         <header className="flex items-center justify-between gap-4 px-5 py-3 border-b bg-card shrink-0">
@@ -744,6 +1068,7 @@ export default function PuntoVentas() {
         <Skeleton className="h-10 w-64" />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: skeletons estáticos sin identidad real
             <Skeleton key={i} className="h-40 rounded-xl" />
           ))}
         </div>
@@ -780,7 +1105,6 @@ export default function PuntoVentas() {
 
   return (
     <div className="flex flex-col h-full">
-
       {/* Header */}
       <header className="flex items-center justify-between gap-4 px-5 py-3 border-b bg-card shrink-0">
         <div className="flex items-center gap-3 min-w-0">
@@ -788,9 +1112,14 @@ export default function PuntoVentas() {
           <div className="min-w-0">
             <h1 className="text-sm font-bold truncate">Punto de Ventas</h1>
             <p className="text-[11px] text-muted-foreground truncate">
-              {user?.nombre ?? '—'} · {new Date().toLocaleString('es-CO', {
-                day: '2-digit', month: '2-digit', year: 'numeric',
-                hour: '2-digit', minute: '2-digit', hour12: true,
+              {user?.nombre ?? '—'} ·{' '}
+              {new Date().toLocaleString('es-CO', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
               })}
             </p>
           </div>
@@ -818,7 +1147,7 @@ export default function PuntoVentas() {
       <div className="flex-1 overflow-auto p-5">
         {cajasAbiertas.length > 0 ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-            {cajasAbiertas.map(c => (
+            {cajasAbiertas.map((c) => (
               <CajaCard key={c.cajaId} card={c} />
             ))}
           </div>

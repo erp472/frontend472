@@ -1,67 +1,121 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ShoppingCart, Trash2, ChevronLeft, RefreshCw,
-  Search, CheckCircle2, AlertTriangle, Loader2,
-  Package, MailOpen, Plus, Tag, Pencil,
-  Truck, X, UserRound, Eye, EyeOff, ArrowRightLeft,
-  ChevronsUpDown, Check,
+  AlertTriangle,
+  ArrowRightLeft,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronsUpDown,
+  Clock,
+  Eye,
+  EyeOff,
+  Loader2,
+  MailOpen,
+  Package,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  ShoppingCart,
+  Tag,
+  Trash2,
+  Truck,
+  UserRound,
+  X,
 } from 'lucide-react'
-import { Button }      from '@/components/ui/button'
-import { Input }       from '@/components/ui/input'
-import { Badge }       from '@/components/ui/badge'
-import { Label }       from '@/components/ui/label'
-import { Separator }   from '@/components/ui/separator'
-import { ScrollArea }  from '@/components/ui/scroll-area'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
-} from '@/components/ui/dialog'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
-import { cn } from '@/lib/utils'
-import {
-  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
-} from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { useSessionStore } from '@/stores/useSessionStore'
+import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { useAcceso } from '@/hooks/useAcceso'
 import { ApiError } from '@/lib/api'
-import { useCliente, useUpdateCliente, useCreateCliente, type TipoDocumento } from '@/queries/clientes.queries'
-import { useUser, useCreateUser, useUpdateUser } from '@/queries/users.queries'
+import { cn } from '@/lib/utils'
+import { useAsignarCajero, useCaja, useStatusPunto } from '@/queries/cajas.queries'
 import {
-  useCaja, useStatusPunto, useAsignarCajero,
-} from '@/queries/cajas.queries'
+  type TipoDocumento,
+  useCliente,
+  useCreateCliente,
+  useUpdateCliente,
+} from '@/queries/clientes.queries'
+import { useCiudades, useDepartamentos, usePaises } from '@/queries/geo.queries'
+import { useCreateUser, useUpdateUser, useUser } from '@/queries/users.queries'
 import {
-  useCatalogoProductos,
-  useTarifasEspecial,
-  useCarrito,
-  useResumenTurno,
-  useVentasTurno,
-  useApartadosDisponibles,
-  useServiciosPostales,
-  useIniciarVenta,
-  useAgregarProducto,
-  useEliminarProducto,
-  useConfirmarVenta,
-  useAnularVenta,
-  useContratarApartado,
-  useCrearEnvio,
   type ClienteResumen,
-  type MedioPagoVenta,
-  type TipoProducto,
-  type ServicioCatalogo,
+  type CrearEnvioPayload,
+  type DireccionFrecuente,
   type GuiaEnvio,
+  type MedioPagoVenta,
+  type ServicioCatalogo,
+  type TipoProducto,
+  type TipoTrayecto,
+  useAgregarApartadoAlCarrito,
+  useAgregarEnvioAlCarrito,
+  useAgregarProducto,
+  useAnularVenta,
+  useApartadosDisponibles,
+  useCarrito,
+  useCatalogoProductos,
+  useConfirmarVenta,
+  useContratarApartado,
+  useCotizarEnvio,
+  useCrearEnvio,
+  useDireccionesFrecuentes,
+  useEliminarApartadoDelCarrito,
+  useEliminarEnvioDelCarrito,
+  useEliminarProducto,
+  useIniciarVenta,
+  useResumenTurno,
+  useDireccionesPorDocumento,
+  useServiciosPostales,
+  useTarifasEspecial,
+  useVentasTurno,
 } from '@/queries/ventas.queries'
-import { GuiaPostal } from '@/components/GuiaPostal'
-import { usePaises, useDepartamentos, useCiudades } from '@/queries/geo.queries'
+import { useSessionStore } from '@/stores/useSessionStore'
 
 // ── Validación de email ───────────────────────────────────────────────────────
 
-const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+const EMAIL_RE = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
 
 function validarEmail(v: string): string | null {
   if (!v.trim()) return 'El email es obligatorio'
@@ -76,18 +130,23 @@ function validarEmail(v: string): string | null {
 
 // ── Modal editar cliente (desde ventas) ───────────────────────────────────────
 
-function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
+function EditarClienteModal({
+  clienteId,
+  open,
+  onClose,
+  onActualizado,
+}: {
   clienteId: number
-  open:      boolean
-  onClose:   () => void
+  open: boolean
+  onClose: () => void
   onActualizado: (email: string | null, telefono: string | null) => void
 }) {
   const { data: cliente, isLoading } = useCliente(clienteId)
   const update = useUpdateCliente(clienteId)
 
-  const [nombre,   setNombre]   = useState('')
+  const [nombre, setNombre] = useState('')
   const [apellido, setApellido] = useState('')
-  const [email,    setEmail]    = useState('')
+  const [email, setEmail] = useState('')
   const [telefono, setTelefono] = useState('')
   const [emailErr, setEmailErr] = useState<string | null>(null)
 
@@ -108,12 +167,15 @@ function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
 
   const handleSave = async () => {
     const err = validarEmail(email)
-    if (err) { setEmailErr(err); return }
+    if (err) {
+      setEmailErr(err)
+      return
+    }
     try {
       const updated = await update.mutateAsync({
-        nombre:   nombre.trim()   || undefined,
+        nombre: nombre.trim() || undefined,
         apellido: apellido.trim() || null,
-        email:    email.trim()    || null,
+        email: email.trim() || null,
         telefono: telefono.trim() || null,
       })
       toast.success('Datos actualizados')
@@ -125,7 +187,7 @@ function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
   }
 
   return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -147,11 +209,20 @@ function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">Nombre</Label>
-                <Input className="h-8 text-sm" value={nombre} onChange={e => setNombre(e.target.value)} />
+                <Input
+                  className="h-8 text-sm"
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Apellido</Label>
-                <Input className="h-8 text-sm" value={apellido} onChange={e => setApellido(e.target.value)} placeholder="Opcional" />
+                <Input
+                  className="h-8 text-sm"
+                  value={apellido}
+                  onChange={(e) => setApellido(e.target.value)}
+                  placeholder="Opcional"
+                />
               </div>
             </div>
 
@@ -168,7 +239,7 @@ function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
                     emailErr && 'border-destructive focus-visible:ring-destructive',
                   )}
                   value={email}
-                  onChange={e => handleEmailChange(e.target.value)}
+                  onChange={(e) => handleEmailChange(e.target.value)}
                   placeholder="cliente@correo.com"
                 />
               </div>
@@ -184,7 +255,7 @@ function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
               <Input
                 className="h-8 text-sm"
                 value={telefono}
-                onChange={e => setTelefono(e.target.value)}
+                onChange={(e) => setTelefono(e.target.value)}
                 placeholder="3001234567"
               />
             </div>
@@ -193,16 +264,26 @@ function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
             {cliente?.tipoCliente && (
               <div className="flex items-center gap-2 rounded-md bg-primary/5 border border-primary/20 px-3 py-1.5">
                 <Tag className="size-3.5 text-primary shrink-0" />
-                <span className="text-xs text-primary font-medium">{cliente.tipoCliente.nombre}</span>
-                <span className="text-xs text-muted-foreground ml-auto">{cliente.tipoCliente.descuentoPorcentaje}% dto</span>
+                <span className="text-xs text-primary font-medium">
+                  {cliente.tipoCliente.nombre}
+                </span>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {cliente.tipoCliente.descuentoPorcentaje}% dto
+                </span>
               </div>
             )}
           </div>
         )}
 
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={update.isPending}>Cancelar</Button>
-          <Button size="sm" onClick={handleSave} disabled={update.isPending || !!emailErr || isLoading}>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={update.isPending}>
+            Cancelar
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={update.isPending || !!emailErr || isLoading}
+          >
             {update.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
             Guardar
           </Button>
@@ -215,25 +296,23 @@ function EditarClienteModal({ clienteId, open, onClose, onActualizado }: {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const COP = new Intl.NumberFormat('es-CO', {
-  style: 'currency', currency: 'COP', maximumFractionDigits: 0,
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 0,
 })
 const fmt = (v: number | undefined | null) => (v != null ? COP.format(v) : '$0')
 
 const TIPO_DOC_OPTIONS: { value: string; label: string }[] = [
-  { value: 'cedula',            label: 'CC — Cédula' },
-  { value: 'nit',               label: 'NIT' },
-  { value: 'extranjeria',       label: 'CE — Extranjería' },
+  { value: 'cedula', label: 'CC — Cédula' },
+  { value: 'nit', label: 'NIT' },
+  { value: 'extranjeria', label: 'CE — Extranjería' },
   { value: 'tarjeta_identidad', label: 'TI — Tarjeta Identidad' },
-  { value: 'pasaporte',         label: 'PP — Pasaporte' },
+  { value: 'pasaporte', label: 'PP — Pasaporte' },
 ]
 
 const TIPOS_PRODUCTO: { value: TipoProducto | ''; label: string }[] = [
-  { value: '',                label: 'Todos' },
-  { value: 'estampilla',      label: 'Estampillas' },
-  { value: 'empaque',         label: 'Empaques' },
-  { value: 'material_oficina', label: 'Material' },
-  { value: 'paquete',         label: 'Paquetes' },
-  { value: 'otro',            label: 'Otro' },
+  { value: '', label: 'Productos' },
+  { value: 'estampilla', label: 'Estampillas' },
 ]
 
 const MEDIOS_PAGO: { value: MedioPagoVenta; label: string }[] = [
@@ -249,58 +328,87 @@ const MEDIOS_PAGO_ENVIO: { value: MedioPagoEnvio; label: string }[] = [
 // ── Tipos de documento ────────────────────────────────────────────────────────
 
 const TIPOS_DOCUMENTO = [
-  { value: 'cedula',            label: 'Cédula de Ciudadanía' },
-  { value: 'pasaporte',         label: 'Pasaporte' },
+  { value: 'cedula', label: 'Cédula de Ciudadanía' },
+  { value: 'pasaporte', label: 'Pasaporte' },
   { value: 'tarjeta_identidad', label: 'Tarjeta de Identidad' },
-  { value: 'extranjeria',       label: 'Cédula de Extranjería' },
-  { value: 'nit',               label: 'NIT' },
+  { value: 'extranjeria', label: 'Cédula de Extranjería' },
+  { value: 'nit', label: 'NIT' },
 ]
 
 // ── Crear cajero dialog ───────────────────────────────────────────────────────
 
-function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
-  open:       boolean
-  onClose:    () => void
+function CrearCajeroDialog({
+  open,
+  onClose,
+  sucursalId,
+  sesionId,
+  onCreado,
+}: {
+  open: boolean
+  onClose: () => void
   sucursalId: number
-  sesionId:   number | null
-  onCreado:   () => void
+  sesionId: number | null
+  onCreado: () => void
 }) {
-  const crear        = useCreateUser()
-  const asignar      = useAsignarCajero()
+  const crear = useCreateUser()
+  const asignar = useAsignarCajero()
 
-  const [nombre,          setNombre]          = useState('')
-  const [tipoDocumento,   setTipoDocumento]   = useState('')
+  const [nombre, setNombre] = useState('')
+  const [tipoDocumento, setTipoDocumento] = useState('')
   const [numeroDocumento, setNumeroDocumento] = useState('')
-  const [email,           setEmail]           = useState('')
-  const [password,        setPassword]        = useState('')
-  const [showPwd,         setShowPwd]         = useState(false)
-  const [confirmando,     setConfirmando]     = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPwd, setShowPwd] = useState(false)
+  const [confirmando, setConfirmando] = useState(false)
 
   function reset() {
-    setNombre(''); setTipoDocumento(''); setNumeroDocumento('')
-    setEmail(''); setPassword(''); setShowPwd(false); setConfirmando(false)
+    setNombre('')
+    setTipoDocumento('')
+    setNumeroDocumento('')
+    setEmail('')
+    setPassword('')
+    setShowPwd(false)
+    setConfirmando(false)
   }
 
-  function handleClose() { reset(); onClose() }
+  function handleClose() {
+    reset()
+    onClose()
+  }
 
   function handleContinuar() {
-    if (!nombre.trim())          { toast.error('El nombre completo es obligatorio'); return }
-    if (!tipoDocumento)          { toast.error('El tipo de documento es obligatorio'); return }
-    if (!numeroDocumento.trim()) { toast.error('El número de documento es obligatorio'); return }
-    if (!email.trim())           { toast.error('El correo electrónico es obligatorio'); return }
-    if (password.length < 8)    { toast.error('La contraseña debe tener al menos 8 caracteres'); return }
+    if (!nombre.trim()) {
+      toast.error('El nombre completo es obligatorio')
+      return
+    }
+    if (!tipoDocumento) {
+      toast.error('El tipo de documento es obligatorio')
+      return
+    }
+    if (!numeroDocumento.trim()) {
+      toast.error('El número de documento es obligatorio')
+      return
+    }
+    if (!email.trim()) {
+      toast.error('El correo electrónico es obligatorio')
+      return
+    }
+    if (password.length < 8) {
+      toast.error('La contraseña debe tener al menos 8 caracteres')
+      return
+    }
     setConfirmando(true)
   }
 
   async function handleConfirmar() {
     try {
       const usuario = await crear.mutateAsync({
-        nombre:           nombre.trim(),
-        email:            email.trim().toLowerCase(),
+        nombre: nombre.trim(),
+        email: email.trim().toLowerCase(),
         password,
-        rol:              'CAJERO',
-        sucursal_id:      sucursalId,
-        tipo_documento:   tipoDocumento,
+        rol: 'CAJERO',
+        sucursal_id: sucursalId,
+        tipo_documento: tipoDocumento,
         numero_documento: numeroDocumento.trim(),
       })
       if (sesionId) {
@@ -315,23 +423,32 @@ function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
     }
   }
 
-  const tipoLabel = TIPOS_DOCUMENTO.find(t => t.value === tipoDocumento)?.label ?? tipoDocumento
+  const tipoLabel = TIPOS_DOCUMENTO.find((t) => t.value === tipoDocumento)?.label ?? tipoDocumento
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) handleClose()
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>
-            {confirmando ? 'Confirmar datos del cajero' : 'Crear cajero'}
-          </DialogTitle>
+          <DialogTitle>{confirmando ? 'Confirmar datos del cajero' : 'Crear cajero'}</DialogTitle>
         </DialogHeader>
 
         {!confirmando ? (
           <div className="space-y-3 py-1">
             <div className="space-y-1.5">
-              <Label htmlFor="cj-nombre" className="text-xs">Nombre completo *</Label>
-              <Input id="cj-nombre" placeholder="Ej. María González"
-                value={nombre} onChange={e => setNombre(e.target.value)} />
+              <Label htmlFor="cj-nombre" className="text-xs">
+                Nombre completo *
+              </Label>
+              <Input
+                id="cj-nombre"
+                placeholder="Ej. María González"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+              />
             </div>
             <div className="grid grid-cols-[1fr_1fr] gap-2">
               <div className="space-y-1.5">
@@ -341,32 +458,55 @@ function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
                     <SelectValue placeholder="Tipo..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {TIPOS_DOCUMENTO.map(t => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    {TIPOS_DOCUMENTO.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cj-doc" className="text-xs">Número *</Label>
-                <Input id="cj-doc" placeholder="Número de doc."
-                  value={numeroDocumento} onChange={e => setNumeroDocumento(e.target.value)} />
+                <Label htmlFor="cj-doc" className="text-xs">
+                  Número *
+                </Label>
+                <Input
+                  id="cj-doc"
+                  placeholder="Número de doc."
+                  value={numeroDocumento}
+                  onChange={(e) => setNumeroDocumento(e.target.value)}
+                />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="cj-email" className="text-xs">Correo electrónico *</Label>
-              <Input id="cj-email" type="email" placeholder="cajero@4-72.com.co"
-                value={email} onChange={e => setEmail(e.target.value)} />
+              <Label htmlFor="cj-email" className="text-xs">
+                Correo electrónico *
+              </Label>
+              <Input
+                id="cj-email"
+                type="email"
+                placeholder="cajero@4-72.com.co"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="cj-pwd" className="text-xs">Contraseña *</Label>
+              <Label htmlFor="cj-pwd" className="text-xs">
+                Contraseña *
+              </Label>
               <div className="relative">
-                <Input id="cj-pwd" type={showPwd ? 'text' : 'password'}
-                  placeholder="Mínimo 8 caracteres" value={password}
-                  onChange={e => setPassword(e.target.value)} className="pr-9" />
-                <button type="button"
+                <Input
+                  id="cj-pwd"
+                  type={showPwd ? 'text' : 'password'}
+                  placeholder="Mínimo 8 caracteres"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pr-9"
+                />
+                <button
+                  type="button"
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowPwd(v => !v)}
+                  onClick={() => setShowPwd((v) => !v)}
                 >
                   {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -379,8 +519,8 @@ function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
               <div className="flex items-start gap-2">
                 <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-800 dark:text-amber-300 leading-snug">
-                  Verifique estos datos. Una vez creado, el <strong>nombre completo</strong>{' '}
-                  y el <strong>documento</strong> no podrán modificarse.
+                  Verifique estos datos. Una vez creado, el <strong>nombre completo</strong> y el{' '}
+                  <strong>documento</strong> no podrán modificarse.
                 </p>
               </div>
               <div className="text-sm space-y-1.5 border-t border-amber-200 dark:border-amber-800 pt-3">
@@ -390,7 +530,9 @@ function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
                 </div>
                 <div className="flex justify-between gap-2">
                   <span className="text-xs text-muted-foreground">Documento:</span>
-                  <span className="font-semibold text-right">{tipoLabel} · {numeroDocumento}</span>
+                  <span className="font-semibold text-right">
+                    {tipoLabel} · {numeroDocumento}
+                  </span>
                 </div>
               </div>
             </div>
@@ -400,12 +542,16 @@ function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
         <DialogFooter>
           {!confirmando ? (
             <>
-              <Button variant="outline" onClick={handleClose}>Cancelar</Button>
+              <Button variant="outline" onClick={handleClose}>
+                Cancelar
+              </Button>
               <Button onClick={handleContinuar}>Continuar</Button>
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setConfirmando(false)}>Volver</Button>
+              <Button variant="outline" onClick={() => setConfirmando(false)}>
+                Volver
+              </Button>
               <Button onClick={handleConfirmar} disabled={crear.isPending || asignar.isPending}>
                 {(crear.isPending || asignar.isPending) && (
                   <Loader2 className="mr-1.5 size-4 animate-spin" />
@@ -422,18 +568,22 @@ function CrearCajeroDialog({ open, onClose, sucursalId, sesionId, onCreado }: {
 
 // ── Editar cajero dialog ──────────────────────────────────────────────────────
 
-function EditarCajeroDialog({ cajeroId, open, onClose }: {
+function EditarCajeroDialog({
+  cajeroId,
+  open,
+  onClose,
+}: {
   cajeroId: number
-  open:     boolean
-  onClose:  () => void
+  open: boolean
+  onClose: () => void
 }) {
   const { data: cajero, isLoading } = useUser(cajeroId)
   const update = useUpdateUser()
 
-  const [email,    setEmail]    = useState('')
+  const [email, setEmail] = useState('')
   const [telefono, setTelefono] = useState('')
   const [password, setPassword] = useState('')
-  const [showPwd,  setShowPwd]  = useState(false)
+  const [showPwd, setShowPwd] = useState(false)
 
   useEffect(() => {
     if (cajero) {
@@ -443,11 +593,16 @@ function EditarCajeroDialog({ cajeroId, open, onClose }: {
     }
   }, [cajero])
 
-  const tipoLabel = TIPOS_DOCUMENTO.find(t => t.value === cajero?.tipoDocumento)?.label
-    ?? cajero?.tipoDocumento ?? '—'
+  const tipoLabel =
+    TIPOS_DOCUMENTO.find((t) => t.value === cajero?.tipoDocumento)?.label ??
+    cajero?.tipoDocumento ??
+    '—'
 
   async function handleSave() {
-    if (!email.trim()) { toast.error('El correo es obligatorio'); return }
+    if (!email.trim()) {
+      toast.error('El correo es obligatorio')
+      return
+    }
     if (password && password.length < 8) {
       toast.error('La nueva contraseña debe tener al menos 8 caracteres')
       return
@@ -456,7 +611,7 @@ function EditarCajeroDialog({ cajeroId, open, onClose }: {
       await update.mutateAsync({
         id: cajeroId,
         data: {
-          email:    email.trim().toLowerCase(),
+          email: email.trim().toLowerCase(),
           telefono: telefono.trim() || null,
           ...(password && { password }),
         },
@@ -469,7 +624,12 @@ function EditarCajeroDialog({ cajeroId, open, onClose }: {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose()
+      }}
+    >
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Editar cajero</DialogTitle>
@@ -498,24 +658,45 @@ function EditarCajeroDialog({ cajeroId, open, onClose }: {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="ej-email" className="text-xs">Correo electrónico</Label>
-              <Input id="ej-email" type="email" value={email}
-                onChange={e => setEmail(e.target.value)} />
+              <Label htmlFor="ej-email" className="text-xs">
+                Correo electrónico
+              </Label>
+              <Input
+                id="ej-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ej-tel" className="text-xs">Teléfono</Label>
-              <Input id="ej-tel" type="tel" placeholder="Opcional"
-                value={telefono} onChange={e => setTelefono(e.target.value)} />
+              <Label htmlFor="ej-tel" className="text-xs">
+                Teléfono
+              </Label>
+              <Input
+                id="ej-tel"
+                type="tel"
+                placeholder="Opcional"
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ej-pwd" className="text-xs">Nueva contraseña (opcional)</Label>
+              <Label htmlFor="ej-pwd" className="text-xs">
+                Nueva contraseña (opcional)
+              </Label>
               <div className="relative">
-                <Input id="ej-pwd" type={showPwd ? 'text' : 'password'}
-                  placeholder="Dejar vacío para no cambiar" value={password}
-                  onChange={e => setPassword(e.target.value)} className="pr-9" />
-                <button type="button"
+                <Input
+                  id="ej-pwd"
+                  type={showPwd ? 'text' : 'password'}
+                  placeholder="Dejar vacío para no cambiar"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pr-9"
+                />
+                <button
+                  type="button"
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowPwd(v => !v)}
+                  onClick={() => setShowPwd((v) => !v)}
                 >
                   {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
@@ -525,7 +706,9 @@ function EditarCajeroDialog({ cajeroId, open, onClose }: {
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
           <Button onClick={handleSave} disabled={isLoading || update.isPending}>
             {update.isPending && <Loader2 className="mr-1.5 size-4 animate-spin" />}
             Guardar cambios
@@ -544,15 +727,19 @@ function ResumenBanner({ cajaId }: { cajaId: number }) {
   return (
     <div className="flex items-center gap-3 px-4 py-1.5 bg-muted/30 border-b text-xs overflow-x-auto shrink-0">
       {[
-        { label: 'Sellos',    val: data?.sellos.total,    qty: data?.sellos.cantidad },
+        { label: 'Sellos', val: data?.sellos.total, qty: data?.sellos.cantidad },
         { label: 'Productos', val: data?.productos.total, qty: data?.productos.cantidad },
         { label: 'Apartados', val: data?.apartados.total, qty: data?.apartados.cantidad },
         { label: 'Servicios', val: data?.servicios.total, qty: data?.servicios.cantidad },
-      ].map(s => (
+      ].map((s) => (
         <div key={s.label} className="flex items-center gap-1 shrink-0">
           <span className="text-muted-foreground">{s.label}:</span>
           <span className="font-semibold tabular-nums">{fmt(s.val)}</span>
-          {!!s.qty && <Badge variant="secondary" className="text-[10px] h-4 px-1 py-0">{s.qty}</Badge>}
+          {!!s.qty && (
+            <Badge variant="secondary" className="text-[10px] h-4 px-1 py-0">
+              {s.qty}
+            </Badge>
+          )}
         </div>
       ))}
       <Separator orientation="vertical" className="h-3.5 shrink-0" />
@@ -573,40 +760,55 @@ function ResumenBanner({ cajaId }: { cajaId: number }) {
 
 // ── Crear cliente rápido (desde ventas, sin beneficios) ───────────────────────
 
-function CrearClienteRapidoDialog({ open, onClose, tipoDocumento, numeroDocumento, onCreado }: {
-  open:            boolean
-  onClose:         () => void
-  tipoDocumento:   string
+function CrearClienteRapidoDialog({
+  open,
+  onClose,
+  tipoDocumento,
+  numeroDocumento,
+  onCreado,
+}: {
+  open: boolean
+  onClose: () => void
+  tipoDocumento: string
   numeroDocumento: string
-  onCreado:        (nombre: string) => void
+  onCreado: (nombre: string) => void
 }) {
-  const [nombre,   setNombre]   = useState('')
+  const [nombre, setNombre] = useState('')
   const [apellido, setApellido] = useState('')
-  const [email,    setEmail]    = useState('')
+  const [email, setEmail] = useState('')
   const [telefono, setTelefono] = useState('')
   const crear = useCreateCliente()
 
   const handleSubmit = async () => {
-    if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return }
+    if (!nombre.trim()) {
+      toast.error('El nombre es obligatorio')
+      return
+    }
     try {
       await crear.mutateAsync({
-        tipoDocumento:   tipoDocumento as TipoDocumento,
+        tipoDocumento: tipoDocumento as TipoDocumento,
         numeroDocumento: numeroDocumento,
-        nombre:          nombre.trim(),
-        apellido:        apellido.trim() || undefined,
-        email:           email.trim()    || undefined,
-        telefono:        telefono.trim() || undefined,
-        tipoClienteId:   null,
+        nombre: nombre.trim(),
+        apellido: apellido.trim() || undefined,
+        email: email.trim() || undefined,
+        telefono: telefono.trim() || undefined,
+        tipoClienteId: null,
       })
       toast.success('Cliente creado')
       onCreado(nombre.trim())
-    } catch (err: any) {
-      toast.error(err?.message ?? 'No se pudo crear el cliente')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo crear el cliente')
     }
   }
 
   const handleOpen = (v: boolean) => {
-    if (!v) { setNombre(''); setApellido(''); setEmail(''); setTelefono(''); onClose() }
+    if (!v) {
+      setNombre('')
+      setApellido('')
+      setEmail('')
+      setTelefono('')
+      onClose()
+    }
   }
 
   return (
@@ -621,11 +823,13 @@ function CrearClienteRapidoDialog({ open, onClose, tipoDocumento, numeroDocument
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Nombre <span className="text-destructive">*</span></Label>
+              <Label className="text-xs">
+                Nombre <span className="text-destructive">*</span>
+              </Label>
               <Input
                 className="h-8 text-sm"
                 value={nombre}
-                onChange={e => setNombre(e.target.value)}
+                onChange={(e) => setNombre(e.target.value)}
                 placeholder="Juan"
                 autoFocus
               />
@@ -635,7 +839,7 @@ function CrearClienteRapidoDialog({ open, onClose, tipoDocumento, numeroDocument
               <Input
                 className="h-8 text-sm"
                 value={apellido}
-                onChange={e => setApellido(e.target.value)}
+                onChange={(e) => setApellido(e.target.value)}
                 placeholder="Pérez"
               />
             </div>
@@ -647,7 +851,7 @@ function CrearClienteRapidoDialog({ open, onClose, tipoDocumento, numeroDocument
                 className="h-8 text-sm"
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="cliente@correo.com"
               />
             </div>
@@ -656,7 +860,7 @@ function CrearClienteRapidoDialog({ open, onClose, tipoDocumento, numeroDocument
               <Input
                 className="h-8 text-sm"
                 value={telefono}
-                onChange={e => setTelefono(e.target.value)}
+                onChange={(e) => setTelefono(e.target.value)}
                 placeholder="3001234567"
               />
             </div>
@@ -667,7 +871,9 @@ function CrearClienteRapidoDialog({ open, onClose, tipoDocumento, numeroDocument
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={crear.isPending}>Cancelar</Button>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={crear.isPending}>
+            Cancelar
+          </Button>
           <Button size="sm" onClick={handleSubmit} disabled={crear.isPending || !nombre.trim()}>
             {crear.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
             Crear e iniciar venta
@@ -681,20 +887,27 @@ function CrearClienteRapidoDialog({ open, onClose, tipoDocumento, numeroDocument
 // ── ClientBar ─────────────────────────────────────────────────────────────────
 
 interface ClientBarProps {
-  cajaId:          number
-  cliente:         ClienteResumen | null
-  ventaId:         number | null
+  cajaId: number
+  cliente: ClienteResumen | null
+  ventaId: number | null
   onVentaIniciada: (ventaId: number, cliente: ClienteResumen) => void
-  onNuevaVenta:    () => void
+  onNuevaVenta: () => void
   onClienteUpdate: (email: string | null, telefono: string | null) => void
 }
 
-function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, onClienteUpdate }: ClientBarProps) {
-  const [docTipo,       setDocTipo]       = useState('cedula')
-  const [docNumero,     setDocNumero]     = useState('')
-  const [editOpen,      setEditOpen]      = useState(false)
-  const [noEncontrado,  setNoEncontrado]  = useState(false)
-  const [crearOpen,     setCrearOpen]     = useState(false)
+function ClientBar({
+  cajaId,
+  cliente,
+  ventaId,
+  onVentaIniciada,
+  onNuevaVenta,
+  onClienteUpdate,
+}: ClientBarProps) {
+  const [docTipo, setDocTipo] = useState('cedula')
+  const [docNumero, setDocNumero] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
+  const [noEncontrado, setNoEncontrado] = useState(false)
+  const [crearOpen, setCrearOpen] = useState(false)
   const iniciar = useIniciarVenta(cajaId)
 
   // Cargamos el perfil completo del cliente para mostrar canal/beneficio
@@ -702,7 +915,7 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
 
   const buscarConDoc = async (tipo: string, numero: string) => {
     const result = await iniciar.mutateAsync({
-      tipoDocumento:   tipo,
+      tipoDocumento: tipo,
       numeroDocumento: numero,
     })
     if (result.cliente) {
@@ -757,17 +970,27 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
           <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm">{cliente.nombre}{cliente.apellido ? ` ${cliente.apellido}` : ''}</span>
-              <span className="text-xs text-muted-foreground">{cliente.tipoDocumento} {cliente.numeroDocumento}</span>
+              <span className="font-semibold text-sm">
+                {cliente.nombre}
+                {cliente.apellido ? ` ${cliente.apellido}` : ''}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {cliente.tipoDocumento} {cliente.numeroDocumento}
+              </span>
               {canal && canal !== 'retail' && tipoNombre ? (
                 <Badge className="text-[10px] h-4 px-1.5 bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">
-                  <Tag className="size-2.5 mr-0.5" />{tipoNombre}
+                  <Tag className="size-2.5 mr-0.5" />
+                  {tipoNombre}
                 </Badge>
               ) : canal === 'retail' ? (
-                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Retail</Badge>
+                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                  Retail
+                </Badge>
               ) : null}
               {cliente.email && (
-                <span className="text-xs text-muted-foreground hidden md:block">· {cliente.email}</span>
+                <span className="text-xs text-muted-foreground hidden md:block">
+                  · {cliente.email}
+                </span>
               )}
             </div>
           </div>
@@ -803,13 +1026,21 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
   return (
     <>
       <div className="flex items-center gap-2 px-4 py-2 border-b shrink-0">
-        <Select value={docTipo} onValueChange={v => { setDocTipo(v); setNoEncontrado(false) }}>
+        <Select
+          value={docTipo}
+          onValueChange={(v) => {
+            setDocTipo(v)
+            setNoEncontrado(false)
+          }}
+        >
           <SelectTrigger className="w-[90px] h-8 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {TIPO_DOC_OPTIONS.map(t => (
-              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+            {TIPO_DOC_OPTIONS.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -817,8 +1048,11 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
           className="h-8 text-sm max-w-[200px]"
           placeholder="N° documento"
           value={docNumero}
-          onChange={e => { setDocNumero(e.target.value); setNoEncontrado(false) }}
-          onKeyDown={e => e.key === 'Enter' && handleBuscar()}
+          onChange={(e) => {
+            setDocNumero(e.target.value)
+            setNoEncontrado(false)
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
         />
         <Button
           size="sm"
@@ -826,9 +1060,11 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
           onClick={handleBuscar}
           disabled={iniciar.isPending || !docNumero.trim()}
         >
-          {iniciar.isPending
-            ? <Loader2 className="size-3.5 animate-spin" />
-            : <Search className="size-3.5" />}
+          {iniciar.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Search className="size-3.5" />
+          )}
           <span className="ml-1.5">Buscar</span>
         </Button>
         <Button
@@ -840,9 +1076,7 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
           <Plus className="size-3" /> Crear cliente
         </Button>
         {noEncontrado && (
-          <span className="text-xs text-amber-600 font-medium shrink-0">
-            No encontrado
-          </span>
+          <span className="text-xs text-amber-600 font-medium shrink-0">No encontrado</span>
         )}
       </div>
 
@@ -861,25 +1095,46 @@ function ClientBar({ cajaId, cliente, ventaId, onVentaIniciada, onNuevaVenta, on
 
 function StockBadge({ stock, minimo }: { stock: number | null; minimo: number | null }) {
   if (stock === null) return null
-  if (stock === 0)    return <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">Sin stock</Badge>
+  if (stock === 0)
+    return (
+      <Badge variant="destructive" className="text-[9px] px-1 py-0 h-3.5">
+        Sin stock
+      </Badge>
+    )
   if (minimo !== null && stock <= minimo)
-    return <Badge className="text-[9px] px-1 py-0 h-3.5 bg-amber-500 hover:bg-amber-500">Stock: {stock}</Badge>
-  return <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5">Stock: {stock}</Badge>
+    return (
+      <Badge className="text-[9px] px-1 py-0 h-3.5 bg-amber-500 hover:bg-amber-500">
+        Stock: {stock}
+      </Badge>
+    )
+  return (
+    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5">
+      Stock: {stock}
+    </Badge>
+  )
 }
 
 // ── TabProductos ──────────────────────────────────────────────────────────────
 
 function TabProductos({
-  sucursalId, ventaId, cajaId,
-}: { sucursalId: number; ventaId: number | null; cajaId: number }) {
+  sucursalId,
+  ventaId,
+  cajaId,
+}: {
+  sucursalId: number
+  ventaId: number | null
+  cajaId: number
+}) {
   const [tipoFiltro, setTipoFiltro] = useState<TipoProducto | ''>('')
-  const [busqueda,   setBusqueda]   = useState('')
+  const [busqueda, setBusqueda] = useState('')
   const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, tipoFiltro || undefined)
   const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
 
-  const filtrado = catalogo?.filter(p =>
-    !busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase()),
-  ) ?? []
+  const filtrado =
+    catalogo?.filter(
+      (p) =>
+        p.tipo !== 'otro' && (!busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase())),
+    ) ?? []
 
   const handleAgregar = async (productoId: number, nombre: string) => {
     if (!ventaId) {
@@ -904,13 +1159,13 @@ function TabProductos({
             className="pl-8 h-8 text-sm"
             placeholder="Buscar producto..."
             value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
+            onChange={(e) => setBusqueda(e.target.value)}
           />
         </div>
       </div>
       {/* Tipo filter */}
       <div className="flex gap-1.5 px-3 py-2 overflow-x-auto border-b shrink-0 scrollbar-none">
-        {TIPOS_PRODUCTO.map(t => (
+        {TIPOS_PRODUCTO.map((t) => (
           <button
             key={t.value}
             type="button"
@@ -939,11 +1194,11 @@ function TabProductos({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-3">
-            {filtrado.map(p => {
+            {filtrado.map((p) => {
               // p.precio es bruto (incluye IVA) — extraer en lugar de añadir
-              const iva       = Math.round(p.precio * p.porcentajeTax / (100 + p.porcentajeTax))
-              const total     = p.precio
-              const sinStock  = p.stockActual !== null && p.stockActual === 0
+              const iva = Math.round((p.precio * p.porcentajeTax) / (100 + p.porcentajeTax))
+              const total = p.precio
+              const sinStock = p.stockActual !== null && p.stockActual === 0
               return (
                 <button
                   key={p.id}
@@ -960,7 +1215,9 @@ function TabProductos({
                   )}
                 >
                   <div className="flex items-start justify-between gap-1">
-                    <span className="text-xs font-semibold leading-tight line-clamp-2">{p.nombre}</span>
+                    <span className="text-xs font-semibold leading-tight line-clamp-2">
+                      {p.nombre}
+                    </span>
                     <Package className="size-3.5 text-muted-foreground/40 shrink-0 mt-0.5" />
                   </div>
                   <div className="flex items-end justify-between mt-auto gap-1">
@@ -981,10 +1238,12 @@ function TabProductos({
                       <StockBadge stock={p.stockActual} minimo={p.stockMinimo} />
                     </div>
                     {!sinStock && (
-                      <Plus className={cn(
-                        'size-5 rounded-full bg-primary text-primary-foreground p-0.5 shrink-0',
-                        'opacity-0 group-hover:opacity-100 transition-opacity',
-                      )} />
+                      <Plus
+                        className={cn(
+                          'size-5 rounded-full bg-primary text-primary-foreground p-0.5 shrink-0',
+                          'opacity-0 group-hover:opacity-100 transition-opacity',
+                        )}
+                      />
                     )}
                   </div>
                 </button>
@@ -999,7 +1258,11 @@ function TabProductos({
 
 // ── TabApartado ───────────────────────────────────────────────────────────────
 
-const TAMANO_LABEL: Record<string, string> = { pequeno: 'Pequeño', mediano: 'Mediano', grande: 'Grande' }
+const TAMANO_LABEL: Record<string, string> = {
+  pequeno: 'Pequeño',
+  mediano: 'Mediano',
+  grande: 'Grande',
+}
 const IVA_RATE = 0.19
 
 function addMonths(dateStr: string, months: number): string {
@@ -1009,61 +1272,89 @@ function addMonths(dateStr: string, months: number): string {
 }
 
 function TabApartado({
-  sucursalId, cajaId, clienteId,
-}: { sucursalId: number; cajaId: number; clienteId: number | null }) {
+  sucursalId,
+  cajaId,
+  clienteId,
+  ventaId,
+  onAgregarExitoso,
+}: {
+  sucursalId: number
+  cajaId: number
+  clienteId: number | null
+  ventaId: number | null
+  onAgregarExitoso?: () => void
+}) {
   const today = new Date().toISOString().split('T')[0]
 
-  const [tamanoFiltro,   setTamanoFiltro]   = useState<string>('')
-  const [selectedId,     setSelectedId]     = useState<number | null>(null)
-  const [duracionMeses,  setDuracionMeses]  = useState(12)
-  const [fechaInicio,    setFechaInicio]    = useState(today)
-  const [comentarios,    setComentarios]    = useState('')
+  const [tamanoFiltro, setTamanoFiltro] = useState<string>('')
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const duracionMeses = 12
+  const [fechaInicio, setFechaInicio] = useState(today)
+  const [comentarios, setComentarios] = useState('')
 
-  const { data: apartados, isLoading } = useApartadosDisponibles(sucursalId, tamanoFiltro || undefined)
-  const contratar = useContratarApartado(cajaId)
+  const { data: apartados, isLoading } = useApartadosDisponibles(
+    sucursalId,
+    tamanoFiltro || undefined,
+  )
+  const agregar = useAgregarApartadoAlCarrito(ventaId ?? 0, cajaId)
 
-  const filtrados = apartados ?? []
-  const selected  = filtrados.find(a => a.id === selectedId) ?? null
+  const filtrados = apartados?.lista ?? []
+  const selected = filtrados.find((a) => a.id === selectedId) ?? null
 
   const fechaFin = addMonths(fechaInicio, duracionMeses)
 
   const PRECIO = 87_500
-  const base   = Math.round(PRECIO / (1 + IVA_RATE))
-  const iva    = PRECIO - base
+  const base = Math.round(PRECIO / (1 + IVA_RATE))
+  const iva = PRECIO - base
 
-  const handleContratar = async () => {
-    if (!clienteId) { toast.error('Busca un cliente primero'); return }
-    if (!selected)  { toast.error('Selecciona un apartado');   return }
+  const handleAgregar = async () => {
+    if (!clienteId) {
+      toast.error('Busca un cliente primero')
+      return
+    }
+    if (!ventaId) {
+      toast.error('Inicia una venta primero')
+      return
+    }
+    if (!selected) {
+      toast.error('Selecciona un apartado')
+      return
+    }
     try {
-      await contratar.mutateAsync({
+      await agregar.mutateAsync({
         clienteId,
-        sucursalId:     selected.sucursalId,
+        sucursalId: selected.sucursalId,
         numeroApartado: selected.numero,
-        tamano:         selected.tamano,
-        meses:          Math.max(1, duracionMeses),
+        tamano: selected.tamano,
+        meses: duracionMeses,
         fechaInicio,
         ...(comentarios.trim() ? { comentarios: comentarios.trim() } : {}),
       })
-      toast.success(`Apartado #${selected.numero} contratado`)
+      toast.success(`Apartado #${selected.numero} agregado al carrito`)
       setSelectedId(null)
       setComentarios('')
-      setDuracionMeses(12)
       setFechaInicio(today)
+      onAgregarExitoso?.()
     } catch {
-      toast.error('No se pudo contratar el apartado')
+      toast.error('No se pudo agregar el apartado')
     }
   }
 
   return (
     <div className="flex h-full overflow-hidden">
-
       {/* ── Panel izquierdo: Nuevo Contrato ────────────────────────────────── */}
-      <div className="w-44 shrink-0 flex flex-col border-r">
+      <div className="w-44 shrink-0 flex flex-col border-r overflow-hidden">
         <div className="px-3 py-2 border-b shrink-0">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
             Nuevo contrato
           </p>
-          <Select value={tamanoFiltro} onValueChange={v => { setTamanoFiltro(v); setSelectedId(null) }}>
+          <Select
+            value={tamanoFiltro}
+            onValueChange={(v) => {
+              setTamanoFiltro(v)
+              setSelectedId(null)
+            }}
+          >
             <SelectTrigger className="h-7 text-xs">
               <SelectValue placeholder="Tamaño" />
             </SelectTrigger>
@@ -1080,34 +1371,38 @@ function TabApartado({
           <p className="text-[10px] text-muted-foreground font-medium">No. Apartado Postal</p>
         </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           {isLoading ? (
             <div className="flex justify-center py-6">
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             </div>
+          ) : sucursalId === 0 ? (
+            <p className="px-3 py-4 text-[11px] text-center text-muted-foreground">
+              Sin sucursal asignada
+            </p>
           ) : !filtrados.length ? (
             <p className="px-3 py-4 text-[11px] text-center text-muted-foreground">
               Sin disponibles
             </p>
           ) : (
             <div className="px-2 pb-2 space-y-0.5">
-              {filtrados.map(a => (
+              {filtrados.map((a) => (
                 <button
                   key={a.id}
                   type="button"
                   onClick={() => setSelectedId(a.id)}
                   className={cn(
                     'w-full text-left rounded-md px-2 py-1.5 transition-colors',
-                    selectedId === a.id
-                      ? 'bg-primary text-primary-foreground'
-                      : 'hover:bg-muted',
+                    selectedId === a.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
                   )}
                 >
                   <p className="text-xs font-bold leading-none">#{a.numero}</p>
-                  <p className={cn(
-                    'text-[10px] mt-0.5',
-                    selectedId === a.id ? 'text-primary-foreground/70' : 'text-muted-foreground',
-                  )}>
+                  <p
+                    className={cn(
+                      'text-[10px] mt-0.5',
+                      selectedId === a.id ? 'text-primary-foreground/70' : 'text-muted-foreground',
+                    )}
+                  >
                     {TAMANO_LABEL[a.tamano] ?? a.tamano}
                   </p>
                 </button>
@@ -1120,7 +1415,6 @@ function TabApartado({
       {/* ── Panel derecho: Formulario ───────────────────────────────────────── */}
       <ScrollArea className="flex-1">
         <div className="px-4 py-3 space-y-3">
-
           {/* Apartado seleccionado */}
           <div className="rounded-lg border bg-muted/30 px-3 py-2 min-h-[40px] flex items-center">
             {selected ? (
@@ -1131,9 +1425,7 @@ function TabApartado({
                 </Badge>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                Selecciona un apartado de la lista
-              </p>
+              <p className="text-xs text-muted-foreground">Selecciona un apartado de la lista</p>
             )}
           </div>
 
@@ -1144,15 +1436,10 @@ function TabApartado({
             </p>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <Label className="text-xs">Tiempo (meses)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="60"
-                  className="h-8 text-sm"
-                  value={duracionMeses}
-                  onChange={e => setDuracionMeses(Math.max(1, Number(e.target.value) || 1))}
-                />
+                <Label className="text-xs">Duración</Label>
+                <div className="h-8 flex items-center px-3 rounded-md border bg-muted/40">
+                  <span className="text-sm font-medium tabular-nums">12 meses</span>
+                </div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Fecha de inicio</Label>
@@ -1160,17 +1447,12 @@ function TabApartado({
                   type="date"
                   className="h-8 text-xs"
                   value={fechaInicio}
-                  onChange={e => setFechaInicio(e.target.value)}
+                  onChange={(e) => setFechaInicio(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Fecha final</Label>
-                <Input
-                  type="date"
-                  className="h-8 text-xs bg-muted/40"
-                  value={fechaFin}
-                  readOnly
-                />
+                <Input type="date" className="h-8 text-xs bg-muted/40" value={fechaFin} readOnly />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Precio</Label>
@@ -1190,10 +1472,18 @@ function TabApartado({
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="bg-muted/50 border-b">
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Tarifa</th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Compras</th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">IVA</th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Base Imp.</th>
+                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">
+                      Tarifa
+                    </th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">
+                      Compras
+                    </th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">
+                      IVA
+                    </th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">
+                      Base Imp.
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1201,7 +1491,9 @@ function TabApartado({
                     <tr>
                       <td className="px-2 py-2 tabular-nums">{(IVA_RATE * 100).toFixed(0)}%</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmt(PRECIO)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums text-amber-600">{fmt(iva)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-amber-600">
+                        {fmt(iva)}
+                      </td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmt(base)}</td>
                     </tr>
                   ) : (
@@ -1224,7 +1516,7 @@ function TabApartado({
               rows={2}
               placeholder="Observaciones opcionales..."
               value={comentarios}
-              onChange={e => setComentarios(e.target.value)}
+              onChange={(e) => setComentarios(e.target.value)}
             />
           </div>
 
@@ -1232,18 +1524,22 @@ function TabApartado({
           <div className="flex gap-2">
             <Button
               className="flex-1"
-              disabled={!selectedId || !clienteId || contratar.isPending}
-              onClick={handleContratar}
+              disabled={!selectedId || !clienteId || !ventaId || agregar.isPending}
+              onClick={handleAgregar}
             >
-              {contratar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
-              Contratar
+              {agregar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+              Agregar al carrito
             </Button>
             <Button
               variant="outline"
-              disabled={!selectedId || contratar.isPending}
-              onClick={() => { setSelectedId(null); setComentarios(''); setDuracionMeses(12); setFechaInicio(today) }}
+              disabled={agregar.isPending}
+              onClick={() => {
+                setSelectedId(null)
+                setComentarios('')
+                setFechaInicio(today)
+              }}
             >
-              Cancelar
+              Limpiar
             </Button>
           </div>
 
@@ -1252,259 +1548,372 @@ function TabApartado({
               Busca un cliente para poder contratar
             </p>
           )}
+          {clienteId && !ventaId && (
+            <p className="text-[11px] text-center text-muted-foreground">
+              Inicia la venta para agregar al carrito
+            </p>
+          )}
         </div>
       </ScrollArea>
     </div>
   )
 }
 
-// ── TabProductosEspeciales ────────────────────────────────────────────────────
+// ── TabProductosEspeciales — cards + modal ───────────────────────────────────
 
-const TIPOS_ESPECIALES: { value: TipoProducto; label: string }[] = [
-  { value: 'estampilla',       label: 'Estampillas'    },
-  { value: 'filatelia',        label: 'Filatelia'      },
-  { value: 'empaque',          label: 'Empaque'        },
-  { value: 'material_oficina', label: 'Oficina'        },
-  { value: 'giro',             label: 'Giro'           },
-  { value: 'paquete',          label: 'Paquete'        },
-  { value: 'otro',             label: 'Otro'           },
-]
+function tarifaParaCantidad(
+  tarifas: { id: number; minCantidad: number; maxCantidad: number | null; precio: number }[],
+  cantidad: number,
+) {
+  return (
+    tarifas.find(
+      (t) => cantidad >= t.minCantidad && (t.maxCantidad === null || cantidad <= t.maxCantidad),
+    ) ?? null
+  )
+}
 
-function TabProductosEspeciales({
-  sucursalId, ventaId, cajaId,
-}: { sucursalId: number; ventaId: number | null; cajaId: number }) {
-  const [tipoProducto, setTipoProducto] = useState<TipoProducto>('estampilla')
-  const [productoId,   setProductoId]   = useState(0)
-  const [cantidad,     setCantidad]     = useState(1)
+// ── Modal de detalle / selección de tarifa ────────────────────────────────────
 
-  const { data: catalogo, isLoading: loadingCatalogo } = useCatalogoProductos(sucursalId, tipoProducto)
-  const { data: tarifas,  isLoading: loadingTarifas }  = useTarifasEspecial(productoId)
-  const { data: carrito }                               = useCarrito(ventaId ?? 0)
-  const agregar  = useAgregarProducto(ventaId ?? 0, cajaId)
-  const eliminar = useEliminarProducto(ventaId ?? 0, cajaId)
+function EspecialProductoModal({
+  producto,
+  open,
+  onClose,
+  ventaId,
+  cajaId,
+}: {
+  producto: ProductoCatalogo | null
+  open: boolean
+  onClose: () => void
+  ventaId: number | null
+  cajaId: number
+}) {
+  // Mantiene el último producto conocido para que el contenido no desaparezca
+  // antes de que termine la animación de cierre del Dialog.
+  const snapshotRef = useRef<ProductoCatalogo | null>(null)
+  if (open && producto) snapshotRef.current = producto
+  const p = snapshotRef.current
 
-  const productoSeleccionado = catalogo?.find(p => p.id === productoId) ?? null
-  const listado = (carrito?.detalle ?? []).filter(d => d.tipoProducto === tipoProducto)
-  const totalListado = listado.reduce((s, d) => s + d.subtotal, 0)
+  const [cantidad, setCantidad] = useState(1)
+  const { data: tarifas, isLoading: loadingTarifas } = useTarifasEspecial(p?.id ?? 0)
+  const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
 
-  const handleCambiarTipo = (v: string) => {
-    setTipoProducto(v as TipoProducto)
-    setProductoId(0)
-    setCantidad(1)
-  }
+  // Resetea cantidad al mínimo cada vez que se abre con un producto distinto
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intencional — solo reejecutar cuando cambia el producto seleccionado
+  useEffect(() => {
+    if (open && p) setCantidad(p.cantidadMinima ?? 1)
+  }, [open, p?.id])
 
-  const handleCambiarProducto = (v: string) => {
-    setProductoId(Number(v))
-    setCantidad(1)
-  }
+  const minCant = p?.cantidadMinima ?? 1
+  const tarifaActiva = tarifas && p ? tarifaParaCantidad(tarifas, cantidad) : null
+  const precioUnitario = tarifaActiva?.precio ?? p?.precio ?? 0
+  const total = precioUnitario * cantidad
+  const sinPrecio = precioUnitario === 0 && (!tarifas || tarifas.every((t) => t.precio === 0))
 
-  const handleAgregar = async () => {
-    if (!ventaId)              { toast.error('Busca un cliente primero'); return }
-    if (!productoSeleccionado) { toast.error('Selecciona un producto');   return }
+  async function handleAgregar() {
+    if (!ventaId) {
+      toast.error('Busca un cliente primero')
+      return
+    }
+    if (!p) return
     try {
-      await agregar.mutateAsync({ productoId: productoSeleccionado.id, cantidad })
-      toast.success(`${productoSeleccionado.nombre} ×${cantidad} agregado`)
-      setProductoId(0)
-      setCantidad(1)
+      await agregar.mutateAsync({ productoId: p.id, cantidad })
+      toast.success(`${p.nombre} ×${cantidad.toLocaleString('es-CO')} agregado`)
+      onClose()
     } catch {
-      toast.error('No se pudo agregar el producto')
+      toast.error('No se pudo agregar el servicio')
     }
   }
 
-  const handleEliminar = async (detalleId: number) => {
-    try { await eliminar.mutateAsync(detalleId) }
-    catch { toast.error('No se pudo eliminar') }
-  }
-
   return (
-    <div className="flex flex-col h-full">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose()
+      }}
+    >
+      <DialogContent className="max-w-sm gap-0 p-0 overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-4 pt-4 pb-3 border-b bg-card">
+          <DialogTitle className="text-sm leading-snug pr-6">{p?.nombre ?? '—'}</DialogTitle>
+          <DialogDescription className="text-[10px] font-mono mt-0.5">
+            {p?.codigo ?? ''}
+          </DialogDescription>
+        </DialogHeader>
 
-      {/* Form */}
-      <div className="px-4 py-3 border-b shrink-0 space-y-3">
-
-        {/* Tipo de Producto */}
-        <div className="space-y-1">
-          <Label className="text-xs">Tipo de Producto</Label>
-          <Select value={tipoProducto} onValueChange={handleCambiarTipo}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TIPOS_ESPECIALES.map(t => (
-                <SelectItem key={t.value} value={t.value} className="text-xs">{t.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Producto */}
-        <div className="space-y-1">
-          <Label className="text-xs">Producto</Label>
-          {loadingCatalogo ? (
-            <div className="flex items-center gap-1.5 h-8 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Cargando...
-            </div>
-          ) : (
-            <Select value={productoId ? String(productoId) : ''} onValueChange={handleCambiarProducto}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Seleccionar producto..." />
-              </SelectTrigger>
-              <SelectContent>
-                {(catalogo ?? []).map(p => (
-                  <SelectItem key={p.id} value={String(p.id)} className="text-xs">
-                    {p.nombre}{p.precio > 0 ? ` — ${fmt(p.precio)}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {!catalogo?.length && !loadingCatalogo && (
-            <p className="text-[11px] text-muted-foreground">
-              Sin productos de este tipo en este punto
-            </p>
-          )}
-        </div>
-
-        {productoSeleccionado && (
-          <>
-            {/* Información */}
-            <div className="grid grid-cols-3 gap-2 rounded border bg-muted/20 px-3 py-2 text-xs">
-              <div>
-                <p className="text-[10px] text-muted-foreground mb-0.5">Impuesto</p>
-                <p className="font-medium">{productoSeleccionado.porcentajeTax}%</p>
+        {p && (
+          <div className="px-4 py-3 space-y-3">
+            {/* Tarifas por tramos */}
+            {loadingTarifas ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                <Loader2 className="size-3.5 animate-spin" /> Cargando tarifas…
               </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground mb-0.5">Precio</p>
-                <p className="font-semibold tabular-nums">{fmt(productoSeleccionado.precio)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground mb-0.5">Código</p>
-                <p className="font-mono">{productoSeleccionado.codigo}</p>
-              </div>
-            </div>
-
-            {/* Tarifas por cantidad */}
-            {!loadingTarifas && tarifas && tarifas.length > 0 && (
-              <div className="rounded border overflow-hidden">
+            ) : tarifas && tarifas.length > 0 ? (
+              <div className="rounded-lg border overflow-hidden">
+                <div className="px-3 py-1.5 bg-muted/40 border-b flex items-center justify-between">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    Tarifas por volumen
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Clic en tramo → aplica cantidad
+                  </p>
+                </div>
                 <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Mínimo</th>
-                      <th className="text-left px-2 py-1.5 font-medium text-muted-foreground">Máximo</th>
-                      <th className="text-right px-2 py-1.5 font-medium text-muted-foreground">Valor</th>
+                  <thead>
+                    <tr className="bg-muted/20 border-b">
+                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">
+                        Desde
+                      </th>
+                      <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">
+                        Hasta
+                      </th>
+                      <th className="text-right px-3 py-1.5 font-medium text-muted-foreground">
+                        $/u
+                      </th>
+                      <th className="w-5" />
                     </tr>
                   </thead>
                   <tbody>
-                    {tarifas.map(t => (
-                      <tr key={t.id} className="border-t hover:bg-muted/30">
-                        <td className="px-2 py-1 tabular-nums">{t.minCantidad.toLocaleString('es-CO')}</td>
-                        <td className="px-2 py-1 tabular-nums">{t.maxCantidad != null ? t.maxCantidad.toLocaleString('es-CO') : '∞'}</td>
-                        <td className="px-2 py-1 text-right tabular-nums">{fmt(t.precio)}</td>
-                      </tr>
-                    ))}
+                    {tarifas.map((t) => {
+                      const activa = tarifaActiva?.id === t.id
+                      return (
+                        <tr
+                          key={t.id}
+                          onClick={() => setCantidad(Math.max(minCant, t.minCantidad))}
+                          className={cn(
+                            'border-t cursor-pointer transition-colors',
+                            activa ? 'bg-primary/10 dark:bg-primary/20' : 'hover:bg-muted/30',
+                          )}
+                        >
+                          <td className="px-3 py-1.5 tabular-nums">
+                            {t.minCantidad.toLocaleString('es-CO')}
+                          </td>
+                          <td className="px-3 py-1.5 tabular-nums">
+                            {t.maxCantidad != null ? t.maxCantidad.toLocaleString('es-CO') : '∞'}
+                          </td>
+                          <td
+                            className={cn(
+                              'px-3 py-1.5 text-right tabular-nums',
+                              activa && 'font-semibold text-primary',
+                            )}
+                          >
+                            {t.precio > 0 ? (
+                              fmt(t.precio)
+                            ) : (
+                              <span className="text-muted-foreground">Gratis</span>
+                            )}
+                          </td>
+                          <td className="px-1.5 text-center">
+                            {activa && <Check className="size-3 text-primary" />}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
+            ) : p.precio > 0 ? (
+              <div className="rounded-lg border bg-muted/20 px-3 py-2.5 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Precio unitario</span>
+                <span className="text-sm font-bold tabular-nums text-primary">{fmt(p.precio)}</span>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed px-3 py-2.5 text-center">
+                <p className="text-xs text-muted-foreground">
+                  Precio no definido para este servicio
+                </p>
+              </div>
             )}
 
-            {/* Precio + Cantidad */}
-            <div className="flex items-end gap-2">
-              <div className="space-y-1 flex-1">
-                <Label className="text-xs">Precio</Label>
-                <div className="h-8 flex items-center px-3 rounded border bg-muted/40 text-sm tabular-nums font-medium">
-                  {fmt(productoSeleccionado.precio)}
-                </div>
-              </div>
-              <div className="space-y-1 w-24">
-                <Label className="text-xs">Cantidad</Label>
+            {/* Cantidad + Total */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">
+                  Cantidad
+                  {p.cantidadMinima && p.cantidadMinima > 1
+                    ? ` (mín. ${p.cantidadMinima.toLocaleString('es-CO')})`
+                    : ''}
+                </Label>
                 <Input
                   type="number"
-                  min={1}
-                  className="h-8 text-sm"
+                  min={minCant}
+                  max={p.cantidadMaxima ?? undefined}
+                  className="h-9 text-sm tabular-nums"
                   value={cantidad}
-                  onChange={e => setCantidad(Math.max(1, Number(e.target.value) || 1))}
+                  onChange={(e) =>
+                    setCantidad(Math.max(minCant, Number(e.target.value) || minCant))
+                  }
                 />
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Total estimado</Label>
+                <div
+                  className={cn(
+                    'h-9 flex items-center px-3 rounded-md border text-sm font-bold tabular-nums',
+                    total > 0 ? 'bg-primary/5 text-primary' : 'bg-muted/30 text-muted-foreground',
+                  )}
+                >
+                  {total > 0 ? fmt(total) : sinPrecio ? 'Gratis' : '—'}
+                </div>
+              </div>
             </div>
-
-            {/* Agregar */}
-            <Button
-              className="w-full"
-              disabled={!ventaId || agregar.isPending}
-              onClick={handleAgregar}
-            >
-              {agregar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
-              <Plus className="size-3.5 mr-1.5" />
-              Agregar al carrito
-            </Button>
-            {!ventaId && (
-              <p className="text-[11px] text-center text-muted-foreground">Busca un cliente para continuar</p>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Listado — ítems del carrito de este tipo */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="px-4 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide border-b bg-muted/10 shrink-0">
-          Listado
-        </div>
-        {listado.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
-            Sin ítems de {TIPOS_ESPECIALES.find(t => t.value === tipoProducto)?.label ?? tipoProducto}
           </div>
-        ) : (
-          <>
-            <ScrollArea className="flex-1 min-h-0">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b bg-muted/40 sticky top-0 z-10">
-                    <th className="w-8" />
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Producto</th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Precio</th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-12">Cant.</th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Impuesto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {listado.map(d => {
-                    const iva = d.porcentajeTax > 0
-                      ? Math.round((d.subtotal + d.descuento) * d.porcentajeTax / (100 + d.porcentajeTax))
-                      : 0
-                    return (
-                      <tr key={d.id} className="border-b hover:bg-muted/20">
-                        <td className="px-1.5 py-1.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleEliminar(d.id)}
-                            className="text-destructive hover:text-destructive/70 transition-colors"
-                          >
-                            <X className="size-3.5" />
-                          </button>
-                        </td>
-                        <td className="px-2 py-1.5 font-medium leading-tight">
-                          {d.nombreProducto ?? `Producto #${d.productoId}`}
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{fmt(d.precioUnitario)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{d.cantidad}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-amber-700 dark:text-amber-500">
-                          {iva > 0 ? fmt(iva) : <span className="text-muted-foreground/30">0.00</span>}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </ScrollArea>
-            <div className="border-t px-4 py-2 flex justify-end items-center gap-3 bg-muted/20 shrink-0">
-              <span className="text-xs text-muted-foreground">Total</span>
-              <span className="text-base font-bold tabular-nums text-primary">
-                $ {totalListado.toLocaleString('es-CO', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-          </>
         )}
+
+        {/* Footer */}
+        <div className="px-4 pb-4 pt-3 flex gap-2 justify-end border-t bg-card">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            size="sm"
+            disabled={!ventaId || !p || agregar.isPending || (precioUnitario === 0 && !sinPrecio)}
+            onClick={handleAgregar}
+          >
+            {agregar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            <Plus className="size-3.5 mr-1.5" />
+            Agregar al carrito
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── TabProductosEspeciales ────────────────────────────────────────────────────
+
+function TabProductosEspeciales({
+  sucursalId,
+  ventaId,
+  cajaId,
+}: {
+  sucursalId: number
+  ventaId: number | null
+  cajaId: number
+}) {
+  const [modalProducto, setModalProducto] = useState<ProductoCatalogo | null>(null)
+  const [busqueda, setBusqueda] = useState('')
+
+  const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, 'otro')
+  const { data: carrito } = useCarrito(ventaId ?? 0)
+  const eliminar = useEliminarProducto(ventaId ?? 0, cajaId)
+
+  const listado = (carrito?.detalle ?? []).filter((d) => d.tipoProducto === 'otro')
+  const totalListado = listado.reduce((s, d) => s + d.subtotal, 0)
+  const idsEnCarrito = useMemo(() => new Set(listado.map((d) => d.productoId)), [listado])
+
+  const filtrado = useMemo(
+    () =>
+      (catalogo ?? []).filter(
+        (p) => !busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase()),
+      ),
+    [catalogo, busqueda],
+  )
+
+  async function handleEliminar(detalleId: number) {
+    try {
+      await eliminar.mutateAsync(detalleId)
+    } catch {
+      toast.error('No se pudo eliminar')
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Search */}
+      <div className="px-3 pt-2 pb-2 shrink-0 border-b">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Input
+            className="pl-8 h-8 text-sm"
+            placeholder="Buscar servicio especial…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </div>
       </div>
+
+      {/* Minimal list */}
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="divide-y">
+          {isLoading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : filtrado.length === 0 ? (
+            <p className="text-xs text-center text-muted-foreground py-10">
+              {busqueda ? 'Sin resultados' : 'Sin servicios especiales en esta sucursal'}
+            </p>
+          ) : (
+            filtrado.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setModalProducto(p)}
+                className={cn(
+                  'w-full text-left flex items-center gap-2.5 px-3 py-2 transition-colors',
+                  'hover:bg-accent/40 active:bg-accent/60',
+                  'focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-2 focus-visible:ring-ring',
+                  idsEnCarrito.has(p.id) && 'bg-emerald-50/60 dark:bg-emerald-950/20',
+                )}
+              >
+                {idsEnCarrito.has(p.id) ? (
+                  <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-border shrink-0" />
+                )}
+                <span className="flex-1 text-xs font-medium leading-snug truncate">{p.nombre}</span>
+                <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0">
+                  {p.codigo}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </ScrollArea>
+
+      {/* Listado — ítems tipo 'otro' en el carrito */}
+      {listado.length > 0 && (
+        <div className="shrink-0 border-t">
+          <div className="px-3 py-1.5 bg-muted/10 border-b">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Servicios en carrito
+            </p>
+          </div>
+          <div className="max-h-40 overflow-auto divide-y">
+            {listado.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => handleEliminar(d.id)}
+                  className="text-destructive hover:text-destructive/70 transition-colors shrink-0"
+                >
+                  <X className="size-3.5" />
+                </button>
+                <span className="flex-1 truncate font-medium leading-tight text-foreground/90">
+                  {d.nombreProducto ?? `Servicio #${d.productoId}`}
+                </span>
+                <span className="tabular-nums text-muted-foreground shrink-0">×{d.cantidad}</span>
+                <span className="tabular-nums font-semibold text-primary shrink-0">
+                  {fmt(d.subtotal)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="px-3 py-2 flex justify-between items-center bg-muted/10 border-t">
+            <span className="text-xs text-muted-foreground">Total servicios esp.</span>
+            <span className="text-sm font-bold tabular-nums text-primary">{fmt(totalListado)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Modal */}
+      <EspecialProductoModal
+        producto={modalProducto}
+        open={!!modalProducto}
+        onClose={() => setModalProducto(null)}
+        ventaId={ventaId}
+        cajaId={cajaId}
+      />
     </div>
   )
 }
@@ -1515,7 +1924,7 @@ function PaisCombobox({ value, onChange }: { value: string; onChange: (v: string
   const [open, setOpen] = useState(false)
   const { data: paises = [], isLoading } = usePaises()
 
-  const selected = paises.find(p => (p.iso2 ?? '') === value)
+  const selected = paises.find((p) => (p.iso2 ?? '') === value)
   const label = selected?.nombre ?? (value === 'CO' ? 'Colombia' : value || 'Seleccionar país…')
 
   return (
@@ -1537,16 +1946,28 @@ function PaisCombobox({ value, onChange }: { value: string; onChange: (v: string
               {isLoading ? 'Cargando…' : 'Sin resultados'}
             </CommandEmpty>
             <CommandGroup>
-              {paises.map(p => (
+              {paises.map((p) => (
                 <CommandItem
                   key={p.id}
                   value={p.nombre}
-                  onSelect={() => { onChange(p.iso2 ?? p.nombre); setOpen(false) }}
+                  onSelect={() => {
+                    onChange(p.iso2 ?? p.nombre)
+                    setOpen(false)
+                  }}
                   className="text-xs"
                 >
-                  <Check className={cn('mr-1.5 size-3', (p.iso2 ?? '') === value ? 'opacity-100' : 'opacity-0')} />
+                  <Check
+                    className={cn(
+                      'mr-1.5 size-3',
+                      (p.iso2 ?? '') === value ? 'opacity-100' : 'opacity-0',
+                    )}
+                  />
                   {p.nombre}
-                  {p.iso2 && <span className="ml-auto font-mono text-muted-foreground text-[10px]">{p.iso2}</span>}
+                  {p.iso2 && (
+                    <span className="ml-auto font-mono text-muted-foreground text-[10px]">
+                      {p.iso2}
+                    </span>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -1560,83 +1981,121 @@ function PaisCombobox({ value, onChange }: { value: string; onChange: (v: string
 // ── TabServiciosPostales ──────────────────────────────────────────────────────
 
 interface PersonaDir {
-  nombre: string; empresa: string; documento: string; email: string
-  pais: string; cp: string; dir: DirState; telefono: string
+  nombre: string
+  empresa: string
+  documento: string
+  tipoDocumento: string
+  email: string
+  pais: string
+  cp: string
+  dir: DirState
+  telefono: string
 }
 
-interface AddressEntry { dir: DirState; obs: string }
-interface PhoneEntry   { tipo: string;  numero: string }
+interface AddressEntry {
+  dir: DirState
+  obs: string
+}
+interface PhoneEntry {
+  tipo: string
+  numero: string
+}
 
 interface EnvioLocal {
-  guia: string; servicioNombre: string; destinatario: string; ciudad: string
-  cantidad: number; pesoFisico: number; pesoVolumetrico: number | null; pesoFacturado: number
-  valorServicio: number; valorTotal: number
+  guia: string
+  servicioNombre: string
+  destinatario: string
+  ciudad: string
+  cantidad: number
+  pesoFisico: number
+  pesoVolumetrico: number | null
+  pesoFacturado: number
+  valorServicio: number
+  valorTotal: number
   guiaData: GuiaEnvio
 }
 
 const personaDirVacia = (): PersonaDir => ({
-  nombre: '', empresa: '', documento: '', email: '',
-  pais: 'CO', cp: '', dir: dirVacia(), telefono: '',
+  nombre: '',
+  empresa: '',
+  documento: '',
+  tipoDocumento: 'CC',
+  email: '',
+  pais: 'CO',
+  cp: '',
+  dir: dirVacia(),
+  telefono: '',
 })
 
 const CAJAS_ENVIO = [
-  { productoId: 7, nombre: 'Caja Pequeña 4-72',  precio: 1500 },
-  { productoId: 8, nombre: 'Caja Mediana 4-72',  precio: 2500 },
-  { productoId: 9, nombre: 'Caja Grande 4-72',   precio: 3500 },
+  { productoId: 7, nombre: 'Caja Pequeña 4-72', precio: 1500 },
+  { productoId: 8, nombre: 'Caja Mediana 4-72', precio: 2500 },
+  { productoId: 9, nombre: 'Caja Grande 4-72', precio: 3500 },
 ] as const
 
 // ── Dirección normalizada / libre ─────────────────────────────────────────────
 
 const TIPOS_VIA = [
   { value: 'CLL', label: 'Calle' },
-  { value: 'KR',  label: 'Carrera' },
-  { value: 'DG',  label: 'Diagonal' },
-  { value: 'TV',  label: 'Transversal' },
-  { value: 'AV',  label: 'Avenida' },
-  { value: 'AC',  label: 'Autopista' },
-  { value: 'CI',  label: 'Circular' },
-  { value: 'VR',  label: 'Variante' },
-  { value: 'MZ',  label: 'Manzana' },
-  { value: 'LT',  label: 'Lote' },
+  { value: 'KR', label: 'Carrera' },
+  { value: 'DG', label: 'Diagonal' },
+  { value: 'TV', label: 'Transversal' },
+  { value: 'AV', label: 'Avenida' },
+  { value: 'AC', label: 'Autopista' },
+  { value: 'CI', label: 'Circular' },
+  { value: 'VR', label: 'Variante' },
+  { value: 'MZ', label: 'Manzana' },
+  { value: 'LT', label: 'Lote' },
 ] as const
 
 const CUADRANTES = [
-  { value: 'N',  label: 'N – Norte' },
-  { value: 'S',  label: 'S – Sur' },
-  { value: 'E',  label: 'E – Este' },
-  { value: 'O',  label: 'O – Oeste' },
+  { value: 'N', label: 'N – Norte' },
+  { value: 'S', label: 'S – Sur' },
+  { value: 'E', label: 'E – Este' },
+  { value: 'O', label: 'O – Oeste' },
 ] as const
 
 interface DirState {
-  modo:         'normalizada' | 'libre'
+  modo: 'normalizada' | 'libre'
   // Normalizada — vía principal
-  tipoVia:     string
-  numVia:      string
-  letraVia:    string
-  bis:         boolean
-  cuadrante1:  string
+  tipoVia: string
+  numVia: string
+  letraVia: string
+  bis: boolean
+  cuadrante1: string
   // Normalizada — generadora + placa
-  numGen:      string
-  letraGen:    string
-  cuadrante2:  string
-  placa:       string
+  numGen: string
+  letraGen: string
+  cuadrante2: string
+  placa: string
   // Libre
-  textoLibre:  string
+  textoLibre: string
   // Compartido — strings (para composición y envío al backend)
-  departamento:   string
-  ciudad:         string
-  adicion:        string
+  departamento: string
+  ciudad: string
+  adicion: string
   // Compartido — IDs de BD para los selects cascada
   departamentoId: number | null
-  ciudadId:       number | null
+  ciudadId: number | null
 }
 
 const dirVacia = (): DirState => ({
   modo: 'normalizada',
-  tipoVia: 'CLL', numVia: '', letraVia: '', bis: false, cuadrante1: '',
-  numGen: '', letraGen: '', cuadrante2: '', placa: '',
-  textoLibre: '', departamento: '', ciudad: '', adicion: '',
-  departamentoId: null, ciudadId: null,
+  tipoVia: 'CLL',
+  numVia: '',
+  letraVia: '',
+  bis: false,
+  cuadrante1: '',
+  numGen: '',
+  letraGen: '',
+  cuadrante2: '',
+  placa: '',
+  textoLibre: '',
+  departamento: '',
+  ciudad: '',
+  adicion: '',
+  departamentoId: null,
+  ciudadId: null,
 })
 
 function composeAddress(d: DirState): string {
@@ -1644,10 +2103,16 @@ function composeAddress(d: DirState): string {
     return [d.textoLibre.trim(), d.adicion.trim()].filter(Boolean).join(', ')
   }
   const viaParts = [d.tipoVia, d.numVia, d.letraVia, d.bis ? 'BIS' : '', d.cuadrante1]
-    .filter(Boolean).join(' ')
+    .filter(Boolean)
+    .join(' ')
   const genParts = [d.numGen, d.letraGen, d.cuadrante2].filter(Boolean).join(' ')
-  const main = [viaParts, '#', genParts && d.placa ? `${genParts} - ${d.placa}` : genParts || (d.placa ? `- ${d.placa}` : '')]
-    .filter(Boolean).join(' ')
+  const main = [
+    viaParts,
+    '#',
+    genParts && d.placa ? `${genParts} - ${d.placa}` : genParts || (d.placa ? `- ${d.placa}` : ''),
+  ]
+    .filter(Boolean)
+    .join(' ')
   return [main, d.adicion.trim()].filter(Boolean).join(', ')
 }
 
@@ -1677,9 +2142,9 @@ function GeoSelectsCascade({
         </Label>
         <Select
           value={departamentoId ? String(departamentoId) : ''}
-          onValueChange={v => {
+          onValueChange={(v) => {
             const id = Number(v) || null
-            const nombre = deptos?.find(d => d.id === id)?.nombre ?? ''
+            const nombre = deptos?.find((d) => d.id === id)?.nombre ?? ''
             onDeptChange(id, nombre)
             // no llamar onCityChange aquí: onDeptChange ya limpia ciudadId
           }}
@@ -1689,8 +2154,10 @@ function GeoSelectsCascade({
             <SelectValue placeholder={loadingDeptos ? 'Cargando...' : 'Seleccionar...'} />
           </SelectTrigger>
           <SelectContent className="max-h-52">
-            {deptos?.map(d => (
-              <SelectItem key={d.id} value={String(d.id)} className="text-xs">{d.nombre}</SelectItem>
+            {deptos?.map((d) => (
+              <SelectItem key={d.id} value={String(d.id)} className="text-xs">
+                {d.nombre}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1702,19 +2169,29 @@ function GeoSelectsCascade({
         </Label>
         <Select
           value={ciudadId ? String(ciudadId) : ''}
-          onValueChange={v => {
+          onValueChange={(v) => {
             const id = Number(v) || null
-            const nombre = ciudades?.find(c => c.id === id)?.nombre ?? ''
+            const nombre = ciudades?.find((c) => c.id === id)?.nombre ?? ''
             onCityChange(id, nombre)
           }}
           disabled={!ciudades?.length}
         >
           <SelectTrigger className="h-7 text-xs px-2">
-            <SelectValue placeholder={!departamentoId ? 'Primero depto.' : loadingCiudades ? 'Cargando...' : 'Seleccionar...'} />
+            <SelectValue
+              placeholder={
+                !departamentoId
+                  ? 'Primero depto.'
+                  : loadingCiudades
+                    ? 'Cargando...'
+                    : 'Seleccionar...'
+              }
+            />
           </SelectTrigger>
           <SelectContent className="max-h-52">
-            {ciudades?.map(c => (
-              <SelectItem key={c.id} value={String(c.id)} className="text-xs">{c.nombre}</SelectItem>
+            {ciudades?.map((c) => (
+              <SelectItem key={c.id} value={String(c.id)} className="text-xs">
+                {c.nombre}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -1724,57 +2201,127 @@ function GeoSelectsCascade({
 }
 
 function DireccionInput({
-  value, onChange, paisId = COLOMBIA_PAIS_ID,
+  value,
+  onChange,
+  paisId = COLOMBIA_PAIS_ID,
+  savedAddresses = [],
+  onSelectSaved,
 }: {
   value: DirState
   onChange: (s: DirState) => void
   paisId?: number | null
+  savedAddresses?: DireccionFrecuente[]
+  onSelectSaved?: (d: DireccionFrecuente) => void
 }) {
   const set = <K extends keyof DirState>(k: K, v: DirState[K]) => onChange({ ...value, [k]: v })
   const preview = composeAddress(value)
+  const internacional = paisId === null
+  const [showGuardadas, setShowGuardadas] = useState(false)
 
   return (
     <div className="space-y-2">
-      {/* Selector de modo */}
-      <div className="flex rounded-md border overflow-hidden divide-x text-[11px] font-medium">
-        <button
-          type="button"
-          onClick={() => set('modo', 'normalizada')}
-          className={cn(
-            'flex-1 py-1 text-center transition-colors',
-            value.modo === 'normalizada'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-muted/60',
-          )}
-        >
-          Normalizada
-        </button>
-        <button
-          type="button"
-          onClick={() => set('modo', 'libre')}
-          className={cn(
-            'flex-1 py-1 text-center transition-colors',
-            value.modo === 'libre'
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-muted/60',
-          )}
-        >
-          Sin normalizar
-        </button>
-      </div>
+      {/* Tabs: Normalizada | Sin normalizar | Guardadas */}
+      {!internacional && (
+        <div className="flex rounded-md border overflow-hidden divide-x text-[11px] font-medium">
+          <button
+            type="button"
+            onClick={() => { set('modo', 'normalizada'); setShowGuardadas(false) }}
+            className={cn(
+              'flex-1 py-1 text-center transition-colors',
+              !showGuardadas && value.modo === 'normalizada'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted/60',
+            )}
+          >
+            Normalizada
+          </button>
+          <button
+            type="button"
+            onClick={() => { set('modo', 'libre'); setShowGuardadas(false) }}
+            className={cn(
+              'flex-1 py-1 text-center transition-colors',
+              !showGuardadas && value.modo === 'libre'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted/60',
+            )}
+          >
+            Sin normalizar
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowGuardadas((g) => !g)}
+            className={cn(
+              'flex-1 py-1 text-center transition-colors flex items-center justify-center gap-1',
+              showGuardadas
+                ? 'bg-primary text-primary-foreground'
+                : savedAddresses.length > 0
+                  ? 'text-primary hover:bg-primary/10'
+                  : 'text-muted-foreground hover:bg-muted/60',
+            )}
+          >
+            <Clock className="size-2.5" />
+            Guardadas
+            {savedAddresses.length > 0 && (
+              <span className={cn(
+                'rounded-full px-1 text-[9px] font-bold',
+                showGuardadas ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary',
+              )}>
+                {savedAddresses.length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
-      {value.modo === 'normalizada' ? (
+      {/* Panel: lista de guardadas */}
+      {showGuardadas && (
+        <div className="rounded-md border overflow-hidden max-h-56 overflow-y-auto">
+          {savedAddresses.length === 0 ? (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              Las direcciones se guardan automáticamente al crear envíos
+            </p>
+          ) : (
+            savedAddresses.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => { onSelectSaved?.(d); setShowGuardadas(false) }}
+                className="w-full text-left px-3 py-2.5 border-b last:border-0 hover:bg-accent/60 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="text-xs font-medium truncate">{d.nombre}</p>
+                    {d.empresa && <p className="text-[10px] text-muted-foreground truncate">{d.empresa}</p>}
+                    {(d.direccion || d.ciudad) && (
+                      <p className="text-[10px] text-muted-foreground font-mono truncate">
+                        {[d.direccion, d.ciudad].filter(Boolean).join(' — ')}
+                      </p>
+                    )}
+                    {d.telefono && <p className="text-[10px] text-muted-foreground">{d.telefono}</p>}
+                  </div>
+                  <span className="shrink-0 rounded border px-1.5 text-[9px] text-muted-foreground whitespace-nowrap">{d.usos}×</span>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Formulario de dirección — visible solo cuando NO está activo el panel Guardadas */}
+      {!showGuardadas && !internacional && value.modo === 'normalizada' ? (
         <div className="rounded-md border p-2 space-y-2">
           {/* Vía principal */}
           <div className="space-y-1">
-            <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Vía principal</p>
+            <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Vía principal
+            </p>
             <div className="flex gap-1 items-center flex-wrap">
-              <Select value={value.tipoVia} onValueChange={v => set('tipoVia', v)}>
+              <Select value={value.tipoVia} onValueChange={(v) => set('tipoVia', v)}>
                 <SelectTrigger className="h-7 w-[62px] text-xs px-1.5">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TIPOS_VIA.map(t => (
+                  {TIPOS_VIA.map((t) => (
                     <SelectItem key={t.value} value={t.value} className="text-xs">
                       <span className="font-mono font-semibold">{t.value}</span>
                       <span className="text-muted-foreground ml-1.5">{t.label}</span>
@@ -1786,33 +2333,39 @@ function DireccionInput({
                 className="h-7 text-xs w-10 text-center px-1"
                 placeholder="Nº"
                 value={value.numVia}
-                onChange={e => set('numVia', e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => set('numVia', e.target.value.replace(/\D/g, ''))}
                 maxLength={4}
               />
               <Input
                 className="h-7 text-xs w-8 text-center px-1 uppercase"
                 placeholder="Ltr"
                 value={value.letraVia}
-                onChange={e => set('letraVia', e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                onChange={(e) =>
+                  set('letraVia', e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))
+                }
                 maxLength={2}
               />
               <label className="flex items-center gap-1 text-[10px] cursor-pointer select-none shrink-0">
                 <input
                   type="checkbox"
                   checked={value.bis}
-                  onChange={e => set('bis', e.target.checked)}
+                  onChange={(e) => set('bis', e.target.checked)}
                   className="size-3 accent-primary"
                 />
                 <span className="font-semibold">BIS</span>
               </label>
-              <Select value={value.cuadrante1} onValueChange={v => set('cuadrante1', v)}>
+              <Select value={value.cuadrante1} onValueChange={(v) => set('cuadrante1', v)}>
                 <SelectTrigger className="h-7 w-[62px] text-xs px-1.5">
                   <SelectValue placeholder="Cuad." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" className="text-xs text-muted-foreground">—</SelectItem>
-                  {CUADRANTES.map(c => (
-                    <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
+                  <SelectItem value="" className="text-xs text-muted-foreground">
+                    —
+                  </SelectItem>
+                  {CUADRANTES.map((c) => (
+                    <SelectItem key={c.value} value={c.value} className="text-xs">
+                      {c.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1821,31 +2374,39 @@ function DireccionInput({
 
           {/* Vía generadora + placa */}
           <div className="space-y-1">
-            <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Vía generadora y placa</p>
+            <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Vía generadora y placa
+            </p>
             <div className="flex gap-1 items-center flex-wrap">
               <span className="text-xs font-bold text-muted-foreground shrink-0">#</span>
               <Input
                 className="h-7 text-xs w-10 text-center px-1"
                 placeholder="Nº"
                 value={value.numGen}
-                onChange={e => set('numGen', e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => set('numGen', e.target.value.replace(/\D/g, ''))}
                 maxLength={4}
               />
               <Input
                 className="h-7 text-xs w-8 text-center px-1 uppercase"
                 placeholder="Ltr"
                 value={value.letraGen}
-                onChange={e => set('letraGen', e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                onChange={(e) =>
+                  set('letraGen', e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))
+                }
                 maxLength={2}
               />
-              <Select value={value.cuadrante2} onValueChange={v => set('cuadrante2', v)}>
+              <Select value={value.cuadrante2} onValueChange={(v) => set('cuadrante2', v)}>
                 <SelectTrigger className="h-7 w-[62px] text-xs px-1.5">
                   <SelectValue placeholder="Cuad." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" className="text-xs text-muted-foreground">—</SelectItem>
-                  {CUADRANTES.map(c => (
-                    <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
+                  <SelectItem value="" className="text-xs text-muted-foreground">
+                    —
+                  </SelectItem>
+                  {CUADRANTES.map((c) => (
+                    <SelectItem key={c.value} value={c.value} className="text-xs">
+                      {c.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -1854,7 +2415,7 @@ function DireccionInput({
                 className="h-7 text-xs w-12 text-center px-1"
                 placeholder="Placa"
                 value={value.placa}
-                onChange={e => set('placa', e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => set('placa', e.target.value.replace(/\D/g, ''))}
                 maxLength={5}
               />
             </div>
@@ -1874,7 +2435,7 @@ function DireccionInput({
             className="h-8 text-sm"
             placeholder="Ej. Diagonal 5 B # 76-43"
             value={value.textoLibre}
-            onChange={e => set('textoLibre', e.target.value)}
+            onChange={(e) => set('textoLibre', e.target.value)}
           />
         </div>
       )}
@@ -1885,43 +2446,57 @@ function DireccionInput({
           paisId={paisId}
           departamentoId={value.departamentoId}
           ciudadId={value.ciudadId}
-          onDeptChange={(id, nombre) => onChange({ ...value, departamentoId: id, departamento: nombre, ciudadId: null, ciudad: '' })}
+          onDeptChange={(id, nombre) =>
+            onChange({
+              ...value,
+              departamentoId: id,
+              departamento: nombre,
+              ciudadId: null,
+              ciudad: '',
+            })
+          }
           onCityChange={(id, nombre) => onChange({ ...value, ciudadId: id, ciudad: nombre })}
         />
       ) : (
         /* Internacional sin datos BD — texto libre */
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <Label className="text-xs">Departamento / Estado</Label>
-            <Input
-              className="h-7 text-xs"
-              placeholder="Estado / Región"
-              value={value.departamento}
-              onChange={e => set('departamento', e.target.value)}
-            />
+        !showGuardadas && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Departamento / Estado</Label>
+              <Input
+                className="h-7 text-xs"
+                placeholder="Estado / Región"
+                value={value.departamento}
+                onChange={(e) => set('departamento', e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">
+                Ciudad <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                className="h-7 text-xs"
+                placeholder="Ciudad"
+                value={value.ciudad}
+                onChange={(e) => set('ciudad', e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Ciudad <span className="text-destructive">*</span></Label>
-            <Input
-              className="h-7 text-xs"
-              placeholder="Ciudad"
-              value={value.ciudad}
-              onChange={e => set('ciudad', e.target.value)}
-            />
-          </div>
-        </div>
+        )
       )}
 
-      {/* Adición */}
-      <div className="space-y-1">
-        <Label className="text-xs">Adición de dirección</Label>
-        <Input
-          className="h-7 text-xs"
-          placeholder="Apto 301, Torre A, Interior 2..."
-          value={value.adicion}
-          onChange={e => set('adicion', e.target.value)}
-        />
-      </div>
+      {/* Adición — oculta cuando Guardadas está activo */}
+      {!showGuardadas && (
+        <div className="space-y-1">
+          <Label className="text-xs">Adición de dirección</Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder="Apto 301, Torre A, Interior 2..."
+            value={value.adicion}
+            onChange={(e) => set('adicion', e.target.value)}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -1932,45 +2507,75 @@ function hasAddressData(d: DirState): boolean {
   return d.modo === 'normalizada' ? d.numVia.trim() !== '' : d.textoLibre.trim() !== ''
 }
 
-function AddressModal({ open, onClose, onSave, title, initial, paisContexto = 'CO' }: {
+function AddressModal({
+  open,
+  onClose,
+  onSave,
+  title,
+  initial,
+  paisContexto = 'CO',
+  clienteId,
+  rol,
+}: {
   open: boolean
   onClose: () => void
   onSave: (p: PersonaDir) => void
   title: string
   initial: PersonaDir
   paisContexto?: string
+  clienteId?: number | null
+  rol?: 'remitente' | 'destinatario'
 }) {
-  const [nombre,    setNombre]    = useState('')
-  const [empresa,   setEmpresa]   = useState('')
+  const [nombre, setNombre] = useState('')
+  const [empresa, setEmpresa] = useState('')
   const [documento, setDocumento] = useState('')
-  const [email,     setEmail]     = useState('')
-  const [cp,        setCp]        = useState('')
+  const [tipoDoc, setTipoDoc] = useState('CC')
+  const [email, setEmail] = useState('')
+  const [cp, setCp] = useState('')
   const [addresses, setAddresses] = useState<AddressEntry[]>([])
   const [selDirIdx, setSelDirIdx] = useState<number | null>(null)
-  const [draftDir,  setDraftDir]  = useState<DirState>(dirVacia())
-  const [phones,    setPhones]    = useState<PhoneEntry[]>([])
-  const [selPhIdx,  setSelPhIdx]  = useState<number | null>(null)
-  const [phTipo,    setPhTipo]    = useState('CELULAR')
-  const [phNum,     setPhNum]     = useState('')
+  const [draftDir, setDraftDir] = useState<DirState>(dirVacia())
+  const [phones, setPhones] = useState<PhoneEntry[]>([])
+  const [selPhIdx, setSelPhIdx] = useState<number | null>(null)
+  const [phTipo, setPhTipo] = useState('CELULAR')
+  const [phNum, setPhNum] = useState('')
 
   // Colombia siempre tiene departamentos/ciudades en BD; otros países usan texto libre
   const paisId = paisContexto === 'CO' ? COLOMBIA_PAIS_ID : null
 
+  const { data: historial = [], isLoading: historialLoading } = useDireccionesPorDocumento(documento)
+  const { data: guardadas = [] } = useDireccionesFrecuentes(open && clienteId ? clienteId : 0, rol)
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intencional — solo reejecutar cuando cambia open (datos del modal vienen por props)
   useEffect(() => {
     if (!open) return
     setNombre(initial.nombre)
     setEmpresa(initial.empresa)
     setDocumento(initial.documento)
+    setTipoDoc(initial.tipoDocumento || 'CC')
     setEmail(initial.email)
     setCp(initial.cp)
-    setDraftDir({ ...initial.dir })
+    const esInt = paisContexto !== 'CO'
+    const dir = { ...initial.dir, modo: esInt ? 'libre' : initial.dir.modo } as DirState
+    setDraftDir(dir)
     const hasDir = hasAddressData(initial.dir)
-    setAddresses(hasDir ? [{ dir: initial.dir, obs: '' }] : [])
+    setAddresses(hasDir ? [{ dir, obs: '' }] : [])
     setSelDirIdx(hasDir ? 0 : null)
     setPhones(initial.telefono ? [{ tipo: 'CELULAR', numero: initial.telefono }] : [])
     setSelPhIdx(initial.telefono ? 0 : null)
     setPhNum('')
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const handleAutofillFromHistory = (d: DireccionFrecuente) => {
+    setNombre(d.nombre)
+    if (d.empresa) setEmpresa(d.empresa)
+    if (d.telefono) { setPhones([{ tipo: 'CELULAR', numero: d.telefono }]); setSelPhIdx(0) }
+    if (d.email) setEmail(d.email)
+    if (d.codigoPostal) setCp(d.codigoPostal)
+    const dir: DirState = { ...dirVacia(), modo: 'libre', textoLibre: d.direccion ?? '', ciudad: d.ciudad ?? '', departamento: d.departamento ?? '' }
+    setDraftDir(dir)
+    if (hasAddressData(dir)) { setAddresses([{ dir, obs: '' }]); setSelDirIdx(0) }
+  }
 
   const handleAddDir = () => {
     if (!hasAddressData(draftDir)) return
@@ -1989,196 +2594,301 @@ function AddressModal({ open, onClose, onSave, title, initial, paisContexto = 'C
   }
 
   const handleOk = () => {
-    const dir      = selDirIdx !== null ? addresses[selDirIdx].dir : draftDir
-    const telefono = selPhIdx  !== null ? phones[selPhIdx].numero  : phones[0]?.numero ?? ''
-    onSave({ nombre, empresa, documento, email, cp, pais: paisContexto || 'CO', dir, telefono })
+    const dir = selDirIdx !== null ? addresses[selDirIdx].dir : draftDir
+    const telefono = selPhIdx !== null ? phones[selPhIdx].numero : (phones[0]?.numero ?? '')
+    onSave({
+      nombre,
+      empresa,
+      documento,
+      tipoDocumento: tipoDoc,
+      email,
+      cp,
+      pais: paisContexto || 'CO',
+      dir,
+      telefono,
+    })
     onClose()
   }
 
   return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg flex flex-col max-h-[90vh] p-0">
-        <DialogHeader className="px-6 pt-6 pb-0 shrink-0">
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-5xl flex flex-col max-h-[90vh] p-0">
+        <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
           <DialogTitle className="text-sm">{title}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-6">
-        <div className="space-y-4 py-4">
-          {/* Datos de la persona */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="col-span-2 space-y-1">
-              <Label className="text-xs">Nombre <span className="text-destructive">*</span></Label>
-              <Input className="h-7 text-xs" value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Nombre completo" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Documento</Label>
-              <Input className="h-7 text-xs" value={documento} onChange={e => setDocumento(e.target.value)} placeholder="CC / NIT" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Empresa</Label>
-              <Input className="h-7 text-xs" value={empresa} onChange={e => setEmpresa(e.target.value)} placeholder="Razón social" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Email</Label>
-              <Input type="email" className="h-7 text-xs" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@ejemplo.com" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Código postal</Label>
-              <Input className="h-7 text-xs" value={cp} onChange={e => setCp(e.target.value)} placeholder="111011" />
-            </div>
-            {paisContexto !== 'CO' && (
-              <div className="col-span-2 rounded bg-muted/50 border px-2 py-1 text-[10px] text-muted-foreground">
-                País destino: <span className="font-medium text-foreground">{paisContexto}</span> — departamento y ciudad en texto libre
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-6 py-4 space-y-4">
+            {/* Datos de la persona */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs">
+                  Nombre <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  className="h-7 text-xs"
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Nombre completo"
+                />
               </div>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Lista de direcciones guardadas */}
-          {addresses.length > 0 && (
-            <div className="rounded-md border overflow-hidden">
-              <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-2 py-1 bg-muted/50 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                <span className="w-3" /><span>Dirección</span><span>Obs.</span>
+              <div className="space-y-1">
+                <Label className="text-xs">Tipo doc.</Label>
+                <Select value={tipoDoc} onValueChange={setTipoDoc}>
+                  <SelectTrigger className="h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CC">CC</SelectItem>
+                    <SelectItem value="NIT">NIT</SelectItem>
+                    <SelectItem value="CE">CE</SelectItem>
+                    <SelectItem value="PA">Pasaporte</SelectItem>
+                    <SelectItem value="PEP">PEP</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              {addresses.map((a, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-2 py-1.5 border-b last:border-0',
-                    selDirIdx === i ? 'bg-primary/5' : 'hover:bg-muted/30',
-                  )}
-                >
-                  <button type="button" onClick={() => setSelDirIdx(i)} className="mt-0.5 shrink-0">
-                    <span className={cn(
-                      'block size-3 rounded-full border-2 transition-colors',
-                      selDirIdx === i ? 'border-primary bg-primary' : 'border-muted-foreground/40',
-                    )} />
-                  </button>
-                  <button type="button" onClick={() => setSelDirIdx(i)} className="text-left min-w-0">
-                    <p className={cn('text-xs font-mono truncate', selDirIdx === i && 'text-primary font-semibold')}>
-                      {composeAddress(a.dir) || '—'}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground truncate">
-                      {[a.dir.ciudad, a.dir.departamento].filter(Boolean).join(', ')}
-                    </p>
-                  </button>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="text" value={a.obs} placeholder="Obs."
-                      onClick={e => e.stopPropagation()}
-                      onChange={e => setAddresses(prev =>
-                        prev.map((d, idx) => idx === i ? { ...d, obs: e.target.value } : d)
-                      )}
-                      className="w-14 h-5 text-[10px] rounded border border-border bg-background px-1 placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = addresses.filter((_, idx) => idx !== i)
-                        setAddresses(next)
-                        setSelDirIdx(prev => {
-                          if (prev === null || prev !== i) return prev === null ? null : prev > i ? prev - 1 : prev
-                          return next.length > 0 ? Math.min(i, next.length - 1) : null
-                        })
-                      }}
-                      className="text-muted-foreground/40 hover:text-destructive transition-colors shrink-0"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Número</Label>
+                <Input
+                  className="h-7 text-xs"
+                  value={documento}
+                  onChange={(e) => setDocumento(e.target.value)}
+                  placeholder="Número de documento"
+                />
+              </div>
+              {tipoDoc === 'NIT' && (
+                <div className="col-span-2 space-y-1">
+                  <Label className="text-xs">Razón social</Label>
+                  <Input
+                    className="h-7 text-xs"
+                    value={empresa}
+                    onChange={(e) => setEmpresa(e.target.value)}
+                    placeholder="Razón social"
+                  />
                 </div>
-              ))}
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Email</Label>
+                <Input
+                  type="email"
+                  className="h-7 text-xs"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="correo@ejemplo.com"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Código postal</Label>
+                <Input
+                  className="h-7 text-xs"
+                  value={cp}
+                  onChange={(e) => setCp(e.target.value)}
+                  placeholder="111011"
+                />
+              </div>
+              {paisContexto !== 'CO' && (
+                <div className="col-span-2 rounded bg-muted/50 border px-2 py-1 text-[10px] text-muted-foreground">
+                  País destino: <span className="font-medium text-foreground">{paisContexto}</span>{' '}
+                  — departamento y ciudad en texto libre
+                </div>
+              )}
             </div>
-          )}
 
-          {/* Formulario nueva dirección */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-              {addresses.length === 0 ? 'Dirección' : 'Agregar otra dirección'}
-            </p>
-            <DireccionInput value={draftDir} onChange={setDraftDir} paisId={paisId} />
-            <Button
-              type="button" variant="outline" size="sm"
-              onClick={handleAddDir}
-              className="h-7 text-xs"
-              disabled={!hasAddressData(draftDir)}
-            >
-              <Plus className="size-3 mr-1" />
-              Agregar a la lista
-            </Button>
-          </div>
+            <Separator />
 
-          <Separator />
-
-          {/* Teléfonos */}
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Teléfonos</p>
-            <div className="flex gap-1.5">
-              <Select value={phTipo} onValueChange={setPhTipo}>
-                <SelectTrigger className="h-7 w-24 text-xs px-2"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(['CELULAR', 'FIJO', 'OTRO'] as const).map(t => (
-                    <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                className="h-7 text-xs flex-1" placeholder="Número"
-                value={phNum} onChange={e => setPhNum(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddPhone()}
-              />
-              <Button
-                type="button" variant="outline" size="sm"
-                onClick={handleAddPhone} className="h-7 px-2.5"
-                disabled={!phNum.trim()}
-              >
-                <Plus className="size-3" />
-              </Button>
-            </div>
-            {phones.length > 0 && (
-              <div className="rounded-md border overflow-hidden text-xs">
-                {phones.map((ph, i) => (
+            {/* Lista de direcciones ingresadas */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                Dirección
+              </p>
+              <div className="rounded-md border overflow-hidden">
+                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-2 py-1 bg-muted/50 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                  <span className="w-3" />
+                  <span>Dirección</span>
+                  <span />
+                </div>
+                {addresses.length === 0 && (
+                  <p className="px-2 py-2 text-[10px] text-muted-foreground/60">Sin dirección aún</p>
+                )}
+                {addresses.map((a, i) => (
                   <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: dirección sin id — el índice es su identidad
                     key={i}
                     className={cn(
-                      'flex items-center gap-2 px-2 py-1.5 border-b last:border-0',
-                      selPhIdx === i ? 'bg-primary/5' : 'hover:bg-muted/30',
+                      'grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-2 py-1.5 border-b last:border-0',
+                      selDirIdx === i ? 'bg-primary/5' : 'hover:bg-muted/30',
                     )}
                   >
                     <button
                       type="button"
-                      onClick={() => {
-                        const next = phones.filter((_, idx) => idx !== i)
-                        setPhones(next)
-                        setSelPhIdx(prev => {
-                          if (prev === null || prev !== i) return prev === null ? null : prev > i ? prev - 1 : prev
-                          return next.length > 0 ? Math.min(i, next.length - 1) : null
-                        })
-                      }}
-                      className="text-muted-foreground/40 hover:text-destructive shrink-0"
+                      onClick={() => setSelDirIdx(i)}
+                      className="mt-0.5 shrink-0"
                     >
-                      <X className="size-3" />
+                      <span
+                        className={cn(
+                          'block size-3 rounded-full border-2 transition-colors',
+                          selDirIdx === i
+                            ? 'border-primary bg-primary'
+                            : 'border-muted-foreground/40',
+                        )}
+                      />
                     </button>
-                    <span className="text-muted-foreground w-14 shrink-0">{ph.tipo}</span>
-                    <span className="flex-1 font-mono">{ph.numero}</span>
-                    <button type="button" onClick={() => setSelPhIdx(i)} className="shrink-0">
-                      <span className={cn(
-                        'block size-3 rounded-full border-2 transition-colors',
-                        selPhIdx === i ? 'border-primary bg-primary' : 'border-muted-foreground/40',
-                      )} />
+                    <button
+                      type="button"
+                      onClick={() => setSelDirIdx(i)}
+                      className="text-left min-w-0"
+                    >
+                      <p
+                        className={cn(
+                          'text-xs font-mono truncate',
+                          selDirIdx === i && 'text-primary font-semibold',
+                        )}
+                      >
+                        {composeAddress(a.dir) || '—'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {[a.dir.ciudad, a.dir.departamento].filter(Boolean).join(', ')}
+                      </p>
                     </button>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={a.obs}
+                        placeholder="Obs."
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) =>
+                          setAddresses((prev) =>
+                            prev.map((d, idx) => (idx === i ? { ...d, obs: e.target.value } : d)),
+                          )
+                        }
+                        className="w-14 h-5 text-[10px] rounded border border-border bg-background px-1 placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = addresses.filter((_, idx) => idx !== i)
+                          setAddresses(next)
+                          setSelDirIdx((prev) => {
+                            if (prev === null || prev !== i)
+                              return prev === null ? null : prev > i ? prev - 1 : prev
+                            return next.length > 0 ? Math.min(i, next.length - 1) : null
+                          })
+                        }}
+                        className="text-muted-foreground/40 hover:text-destructive transition-colors shrink-0"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            )}
+              <div className="mt-1.5 space-y-1.5">
+                <DireccionInput value={draftDir} onChange={setDraftDir} paisId={paisId} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddDir}
+                  className="h-7 text-xs"
+                  disabled={!hasAddressData(draftDir)}
+                >
+                  <Plus className="size-3 mr-1" />
+                  {addresses.length === 0 ? 'Agregar dirección' : 'Agregar otra'}
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Teléfonos */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Teléfonos
+              </p>
+              <div className="flex gap-1.5">
+                <Select value={phTipo} onValueChange={setPhTipo}>
+                  <SelectTrigger className="h-7 w-24 text-xs px-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(['CELULAR', 'FIJO', 'OTRO'] as const).map((t) => (
+                      <SelectItem key={t} value={t} className="text-xs">
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="h-7 text-xs flex-1"
+                  placeholder="Número"
+                  value={phNum}
+                  onChange={(e) => setPhNum(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddPhone()}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddPhone}
+                  className="h-7 px-2.5"
+                  disabled={!phNum.trim()}
+                >
+                  <Plus className="size-3" />
+                </Button>
+              </div>
+              {phones.length > 0 && (
+                <div className="rounded-md border overflow-hidden text-xs">
+                  {phones.map((ph, i) => (
+                    <div
+                      // biome-ignore lint/suspicious/noArrayIndexKey: teléfono sin id — el índice es su identidad
+                      key={i}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 border-b last:border-0',
+                        selPhIdx === i ? 'bg-primary/5' : 'hover:bg-muted/30',
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = phones.filter((_, idx) => idx !== i)
+                          setPhones(next)
+                          setSelPhIdx((prev) => {
+                            if (prev === null || prev !== i)
+                              return prev === null ? null : prev > i ? prev - 1 : prev
+                            return next.length > 0 ? Math.min(i, next.length - 1) : null
+                          })
+                        }}
+                        className="text-muted-foreground/40 hover:text-destructive shrink-0"
+                      >
+                        <X className="size-3" />
+                      </button>
+                      <span className="text-muted-foreground w-14 shrink-0">{ph.tipo}</span>
+                      <span className="flex-1 font-mono">{ph.numero}</span>
+                      <button type="button" onClick={() => setSelPhIdx(i)} className="shrink-0">
+                        <span
+                          className={cn(
+                            'block size-3 rounded-full border-2 transition-colors',
+                            selPhIdx === i
+                              ? 'border-primary bg-primary'
+                              : 'border-muted-foreground/40',
+                          )}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        </div>
 
-        <DialogFooter className="px-6 pb-6 shrink-0 border-t pt-4">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button size="sm" onClick={handleOk} disabled={!nombre.trim()}>OK</Button>
+        <DialogFooter className="px-6 pb-4 shrink-0 border-t pt-3">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={handleOk} disabled={!nombre.trim()}>
+            OK
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -2186,107 +2896,170 @@ function AddressModal({ open, onClose, onSave, title, initial, paisContexto = 'C
 }
 
 function TabServiciosPostales({
-  sucursalId, cajaId, clienteId, ventaId,
-}: { sucursalId: number; cajaId: number; clienteId: number | null; ventaId: number | null }) {
-  const [pais,          setPais]          = useState('CO')
-  const [servicioId,    setServicioId]    = useState(0)
-  const [apartadoP,     setApartadoP]     = useState('')
-  const [remitente,     setRemitente]     = useState<PersonaDir>(personaDirVacia())
-  const [destinatario,  setDestinatario]  = useState<PersonaDir>(personaDirVacia())
+  sucursalId,
+  cajaId,
+  clienteId,
+  ventaId,
+}: {
+  sucursalId: number
+  cajaId: number
+  clienteId: number | null
+  ventaId: number | null
+}) {
+  const [pais, setPais] = useState('CO')
+  const [servicioId, setServicioId] = useState(0)
+  const [apartadoP, setApartadoP] = useState('')
+  const [remitente, setRemitente] = useState<PersonaDir>(personaDirVacia())
+  const [destinatario, setDestinatario] = useState<PersonaDir>(personaDirVacia())
   const [esCorrespondencia, setEsCorrespondencia] = useState(false)
-  const [pesoGramos,    setPesoGramos]    = useState('')
-  const [altoCm,        setAltoCm]        = useState('')
-  const [anchoCm,       setAnchoCm]       = useState('')
-  const [largoCm,       setLargoCm]       = useState('')
-  const [valorDeclarado,setValorDeclarado]= useState('')
-  const [seguroAdicional,setSeguroAdicional]=useState(false)
+  const [pesoGramos, setPesoGramos] = useState('')
+  const [altoCm, setAltoCm] = useState('')
+  const [anchoCm, setAnchoCm] = useState('')
+  const [largoCm, setLargoCm] = useState('')
+  const [valorDeclarado, setValorDeclarado] = useState('')
+  const [seguroAdicional, setSeguroAdicional] = useState(false)
   const [observaciones, setObservaciones] = useState('')
-  const [consecutivo,   setConsecutivo]   = useState('')
-  const [diceContener,  setDiceContener]  = useState('')
-  const [cantidadPiezas,setCantidadPiezas]= useState(1)
-  const [medioPago,     setMedioPago]     = useState<MedioPagoEnvio>('efectivo')
+  const [consecutivo, setConsecutivo] = useState('')
+  const [diceContener, setDiceContener] = useState('')
+  const [cantidadPiezas, setCantidadPiezas] = useState(1)
+  const [medioPago, setMedioPago] = useState<MedioPagoEnvio>('efectivo')
+  const [tipoTrayecto, setTipoTrayecto] = useState<TipoTrayecto>('NACIONAL')
   const [enviosGenerados, setEnviosGenerados] = useState<EnvioLocal[]>([])
-  const [guiaActual,    setGuiaActual]    = useState<GuiaEnvio | null>(null)
-  const [modalPersona,  setModalPersona]  = useState<'remitente'|'destinatario'|null>(null)
-  const [cajaDlgOpen,   setCajaDlgOpen]   = useState(false)
+  const [guiaActual, setGuiaActual] = useState<GuiaEnvio | null>(null)
+  const [modalPersona, setModalPersona] = useState<'remitente' | 'destinatario' | null>(null)
   const [cajaSeleccion, setCajaSeleccion] = useState<number>(7)
-  const [cajaCantidad,  setCajaCantidad]  = useState(1)
-  const [activeTab,     setActiveTab]     = useState('formulario')
+  const [cajaCantidad, setCajaCantidad] = useState(1)
+  const [cajaOpt, setCajaOpt] = useState(false)
+  const [activeTab, setActiveTab] = useState('formulario')
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const pesoKg = Number(pesoGramos) / 1000
 
   const { data: servicios, isLoading: loadingServicios } = useServiciosPostales(sucursalId)
-  const serviciosFiltrados = servicios?.filter((s: ServicioCatalogo) => s.tipo !== 'apartado_postal')
-  const selectedService    = serviciosFiltrados?.find((s: ServicioCatalogo) => s.id === servicioId)
-  const esInternacional    = pais !== 'CO'
+  const serviciosFiltrados = servicios?.filter(
+    (s: ServicioCatalogo) => s.tipo !== 'apartado_postal',
+  )
+  const selectedService = serviciosFiltrados?.find((s: ServicioCatalogo) => s.id === servicioId)
+  const esInternacional = pais !== 'CO'
+
+  const cotizParams = useMemo(
+    () => ({
+      servicioId,
+      pesoFisicoKg: pesoKg,
+      altoCm: !esCorrespondencia && altoCm ? Number(altoCm) : undefined,
+      anchoCm: !esCorrespondencia && anchoCm ? Number(anchoCm) : undefined,
+      largoCm: !esCorrespondencia && largoCm ? Number(largoCm) : undefined,
+      paisDestino: pais || 'CO',
+      tipoTrayecto: !esInternacional ? tipoTrayecto : undefined,
+    }),
+    [servicioId, pesoKg, altoCm, anchoCm, largoCm, esCorrespondencia, pais, esInternacional, tipoTrayecto],
+  )
+
+  const {
+    data: cotizacion,
+    isLoading: cotizLoading,
+    isError: cotizError,
+  } = useCotizarEnvio(cotizParams)
 
   const { data: clienteData } = useCliente(clienteId ?? 0)
   useEffect(() => {
     if (!clienteData) return
-    setRemitente(prev =>
-      prev.nombre !== '' ? prev : {
-        nombre:    clienteData.nombreCompleto,
-        empresa:   '',
-        documento: clienteData.numeroDocumento,
-        email:     clienteData.email     ?? '',
-        telefono:  clienteData.telefono  ?? '',
-        pais:      'CO',
-        cp:        clienteData.codigoPostal ?? '',
-        dir: { ...dirVacia(), modo: 'libre', textoLibre: clienteData.direccion ?? '', ciudad: clienteData.ciudad ?? '' },
-      },
+    setRemitente((prev) =>
+      prev.nombre !== ''
+        ? prev
+        : {
+            nombre: clienteData.nombreCompleto,
+            empresa: '',
+            documento: clienteData.numeroDocumento,
+            email: clienteData.email ?? '',
+            telefono: clienteData.telefono ?? '',
+            pais: 'CO',
+            cp: clienteData.codigoPostal ?? '',
+            dir: {
+              ...dirVacia(),
+              modo: 'libre',
+              textoLibre: clienteData.direccion ?? '',
+              ciudad: clienteData.ciudad ?? '',
+            },
+          },
     )
   }, [clienteData])
 
-  const crearEnvio  = useCrearEnvio(cajaId)
+  const crearEnvio = useCrearEnvio(cajaId)
+  const agregarEnvioCarrito = useAgregarEnvioAlCarrito(ventaId ?? 0, cajaId)
   const agregarProd = useAgregarProducto(ventaId ?? 0, cajaId)
 
-  const puedeGuardar = servicioId > 0 && pesoKg > 0
-    && remitente.nombre.trim() !== '' && destinatario.nombre.trim() !== ''
+  const envioPending = crearEnvio.isPending || agregarEnvioCarrito.isPending
+
+  const puedeGuardar =
+    servicioId > 0 &&
+    pesoKg > 0 &&
+    remitente.nombre.trim() !== '' &&
+    destinatario.nombre.trim() !== ''
 
   const resetForm = () => {
-    setServicioId(0); setPais('CO'); setApartadoP('')
-    setPesoGramos(''); setAltoCm(''); setAnchoCm(''); setLargoCm('')
-    setValorDeclarado(''); setDiceContener(''); setConsecutivo('')
-    setRemitente(personaDirVacia()); setDestinatario(personaDirVacia())
-    setObservaciones(''); setMedioPago('efectivo')
-    setSeguroAdicional(false); setCantidadPiezas(1)
-    setCajaCantidad(1); setCajaSeleccion(7)
+    setServicioId(0)
+    setPais('CO')
+    setApartadoP('')
+    setPesoGramos('')
+    setAltoCm('')
+    setAnchoCm('')
+    setLargoCm('')
+    setValorDeclarado('')
+    setDiceContener('')
+    setConsecutivo('')
+    setRemitente(personaDirVacia())
+    setDestinatario(personaDirVacia())
+    setObservaciones('')
+    setMedioPago('efectivo')
+    setTipoTrayecto('NACIONAL')
+    setSeguroAdicional(false)
+    setCantidadPiezas(1)
+    setCajaCantidad(1)
+    setCajaSeleccion(7)
     setEsCorrespondencia(false)
   }
 
   const ejecutarGenerar = async () => {
     const dirTexto = composeAddress(destinatario.dir)
-    const body: Record<string, unknown> = {
-      servicioId, sucursalId, pesoFisicoKg: pesoKg, medioPago, cantidadPiezas,
+    const body: CrearEnvioPayload = {
+      servicioId,
+      sucursalId,
+      pesoFisicoKg: pesoKg,
+      medioPago,
+      cantidadPiezas,
       remitente: {
-        nombre:    remitente.nombre.trim(),
-        empresa:   remitente.empresa.trim()    || undefined,
-        documento: remitente.documento.trim()  || undefined,
-        email:     remitente.email.trim()      || undefined,
-        telefono:  remitente.telefono.trim()   || undefined,
-        ciudad:    remitente.dir.ciudad.trim() || undefined,
-        pais:      remitente.pais || 'CO',
+        nombre: remitente.nombre.trim(),
+        empresa: remitente.empresa.trim() || undefined,
+        documento: remitente.documento.trim() || undefined,
+        tipoDocumento: remitente.tipoDocumento || undefined,
+        email: remitente.email.trim() || undefined,
+        telefono: remitente.telefono.trim() || undefined,
+        ciudad: remitente.dir.ciudad.trim() || undefined,
+        pais: remitente.pais || 'CO',
       },
       destinatario: {
-        nombre:       destinatario.nombre.trim(),
-        empresa:      destinatario.empresa.trim()           || undefined,
-        documento:    destinatario.documento.trim()         || undefined,
-        email:        destinatario.email.trim()             || undefined,
-        telefono:     destinatario.telefono.trim()          || undefined,
-        direccion:    dirTexto                              || undefined,
-        ciudad:       destinatario.dir.ciudad.trim()       || undefined,
+        nombre: destinatario.nombre.trim(),
+        empresa: destinatario.empresa.trim() || undefined,
+        documento: destinatario.documento.trim() || undefined,
+        tipoDocumento: destinatario.tipoDocumento || undefined,
+        email: destinatario.email.trim() || undefined,
+        telefono: destinatario.telefono.trim() || undefined,
+        direccion: dirTexto || undefined,
+        ciudad: destinatario.dir.ciudad.trim() || undefined,
         departamento: destinatario.dir.departamento.trim() || undefined,
-        pais:         esInternacional ? destinatario.pais : 'CO',
-        codigoPostal: destinatario.cp.trim()               || undefined,
+        pais: esInternacional ? destinatario.pais : 'CO',
+        codigoPostal: destinatario.cp.trim() || undefined,
       },
     }
-    if (esCorrespondencia)         body.esCorrespondencia = true
-    if (!esCorrespondencia && altoCm)   body.altoCm    = Number(altoCm)
-    if (!esCorrespondencia && anchoCm)  body.anchoCm   = Number(anchoCm)
-    if (!esCorrespondencia && largoCm)  body.largoCm   = Number(largoCm)
-    if (valorDeclarado)            body.valorDeclarado = Number(valorDeclarado)
-    if (diceContener.trim())       body.contenido      = diceContener.trim()
-    if (seguroAdicional)           body.seguroPostal   = true
+    if (esCorrespondencia) body.esCorrespondencia = true
+    if (!esCorrespondencia && altoCm) body.altoCm = Number(altoCm)
+    if (!esCorrespondencia && anchoCm) body.anchoCm = Number(anchoCm)
+    if (!esCorrespondencia && largoCm) body.largoCm = Number(largoCm)
+    if (valorDeclarado) body.valorDeclarado = Number(valorDeclarado)
+    if (diceContener.trim()) body.contenido = diceContener.trim()
+    if (seguroAdicional) body.seguroPostal = true
+    if (!esInternacional) body.tipoTrayecto = tipoTrayecto
     const obsPartes = [
       observaciones.trim(),
       consecutivo.trim() ? `Consecutivo: ${consecutivo.trim()}` : '',
@@ -2294,55 +3067,129 @@ function TabServiciosPostales({
     ].filter(Boolean)
     if (obsPartes.length) body.observaciones = obsPartes.join(' | ')
 
-    const result = await crearEnvio.mutateAsync(body)
+    // Siempre incluir clienteId para guardar historial de direcciones
+    if (clienteId) body.clienteId = clienteId
+    // Con venta activa: el envío se añade al carrito (se cobra al confirmar la venta)
+    // Sin venta: pago directo standalone
+    const result = ventaId
+      ? await agregarEnvioCarrito.mutateAsync(body)
+      : await crearEnvio.mutateAsync(body)
+
     setGuiaActual(result.guia)
     setActiveTab('envios')
-    setEnviosGenerados(prev => [...prev, {
-      guia:            result.envio.numeroGuia,
-      servicioNombre:  selectedService?.nombre ?? '—',
-      destinatario:    result.envio.destinatarioNombre ?? destinatario.nombre.trim(),
-      ciudad:          result.envio.destinatarioCiudad ?? destinatario.dir.ciudad.trim(),
-      cantidad:        cantidadPiezas,
-      pesoFisico:      result.envio.pesoFisicoKg,
-      pesoVolumetrico: result.envio.pesoVolumetricoKg ?? null,
-      pesoFacturado:   result.envio.pesoTarificadoKg,
-      valorServicio:   result.envio.valorServicio,
-      valorTotal:      result.envio.valorTotal,
-      guiaData:        result.guia,
-    }])
-    toast.success(`Guía ${result.envio.numeroGuia} generada`)
-    if (result.alertas?.length) {
-      result.alertas.forEach(a => toast.warning(a, { duration: 8000 }))
+    setEnviosGenerados((prev) => [
+      ...prev,
+      {
+        guia: result.envio.numeroGuia,
+        servicioNombre: selectedService?.nombre ?? '—',
+        destinatario: result.envio.destinatarioNombre ?? destinatario.nombre.trim(),
+        ciudad: result.envio.destinatarioCiudad ?? destinatario.dir.ciudad.trim(),
+        cantidad: cantidadPiezas,
+        pesoFisico: result.envio.pesoFisicoKg,
+        pesoVolumetrico: null,
+        pesoFacturado: result.envio.pesoTarificadoKg,
+        valorServicio: result.envio.valorServicio,
+        valorTotal: result.envio.valorTotal,
+        guiaData: result.guia,
+      },
+    ])
+    toast.success(`Guía ${result.envio.numeroGuia} ${ventaId ? 'añadida al carrito' : 'generada'}`)
+    if ('alertas' in result && result.alertas?.length) {
+      for (const a of result.alertas) toast.warning(a as string, { duration: 8000 })
     }
     resetForm()
   }
 
   const handleGuardar = () => {
-    if (!clienteId) { toast.error('Busca un cliente primero'); return }
-    setCajaDlgOpen(true)
+    if (!clienteId) {
+      toast.error('Busca un cliente primero')
+      return
+    }
+    setConfirmOpen(true)
   }
 
-  const handleCajaSi = async () => {
-    setCajaDlgOpen(false)
+  const handleConfirmarYGenerar = async () => {
+    setConfirmOpen(false)
     try {
-      if (ventaId) await agregarProd.mutateAsync({ productoId: cajaSeleccion, cantidad: cajaCantidad })
+      if (ventaId && cajaOpt) {
+        await agregarProd.mutateAsync({ productoId: cajaSeleccion, cantidad: cajaCantidad })
+      }
       await ejecutarGenerar()
-    } catch { toast.error('No se pudo completar la operación') }
-  }
-
-  const handleCajaNo = async () => {
-    setCajaDlgOpen(false)
-    try { await ejecutarGenerar() }
-    catch { toast.error('No se pudo generar la guía') }
+    } catch {
+      toast.error('No se pudo completar la operación')
+    }
   }
 
   const totalEnvios = enviosGenerados.reduce((s, e) => s + e.valorTotal, 0)
 
+  const previewGuia = useMemo<GuiaEnvio | null>(() => {
+    if (!cotizacion || !remitente.nombre) return null
+    const _flete     = cotizacion.valorServicio
+    const _manejo    = cotizacion.valorCertificacion ?? 0
+    const _minimoSeg = selectedService?.minimoSeguroPostal ?? 0
+    const _seguro    = seguroAdicional && Number(valorDeclarado) > 0
+      ? Math.max(Math.round(Number(valorDeclarado) * 0.5 / 100), _minimoSeg)
+      : 0
+    return {
+      numeroGuia:   'GUBORRADOR',
+      codigoBarras: 'GUBORRADOR',
+      tipo:         esInternacional ? 'internacional' : 'nacional',
+      tipoServicio: selectedService?.nombre ?? '',
+      remitente: {
+        nombre:       remitente.nombre,
+        documento:    remitente.documento || null,
+        telefono:     remitente.telefono  || null,
+        email:        remitente.email     || null,
+        direccion:    composeAddress(remitente.dir) || null,
+        ciudad:       remitente.dir.ciudad || null,
+        codigoPostal: remitente.cp || null,
+        pais:         'CO',
+      },
+      destinatario: {
+        nombre:       destinatario.nombre || '—',
+        documento:    destinatario.documento || null,
+        telefono:     destinatario.telefono  || null,
+        email:        destinatario.email     || null,
+        direccion:    composeAddress(destinatario.dir) || null,
+        ciudad:       destinatario.dir.ciudad || (esInternacional ? destinatario.pais : null),
+        codigoPostal: destinatario.cp || null,
+        pais:         esInternacional ? destinatario.pais : 'CO',
+      },
+      peso: {
+        fisicoKg:     cotizacion.pesoFisicoKg,
+        tarificadoKg: cotizacion.pesoTarificadoKg,
+        altoCm:       altoCm  ? Number(altoCm)  : null,
+        anchoCm:      anchoCm ? Number(anchoCm) : null,
+        largoCm:      largoCm ? Number(largoCm) : null,
+        volumetricoKg: cotizacion.pesoVolumetricoKg ?? null,
+      },
+      valores: {
+        servicio:  _flete,
+        manejo:    _manejo,
+        seguro:    _seguro,
+        declarado: valorDeclarado ? Number(valorDeclarado) : null,
+        total:     _flete + _manejo + _seguro,
+      },
+      estado:               'BORRADOR',
+      generadoEn:           new Date().toISOString(),
+      ordenServicio:        null,
+      fechaEntregaEstimada: cotizacion.fechaEntregaEstimada ?? null,
+      centroOperativo:      null,
+    }
+  }, [cotizacion, remitente, destinatario, selectedService, esInternacional,
+      seguroAdicional, valorDeclarado, altoCm, anchoCm, largoCm])
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 overflow-hidden">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="flex flex-col flex-1 overflow-hidden"
+      >
         <TabsList className="shrink-0 mx-3 mt-2 mb-0 w-auto self-start">
-          <TabsTrigger value="formulario" className="text-xs">Formulario</TabsTrigger>
+          <TabsTrigger value="formulario" className="text-xs">
+            Formulario
+          </TabsTrigger>
           <TabsTrigger value="envios" className="text-xs">
             Envíos
             {enviosGenerados.length > 0 && (
@@ -2354,344 +3201,517 @@ function TabServiciosPostales({
         </TabsList>
 
         {/* ── Tab 1: Formulario ─────────────────────────────────────────── */}
-        <TabsContent value="formulario" className="flex flex-col flex-1 overflow-hidden m-0 border-t">
-        <div className="flex flex-col flex-1 overflow-hidden">
-
-        <ScrollArea className="flex-1 min-h-0">
-          <div className="px-4 py-3 space-y-2.5">
-
-            {/* 1. País */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">1.</span> País destino
-              </Label>
-              <PaisCombobox value={pais} onChange={setPais} />
-            </div>
-
-            {/* 2. Servicio */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">2.</span> Servicio
-              </Label>
-              {loadingServicios ? (
-                <div className="flex justify-center py-3">
-                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+        <TabsContent
+          value="formulario"
+          className="flex flex-col flex-1 overflow-hidden m-0 border-t"
+        >
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="px-4 py-3 space-y-2.5">
+                {/* 1. País */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="text-primary mr-1">1.</span> País destino
+                  </Label>
+                  <PaisCombobox value={pais} onChange={setPais} />
                 </div>
-              ) : (
-                <Select value={servicioId ? String(servicioId) : ''} onValueChange={v => setServicioId(Number(v))}>
-                  <SelectTrigger className="h-7 text-xs">
-                    <SelectValue placeholder="Seleccionar servicio..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(() => {
-                      const noPrior  = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.codigo.startsWith('NP-')) ?? []
-                      const prior    = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.codigo.startsWith('P-'))  ?? []
-                      const otros    = serviciosFiltrados?.filter((s: ServicioCatalogo) => !s.codigo.startsWith('NP-') && !s.codigo.startsWith('P-')) ?? []
-                      const item = (s: ServicioCatalogo) => (
-                        <SelectItem key={s.id} value={String(s.id)} className="text-xs">
-                          {s.nombre}
-                        </SelectItem>
-                      )
-                      return (
-                        <>
-                          {noPrior.length > 0 && (
-                            <SelectGroup>
-                              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">No Prioritaria</SelectLabel>
-                              {noPrior.map(item)}
-                            </SelectGroup>
-                          )}
-                          {prior.length > 0 && (
-                            <SelectGroup>
-                              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Prioritaria</SelectLabel>
-                              {prior.map(item)}
-                            </SelectGroup>
-                          )}
-                          {otros.length > 0 && (
-                            <SelectGroup>
-                              <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">Otros</SelectLabel>
-                              {otros.map(item)}
-                            </SelectGroup>
-                          )}
-                        </>
-                      )
-                    })()}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
 
-            {/* Apartado postal */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Apartado postal
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  className="h-7 text-xs font-mono tracking-[0.3em] w-28 text-center"
-                  placeholder="000000"
-                  maxLength={6}
-                  value={apartadoP}
-                  onChange={e => setApartadoP(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                />
-                {apartadoP.length > 0 && apartadoP.length < 6 && (
-                  <span className="text-[10px] text-destructive">{6 - apartadoP.length} dígito(s) faltantes</span>
-                )}
-                {apartadoP.length === 6 && (
-                  <span className="text-[10px] text-green-600 font-medium">✓ válido</span>
-                )}
-              </div>
-            </div>
+                {/* 2. Servicio */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="text-primary mr-1">2.</span> Servicio
+                  </Label>
+                  {loadingServicios ? (
+                    <div className="flex justify-center py-3">
+                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <Select
+                      value={servicioId ? String(servicioId) : ''}
+                      onValueChange={(v) => setServicioId(Number(v))}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue placeholder="Seleccionar servicio..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(() => {
+                          const noPrior =
+                            serviciosFiltrados?.filter((s: ServicioCatalogo) =>
+                              s.codigo.startsWith('NP-'),
+                            ) ?? []
+                          const prior =
+                            serviciosFiltrados?.filter((s: ServicioCatalogo) =>
+                              s.codigo.startsWith('P-'),
+                            ) ?? []
+                          const otros =
+                            serviciosFiltrados?.filter(
+                              (s: ServicioCatalogo) =>
+                                !s.codigo.startsWith('NP-') && !s.codigo.startsWith('P-'),
+                            ) ?? []
+                          const item = (s: ServicioCatalogo) => (
+                            <SelectItem key={s.id} value={String(s.id)} className="text-xs">
+                              {s.nombre}
+                            </SelectItem>
+                          )
+                          return (
+                            <>
+                              {noPrior.length > 0 && (
+                                <SelectGroup>
+                                  <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    No Prioritaria
+                                  </SelectLabel>
+                                  {noPrior.map(item)}
+                                </SelectGroup>
+                              )}
+                              {prior.length > 0 && (
+                                <SelectGroup>
+                                  <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    Prioritaria
+                                  </SelectLabel>
+                                  {prior.map(item)}
+                                </SelectGroup>
+                              )}
+                              {otros.length > 0 && (
+                                <SelectGroup>
+                                  <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    Otros
+                                  </SelectLabel>
+                                  {otros.map(item)}
+                                </SelectGroup>
+                              )}
+                            </>
+                          )
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
 
-            {/* 3. Remitente */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">3.</span> Remitente
-              </Label>
-              <button
-                type="button"
-                onClick={() => setModalPersona('remitente')}
-                className={cn(
-                  'w-full text-left rounded-md border px-2.5 py-2 text-xs transition-colors min-h-[48px]',
-                  remitente.nombre
-                    ? 'border-border hover:border-primary/40'
-                    : 'border-dashed border-muted-foreground/30 hover:border-primary/50',
-                )}
-              >
-                {remitente.nombre ? (
-                  <div>
-                    <p className="font-medium text-foreground truncate">{remitente.nombre}</p>
-                    {composeAddress(remitente.dir) && (
-                      <p className="text-[10px] text-muted-foreground font-mono truncate mt-0.5">
-                        {composeAddress(remitente.dir)}
-                      </p>
-                    )}
-                    {(remitente.dir.ciudad || remitente.telefono) && (
-                      <p className="text-[10px] text-muted-foreground truncate">
-                        {[remitente.dir.ciudad, remitente.telefono].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
+                {/* Tipo de trayecto — solo para servicios nacionales */}
+                {!esInternacional && (
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Trayecto
+                    </Label>
+                    <Select
+                      value={tipoTrayecto}
+                      onValueChange={(v) => setTipoTrayecto(v as TipoTrayecto)}
+                    >
+                      <SelectTrigger className="h-7 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NACIONAL" className="text-xs">Normal</SelectItem>
+                        <SelectItem value="URBANO" className="text-xs">Urbano</SelectItem>
+                        <SelectItem value="ESPECIAL" className="text-xs">Especial</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                ) : (
-                  <p className="text-muted-foreground">Clic para ingresar remitente...</p>
                 )}
-              </button>
-            </div>
 
-            {/* 4. Destinatario */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">4.</span> Destinatario
-              </Label>
-              <button
-                type="button"
-                onClick={() => setModalPersona('destinatario')}
-                className={cn(
-                  'w-full text-left rounded-md border px-2.5 py-2 text-xs transition-colors min-h-[48px]',
-                  destinatario.nombre
-                    ? 'border-border hover:border-primary/40'
-                    : 'border-dashed border-muted-foreground/30 hover:border-primary/50',
-                )}
-              >
-                {destinatario.nombre ? (
-                  <div>
-                    <p className="font-medium text-foreground truncate">{destinatario.nombre}</p>
-                    {composeAddress(destinatario.dir) && (
-                      <p className="text-[10px] text-muted-foreground font-mono truncate mt-0.5">
-                        {composeAddress(destinatario.dir)}
-                      </p>
+                {/* Apartado postal */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    Apartado postal
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      className="h-7 text-xs font-mono tracking-[0.3em] w-28 text-center"
+                      placeholder="000000"
+                      maxLength={6}
+                      value={apartadoP}
+                      onChange={(e) => setApartadoP(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    />
+                    {apartadoP.length > 0 && apartadoP.length < 6 && (
+                      <span className="text-[10px] text-destructive">
+                        {6 - apartadoP.length} dígito(s) faltantes
+                      </span>
                     )}
-                    {(destinatario.dir.ciudad || destinatario.telefono) && (
-                      <p className="text-[10px] text-muted-foreground truncate">
-                        {[destinatario.dir.ciudad, destinatario.telefono].filter(Boolean).join(' · ')}
-                      </p>
+                    {apartadoP.length === 6 && (
+                      <span className="text-[10px] text-green-600 font-medium">✓ válido</span>
                     )}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">Clic para ingresar destinatario...</p>
-                )}
-              </button>
-            </div>
-
-            {/* Correspondencia */}
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={esCorrespondencia}
-                onChange={e => setEsCorrespondencia(e.target.checked)}
-                className="size-3.5 accent-primary"
-              />
-              <span className="text-xs">Es correspondencia (máx. 5 kg, sin volumétrico)</span>
-            </label>
-
-            {/* 5. Peso físico (gramos) */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">5.</span> Peso físico (gramos)
-                {esCorrespondencia && <span className="ml-1 text-amber-600">máx. 5000 g</span>}
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number" step="1" min="1" max={esCorrespondencia ? 5000 : undefined}
-                  className="h-7 text-xs w-28"
-                  placeholder="500"
-                  value={pesoGramos}
-                  onChange={e => setPesoGramos(e.target.value)}
-                />
-                {pesoGramos && Number(pesoGramos) > 0 && (
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    = {(Number(pesoGramos) / 1000).toFixed(3)} kg
-                  </span>
-                )}
-                {esCorrespondencia && pesoGramos && Number(pesoGramos) > 5000 && (
-                  <span className="text-[10px] text-red-500">Excede 5 kg</span>
-                )}
-              </div>
-            </div>
-
-            {/* 6. Peso volumétrico — oculto para correspondencia */}
-            {!esCorrespondencia && (
-              <div className="space-y-1">
-                <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                  <span className="text-primary mr-1">6.</span> Peso volumétrico (cm)
-                </Label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <div className="space-y-0.5">
-                    <p className="text-[9px] text-muted-foreground text-center">Alto</p>
-                    <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={altoCm}  onChange={e => setAltoCm(e.target.value)} />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[9px] text-muted-foreground text-center">Ancho</p>
-                    <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={anchoCm} onChange={e => setAnchoCm(e.target.value)} />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[9px] text-muted-foreground text-center">Largo</p>
-                    <Input type="number" className="h-7 text-xs text-center px-1" placeholder="—" value={largoCm} onChange={e => setLargoCm(e.target.value)} />
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* 7. Valor declarado */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">7.</span> Valor declarado (COP)
-              </Label>
-              <Input
-                type="number" className="h-7 text-xs"
-                placeholder="0"
-                value={valorDeclarado}
-                onChange={e => setValorDeclarado(e.target.value)}
-              />
-            </div>
-
-            {/* Seguro adicional */}
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={seguroAdicional}
-                onChange={e => setSeguroAdicional(e.target.checked)}
-                className="size-3.5 accent-primary"
-              />
-              <span className="text-xs">Seguro adicional</span>
-            </label>
-
-            {/* 8. Observaciones */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span className="text-primary mr-1">8.</span> Observaciones
-              </Label>
-              <Input
-                className="h-7 text-xs" placeholder="Opcional"
-                value={observaciones} onChange={e => setObservaciones(e.target.value)}
-              />
-            </div>
-
-            {/* 9. Consecutivo + Dice contener */}
-            <div className="grid grid-cols-2 gap-1.5">
-              <div className="space-y-1">
-                <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                  <span className="text-primary mr-1">9.</span> Consecutivo
-                </Label>
-                <Input
-                  className="h-7 text-xs" placeholder="Nro."
-                  value={consecutivo} onChange={e => setConsecutivo(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                  Dice contener
-                </Label>
-                <Input
-                  className="h-7 text-xs" placeholder="Contenido"
-                  value={diceContener} onChange={e => setDiceContener(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Cantidad piezas */}
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Cantidad piezas
-              </Label>
-              <Input
-                type="number" min="1" className="h-7 text-xs w-20"
-                value={cantidadPiezas}
-                onChange={e => setCantidadPiezas(Math.max(1, Number(e.target.value) || 1))}
-              />
-            </div>
-
-
-            {/* Medio de pago */}
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Medio de pago
-              </Label>
-              <div className="grid grid-cols-2 gap-1">
-                {MEDIOS_PAGO_ENVIO.map(m => (
+                {/* 3. Remitente */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="text-primary mr-1">3.</span> Remitente
+                  </Label>
                   <button
-                    key={m.value}
                     type="button"
-                    onClick={() => setMedioPago(m.value)}
+                    onClick={() => setModalPersona('remitente')}
                     className={cn(
-                      'rounded-md border px-2 py-1 text-xs font-medium text-left transition-colors',
-                      medioPago === m.value
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                      'w-full text-left rounded-md border px-2.5 py-2 text-xs transition-colors min-h-[48px]',
+                      remitente.nombre
+                        ? 'border-border hover:border-primary/40'
+                        : 'border-dashed border-muted-foreground/30 hover:border-primary/50',
                     )}
                   >
-                    {m.label}
+                    {remitente.nombre ? (
+                      <div>
+                        <p className="font-medium text-foreground truncate">{remitente.nombre}</p>
+                        {composeAddress(remitente.dir) && (
+                          <p className="text-[10px] text-muted-foreground font-mono truncate mt-0.5">
+                            {composeAddress(remitente.dir)}
+                          </p>
+                        )}
+                        {(remitente.dir.ciudad || remitente.telefono) && (
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {[remitente.dir.ciudad, remitente.telefono].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">Clic para ingresar remitente...</p>
+                    )}
                   </button>
-                ))}
+                </div>
+
+                {/* 4. Destinatario */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="text-primary mr-1">4.</span> Destinatario
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => setModalPersona('destinatario')}
+                    className={cn(
+                      'w-full text-left rounded-md border px-2.5 py-2 text-xs transition-colors min-h-[48px]',
+                      destinatario.nombre
+                        ? 'border-border hover:border-primary/40'
+                        : 'border-dashed border-muted-foreground/30 hover:border-primary/50',
+                    )}
+                  >
+                    {destinatario.nombre ? (
+                      <div>
+                        <p className="font-medium text-foreground truncate">
+                          {destinatario.nombre}
+                        </p>
+                        {composeAddress(destinatario.dir) && (
+                          <p className="text-[10px] text-muted-foreground font-mono truncate mt-0.5">
+                            {composeAddress(destinatario.dir)}
+                          </p>
+                        )}
+                        {(destinatario.dir.ciudad || destinatario.telefono) && (
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {[destinatario.dir.ciudad, destinatario.telefono]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">Clic para ingresar destinatario...</p>
+                    )}
+                  </button>
+                </div>
+
+                {/* Correspondencia */}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={esCorrespondencia}
+                    onChange={(e) => setEsCorrespondencia(e.target.checked)}
+                    className="size-3.5 accent-primary"
+                  />
+                  <span className="text-xs">Es correspondencia (máx. 5 kg, sin volumétrico)</span>
+                </label>
+
+                {/* 5. Peso físico (gramos) */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="text-primary mr-1">5.</span> Peso físico (gramos)
+                    {esCorrespondencia && <span className="ml-1 text-amber-600">máx. 5000 g</span>}
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="1"
+                      min="1"
+                      max={esCorrespondencia ? 5000 : undefined}
+                      className="h-7 text-xs w-28"
+                      placeholder="500"
+                      value={pesoGramos}
+                      onChange={(e) => setPesoGramos(e.target.value)}
+                    />
+                    {pesoGramos && Number(pesoGramos) > 0 && (
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        = {(Number(pesoGramos) / 1000).toFixed(3)} kg
+                      </span>
+                    )}
+                    {esCorrespondencia && pesoGramos && Number(pesoGramos) > 5000 && (
+                      <span className="text-[10px] text-red-500">Excede 5 kg</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 6. Peso volumétrico — oculto para correspondencia */}
+                {!esCorrespondencia && (
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      <span className="text-primary mr-1">6.</span> Peso volumétrico (cm)
+                    </Label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] text-muted-foreground text-center">Alto</p>
+                        <Input
+                          type="number"
+                          className="h-7 text-xs text-center px-1"
+                          placeholder="—"
+                          value={altoCm}
+                          onChange={(e) => setAltoCm(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] text-muted-foreground text-center">Ancho</p>
+                        <Input
+                          type="number"
+                          className="h-7 text-xs text-center px-1"
+                          placeholder="—"
+                          value={anchoCm}
+                          onChange={(e) => setAnchoCm(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[9px] text-muted-foreground text-center">Largo</p>
+                        <Input
+                          type="number"
+                          className="h-7 text-xs text-center px-1"
+                          placeholder="—"
+                          value={largoCm}
+                          onChange={(e) => setLargoCm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 7. Valor declarado */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="text-primary mr-1">7.</span> Valor declarado (COP)
+                  </Label>
+                  <Input
+                    type="number"
+                    className="h-7 text-xs"
+                    placeholder="0"
+                    value={valorDeclarado}
+                    onChange={(e) => setValorDeclarado(e.target.value)}
+                  />
+                </div>
+
+                {/* Seguro adicional */}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={seguroAdicional}
+                    onChange={(e) => setSeguroAdicional(e.target.checked)}
+                    className="size-3.5 accent-primary"
+                  />
+                  <span className="text-xs">Seguro adicional</span>
+                </label>
+
+                {/* 8. Observaciones */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span className="text-primary mr-1">8.</span> Observaciones
+                  </Label>
+                  <Textarea
+                    className="text-xs min-h-[60px] resize-none"
+                    placeholder="Opcional"
+                    value={observaciones}
+                    onChange={(e) => setObservaciones(e.target.value)}
+                  />
+                </div>
+
+                {/* 9. Consecutivo + Dice contener */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      <span className="text-primary mr-1">9.</span> Consecutivo
+                    </Label>
+                    <Input
+                      className="h-7 text-xs"
+                      placeholder="Nro."
+                      value={consecutivo}
+                      onChange={(e) => setConsecutivo(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Dice contener
+                    </Label>
+                    <Textarea
+                      className="text-xs min-h-[60px] resize-none"
+                      placeholder="Contenido del paquete"
+                      value={diceContener}
+                      onChange={(e) => setDiceContener(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Cantidad piezas */}
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    Cantidad piezas
+                  </Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    className="h-7 text-xs w-20"
+                    value={cantidadPiezas}
+                    onChange={(e) => setCantidadPiezas(Math.max(1, Number(e.target.value) || 1))}
+                  />
+                </div>
+
+                {/* Medio de pago */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    Medio de pago
+                  </Label>
+                  <div className="grid grid-cols-2 gap-1">
+                    {MEDIOS_PAGO_ENVIO.map((m) => (
+                      <button
+                        key={m.value}
+                        type="button"
+                        onClick={() => setMedioPago(m.value)}
+                        className={cn(
+                          'rounded-md border px-2 py-1 text-xs font-medium text-left transition-colors',
+                          medioPago === m.value
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            </ScrollArea>
 
-          </div>
-        </ScrollArea>
+            {/* Mini-reporte de cotización en tiempo real */}
+            {servicioId > 0 && pesoKg > 0 && (
+              <div className="border-t px-3 py-2.5 bg-muted/20 shrink-0">
+                {cotizLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" />
+                    Calculando...
+                  </div>
+                ) : cotizError ? (
+                  <div className="flex items-center gap-1.5 text-xs text-destructive">
+                    <AlertTriangle className="size-3" />
+                    Sin tarifa para ese peso / destino
+                  </div>
+                ) : cotizacion ? (() => {
+                  const _flete      = cotizacion.valorServicio
+                  const _manejo     = cotizacion.valorCertificacion ?? 0
+                  const _tarifaTotal = _flete + _manejo
+                  const _minimoSeg  = selectedService?.minimoSeguroPostal ?? 0
+                  const _seguro     = seguroAdicional && Number(valorDeclarado) > 0
+                    ? Math.max(Math.round(Number(valorDeclarado) * 0.5 / 100), _minimoSeg)
+                    : 0
+                  const _total      = _tarifaTotal + _seguro
+                  return (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                        Cotización
+                      </p>
 
-        {/* Botones de acción */}
-        <div className="border-t p-3 space-y-2 shrink-0">
-          <Button
-            className="w-full"
-            disabled={!puedeGuardar || !clienteId || crearEnvio.isPending || agregarProd.isPending}
-            onClick={handleGuardar}
-          >
-            {(crearEnvio.isPending || agregarProd.isPending) && (
-              <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                      {/* Pesos */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                        <span className="text-muted-foreground">Peso físico</span>
+                        <span className="tabular-nums text-right">{cotizacion.pesoFisicoKg.toFixed(3)} kg</span>
+                        <span className="text-muted-foreground">Peso volumétrico</span>
+                        <span className="tabular-nums text-right">
+                          {cotizacion.pesoVolumetricoKg != null ? `${cotizacion.pesoVolumetricoKg.toFixed(3)} kg` : '—'}
+                        </span>
+                        <span className="text-muted-foreground font-medium">Peso tarificado</span>
+                        <span className="tabular-nums text-right font-semibold">{cotizacion.pesoTarificadoKg.toFixed(3)} kg</span>
+                      </div>
+
+                      <div className="h-px bg-border" />
+
+                      {/* Valores */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                        <span className="text-muted-foreground">Valor flete</span>
+                        <span className="tabular-nums text-right">{fmt(_flete)}</span>
+                        <span className="text-muted-foreground">Tasa de manejo</span>
+                        <span className="tabular-nums text-right">{_manejo > 0 ? fmt(_manejo) : '—'}</span>
+                        <span className="text-muted-foreground font-medium">Tarifa total</span>
+                        <span className="tabular-nums text-right font-medium">{fmt(_tarifaTotal)}</span>
+                        <span className="text-muted-foreground">Descuento</span>
+                        <span className="tabular-nums text-right text-muted-foreground">—</span>
+                        <span className="text-muted-foreground">Seguro</span>
+                        <span className="tabular-nums text-right">{_seguro > 0 ? fmt(_seguro) : '—'}</span>
+                        <span className="text-muted-foreground">Impuesto</span>
+                        <span className="tabular-nums text-right text-muted-foreground">
+                          {cotizacion.aduanaEstimadoUSD ? `USD ${Number(cotizacion.aduanaEstimadoUSD).toFixed(2)}` : '—'}
+                        </span>
+                      </div>
+
+                      <div className="h-px bg-border" />
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold">Valor total</span>
+                        <span className="tabular-nums text-sm font-bold text-primary">{fmt(_total)}</span>
+                      </div>
+
+                      {cotizacion.fechaEntregaEstimada && (
+                        <p className="text-[10px] text-muted-foreground">
+                          Entrega est.{' '}
+                          {new Date(cotizacion.fechaEntregaEstimada).toLocaleDateString('es-CO', {
+                            weekday: 'short', day: 'numeric', month: 'short',
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })() : null}
+              </div>
             )}
-            Validar y generar guía
-          </Button>
-          <Button
-            variant="outline" size="sm" className="w-full"
-            onClick={resetForm}
-            disabled={crearEnvio.isPending || agregarProd.isPending}
-          >
-            Cancelar
-          </Button>
-          {!clienteId && (
-            <p className="text-[11px] text-center text-muted-foreground">Busca un cliente para continuar</p>
-          )}
-        </div>
-      </div>
+
+            {/* Botones de acción */}
+            <div className="border-t p-3 space-y-2 shrink-0">
+              <Button
+                className="w-full"
+                disabled={!puedeGuardar || !clienteId || envioPending || agregarProd.isPending}
+                onClick={handleGuardar}
+              >
+                {(envioPending || agregarProd.isPending) && (
+                  <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                )}
+                Validar y generar guía
+              </Button>
+              {previewGuia && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs gap-1.5"
+                  onClick={() => setGuiaActual(previewGuia)}
+                >
+                  <Eye className="size-3.5" />
+                  Ver borrador de guía
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={resetForm}
+                disabled={envioPending || agregarProd.isPending}
+              >
+                Cancelar
+              </Button>
+              {!clienteId && (
+                <p className="text-[11px] text-center text-muted-foreground">
+                  Busca un cliente para continuar
+                </p>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         {/* ── Tab 2: Envíos generados ───────────────────────────────────── */}
@@ -2716,46 +3736,67 @@ function TabServiciosPostales({
               <table className="w-full text-[11px] border-collapse">
                 <thead>
                   <tr className="border-b bg-muted/50 sticky top-0 z-10">
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Guía</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Servicio</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">Destino</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Cant.</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Fís.</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Vol.</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Peso Tar.</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Valor Flete</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Total</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Guía</th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                      Guía
+                    </th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                      Servicio
+                    </th>
+                    <th className="px-2 py-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                      Destino
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                      Cant.
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                      Peso Fís.
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                      Peso Vol.
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                      Peso Tar.
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                      Valor Flete
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                      Total
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">
+                      Guía
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {enviosGenerados.map((e, i) => (
-                    <tr key={`${e.guia}-${i}`} className="border-b hover:bg-muted/30">
-                      <td className="px-2 py-2 font-mono font-semibold whitespace-nowrap">{e.guia}</td>
+                  {enviosGenerados.map((e) => (
+                    <tr key={e.guia} className="border-b hover:bg-muted/30">
+                      <td className="px-2 py-2 font-mono font-semibold whitespace-nowrap">
+                        {e.guia}
+                      </td>
                       <td className="px-2 py-2 max-w-[120px] truncate">{e.servicioNombre}</td>
-                      <td className="px-2 py-2 max-w-[100px] truncate">{e.ciudad || e.destinatario}</td>
+                      <td className="px-2 py-2 max-w-[100px] truncate">
+                        {e.ciudad || e.destinatario}
+                      </td>
                       <td className="px-2 py-2 text-right tabular-nums">{e.cantidad}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{(e.pesoFisico * 1000).toFixed(0)} g</td>
+                      <td className="px-2 py-2 text-right tabular-nums">
+                        {(e.pesoFisico * 1000).toFixed(0)} g
+                      </td>
                       <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
                         {e.pesoVolumetrico != null ? `${e.pesoVolumetrico} kg` : '—'}
                       </td>
                       <td className="px-2 py-2 text-right tabular-nums">{e.pesoFacturado} kg</td>
                       <td className="px-2 py-2 text-right tabular-nums">{fmt(e.valorServicio)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmt(e.valorTotal)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                        {fmt(e.valorTotal)}
+                      </td>
                       <td className="px-2 py-2 text-right">
                         <button
                           type="button"
-                          className={cn(
-                            'text-[10px] underline-offset-2 hover:underline',
-                            guiaActual?.numeroGuia === e.guiaData.numeroGuia
-                              ? 'text-primary font-semibold'
-                              : 'text-muted-foreground',
-                          )}
-                          onClick={() => setGuiaActual(
-                            guiaActual?.numeroGuia === e.guiaData.numeroGuia ? null : e.guiaData,
-                          )}
+                          className="text-[10px] text-muted-foreground underline-offset-2 hover:underline hover:text-primary"
+                          onClick={() => setGuiaActual(e.guiaData)}
                         >
-                          {guiaActual?.numeroGuia === e.guiaData.numeroGuia ? 'Ocultar' : 'Ver guía'}
+                          Ver guía
                         </button>
                       </td>
                     </tr>
@@ -2764,102 +3805,207 @@ function TabServiciosPostales({
               </table>
             )}
 
-            {/* Preview de guía postal seleccionada */}
-            {guiaActual && (
-              <div className="flex flex-col items-center gap-3 py-4 border-t mt-2">
-                <div className="flex items-center gap-2 w-full max-w-[380px] px-2">
-                  <p className="text-sm font-semibold flex-1">
-                    Guía <span className="font-mono text-primary">{guiaActual.numeroGuia}</span>
-                  </p>
-                  <Button size="sm" variant="outline" onClick={() => window.print()}>
-                    Imprimir
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setGuiaActual(null)}>
-                    <X className="size-4" />
-                  </Button>
-                </div>
-                <GuiaPostal guia={guiaActual} />
-              </div>
-            )}
           </ScrollArea>
         </TabsContent>
-
       </Tabs>
 
-      {/* ── Modal: Remitente / Destinatario ──────────────────────────────── */}
+      {/* ── Modal: Guía postal ───────────────────────────────────────────── */}
+      <Dialog open={guiaActual !== null} onOpenChange={(open) => { if (!open) setGuiaActual(null) }}>
+        <DialogContent className="max-w-[960px] p-6 gap-4">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-base">
+              {guiaActual?.estado === 'BORRADOR'
+                ? 'Vista previa — BORRADOR'
+                : <>Guía <span className="text-primary">{guiaActual?.numeroGuia}</span></>}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Guía postal generada — lista para imprimir
+            </DialogDescription>
+          </DialogHeader>
+          {guiaActual && (
+            <div className="overflow-x-auto">
+              <GuiaPostalSvg guia={guiaActual} />
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="ghost" size="sm" onClick={() => setGuiaActual(null)}>
+              Cerrar
+            </Button>
+            {guiaActual?.estado !== 'BORRADOR' && (
+              <Button size="sm" onClick={() => window.print()}>
+                Imprimir guía
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modal: Remitente / Destinatario (con tab Guardadas integrada) ── */}
       <AddressModal
         open={modalPersona !== null}
         onClose={() => setModalPersona(null)}
         title={modalPersona === 'remitente' ? 'Remitente' : 'Destinatario'}
         initial={modalPersona === 'remitente' ? remitente : destinatario}
         paisContexto={modalPersona === 'remitente' ? 'CO' : pais}
-        onSave={p => {
+        clienteId={clienteId}
+        rol={modalPersona ?? undefined}
+        onSave={(p) => {
           if (modalPersona === 'remitente') setRemitente(p)
           else setDestinatario(p)
         }}
       />
 
-      {/* ── Diálogo: ¿adquirió la caja? ──────────────────────────────────── */}
-      <Dialog open={cajaDlgOpen} onOpenChange={setCajaDlgOpen}>
+      {/* ── Diálogo de confirmación ──────────────────────────────────────── */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-sm">¿Adquirió la caja 4-72?</DialogTitle>
+            <DialogTitle className="text-sm">Confirmar guía postal</DialogTitle>
+            <DialogDescription className="text-xs">
+              Verifica los datos antes de generar
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            ¿El cliente adquirió la caja de empaque en este punto de venta 4-72?
-          </p>
-
-          {ventaId && (
-            <div className="space-y-3 pt-1">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tipo de caja</Label>
-                <div className="space-y-1">
-                  {CAJAS_ENVIO.map(c => (
-                    <button
-                      key={c.productoId}
-                      type="button"
-                      onClick={() => setCajaSeleccion(c.productoId)}
-                      className={cn(
-                        'w-full text-left rounded-md border px-3 py-2 text-xs transition-colors',
-                        cajaSeleccion === c.productoId
-                          ? 'border-primary bg-primary/5 text-primary'
-                          : 'border-border hover:border-primary/40',
-                      )}
-                    >
-                      <span className="font-medium">{c.nombre}</span>
-                      <span className="ml-2 text-muted-foreground">{fmt(c.precio)}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">¿Cuántas?</Label>
-                <Input
-                  type="number" min="1" max="20"
-                  className="h-8 text-sm w-24"
-                  value={cajaCantidad}
-                  onChange={e => setCajaCantidad(Math.max(1, Number(e.target.value) || 1))}
-                />
-              </div>
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <span className="text-muted-foreground shrink-0">Servicio</span>
+              <span className="truncate font-medium">{selectedService?.nombre ?? '—'}</span>
+              <span className="text-muted-foreground shrink-0">Remitente</span>
+              <span className="truncate">{remitente.nombre || '—'}</span>
+              <span className="text-muted-foreground shrink-0">Destinatario</span>
+              <span className="truncate">{destinatario.nombre || '—'}</span>
+              <span className="text-muted-foreground shrink-0">Ciudad destino</span>
+              <span className="truncate">
+                {destinatario.dir.ciudad || (esInternacional ? destinatario.pais : '—')}
+              </span>
             </div>
-          )}
+            {cotizacion && (
+              (() => {
+                const _flete       = cotizacion.valorServicio
+                const _manejo      = cotizacion.valorCertificacion ?? 0
+                const _tarifaTotal = _flete + _manejo
+                const _minimoSeg   = selectedService?.minimoSeguroPostal ?? 0
+                const _seguro      = seguroAdicional && Number(valorDeclarado) > 0
+                  ? Math.max(Math.round(Number(valorDeclarado) * 0.5 / 100), _minimoSeg)
+                  : 0
+                const _total       = _tarifaTotal + _seguro
+                return (
+                  <>
+                    <div className="h-px bg-border" />
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+                      <span className="text-muted-foreground">Peso físico</span>
+                      <span className="tabular-nums text-right">{cotizacion.pesoFisicoKg.toFixed(3)} kg</span>
+                      <span className="text-muted-foreground">Peso volumétrico</span>
+                      <span className="tabular-nums text-right">
+                        {cotizacion.pesoVolumetricoKg != null ? `${cotizacion.pesoVolumetricoKg.toFixed(3)} kg` : '—'}
+                      </span>
+                      <span className="text-muted-foreground font-medium">Peso tarificado</span>
+                      <span className="tabular-nums text-right font-semibold">{cotizacion.pesoTarificadoKg.toFixed(3)} kg</span>
+                    </div>
+                    <div className="h-px bg-border" />
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+                      <span className="text-muted-foreground">Valor flete</span>
+                      <span className="tabular-nums text-right">{fmt(_flete)}</span>
+                      <span className="text-muted-foreground">Tasa de manejo</span>
+                      <span className="tabular-nums text-right">{_manejo > 0 ? fmt(_manejo) : '—'}</span>
+                      <span className="text-muted-foreground font-medium">Tarifa total</span>
+                      <span className="tabular-nums text-right font-medium">{fmt(_tarifaTotal)}</span>
+                      <span className="text-muted-foreground">Descuento</span>
+                      <span className="tabular-nums text-right text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">Seguro</span>
+                      <span className="tabular-nums text-right">{_seguro > 0 ? fmt(_seguro) : '—'}</span>
+                      <span className="text-muted-foreground">Impuesto</span>
+                      <span className="tabular-nums text-right text-muted-foreground">
+                        {cotizacion.aduanaEstimadoUSD ? `USD ${Number(cotizacion.aduanaEstimadoUSD).toFixed(2)}` : '—'}
+                      </span>
+                    </div>
+                    <div className="h-px bg-border" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold">Valor total</span>
+                      <span className="tabular-nums text-base font-bold text-primary">{fmt(_total)}</span>
+                    </div>
+                  </>
+                )
+              })()
+            )}
+            {!cotizacion && (
+              <p className="text-xs text-muted-foreground italic">
+                Cotización no disponible — el sistema usará la tarifa vigente
+              </p>
+            )}
 
+            {/* Caja opcional — solo cuando hay venta activa */}
+            {ventaId && (
+              <>
+                <div className="h-px bg-border" />
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 accent-primary"
+                      checked={cajaOpt}
+                      onChange={(e) => {
+                        setCajaOpt(e.target.checked)
+                        if (!e.target.checked) {
+                          setCajaSeleccion(7)
+                          setCajaCantidad(1)
+                        }
+                      }}
+                    />
+                    <span className="text-xs font-medium">
+                      ¿El cliente adquirió la caja de empaque 4-72?
+                    </span>
+                  </label>
+                  {cajaOpt && (
+                    <div className="mt-2 space-y-2 pl-5">
+                      <div className="space-y-1">
+                        {CAJAS_ENVIO.map((c) => (
+                          <button
+                            key={c.productoId}
+                            type="button"
+                            onClick={() => setCajaSeleccion(c.productoId)}
+                            className={cn(
+                              'w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-colors',
+                              cajaSeleccion === c.productoId
+                                ? 'border-primary bg-primary/5 text-primary'
+                                : 'border-border hover:border-primary/40',
+                            )}
+                          >
+                            <span className="font-medium">{c.nombre}</span>
+                            <span className="ml-2 text-muted-foreground">{fmt(c.precio)}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs whitespace-nowrap">Cantidad:</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="20"
+                          className="h-7 text-xs w-16"
+                          value={cajaCantidad}
+                          onChange={(e) =>
+                            setCajaCantidad(Math.max(1, Number(e.target.value) || 1))
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <DialogFooter className="gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={handleCajaNo}
-              disabled={crearEnvio.isPending || agregarProd.isPending}
-            >
-              No
+            <Button variant="outline" size="sm" onClick={() => setConfirmOpen(false)}>
+              Cancelar
             </Button>
             <Button
-              onClick={handleCajaSi}
-              disabled={crearEnvio.isPending || agregarProd.isPending}
+              size="sm"
+              onClick={handleConfirmarYGenerar}
+              disabled={envioPending || agregarProd.isPending}
             >
-              {(crearEnvio.isPending || agregarProd.isPending) && (
+              {(envioPending || agregarProd.isPending) && (
                 <Loader2 className="size-3.5 animate-spin mr-1.5" />
               )}
-              {ventaId ? 'Sí, agregar y generar' : 'Sí'}
+              Confirmar y generar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2868,16 +4014,13 @@ function TabServiciosPostales({
   )
 }
 
-
 // ── TabHistorial ──────────────────────────────────────────────────────────────
 
-function TabHistorial({
-  cajaId, userRol,
-}: { cajaId: number; userRol: string }) {
+function TabHistorial({ cajaId, userRol }: { cajaId: number; userRol: string }) {
   const { data: ventas, isLoading, refetch, isFetching } = useVentasTurno(cajaId)
   const [anularId, setAnularId] = useState<number | null>(null)
-  const [motivo, setMotivo]     = useState('')
-  const anular    = useAnularVenta(anularId ?? 0, cajaId)
+  const [motivo, setMotivo] = useState('')
+  const anular = useAnularVenta(anularId ?? 0, cajaId)
   const canAnular = ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA'].includes(userRol)
 
   const handleAnular = async () => {
@@ -2896,7 +4039,11 @@ function TabHistorial({
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
         <span className="text-xs text-muted-foreground">{ventas?.length ?? 0} movimiento(s)</span>
-        <button type="button" onClick={() => refetch()} className="text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="text-muted-foreground hover:text-foreground"
+        >
           <RefreshCw className={cn('size-3', isFetching && 'animate-spin')} />
         </button>
       </div>
@@ -2909,9 +4056,11 @@ function TabHistorial({
         <ScrollArea className="flex-1">
           <div className="p-2 space-y-1.5">
             {!ventas?.length && (
-              <p className="py-8 text-center text-sm text-muted-foreground">Sin movimientos en este turno</p>
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Sin movimientos en este turno
+              </p>
             )}
-            {ventas?.map(v => (
+            {ventas?.map((v) => (
               <div key={v.id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -2924,11 +4073,14 @@ function TabHistorial({
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
-                    <span className="font-medium tabular-nums text-foreground">{fmt(Number(v.monto))}</span>
+                    <span className="font-medium tabular-nums text-foreground">
+                      {fmt(Number(v.monto))}
+                    </span>
                     {v.medioPago && <span>{v.medioPago}</span>}
                     <span>
                       {new Date(v.createdAt).toLocaleTimeString('es-CO', {
-                        hour: '2-digit', minute: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
                       })}
                     </span>
                   </div>
@@ -2938,7 +4090,10 @@ function TabHistorial({
                     size="sm"
                     variant="ghost"
                     className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                    onClick={() => { setAnularId(v.referenciaId ?? v.id); setMotivo('') }}
+                    onClick={() => {
+                      setAnularId(v.referenciaId ?? v.id)
+                      setMotivo('')
+                    }}
                   >
                     Anular
                   </Button>
@@ -2949,21 +4104,25 @@ function TabHistorial({
         </ScrollArea>
       )}
 
-      <Dialog open={!!anularId} onOpenChange={open => !open && setAnularId(null)}>
+      <Dialog open={!!anularId} onOpenChange={(open) => !open && setAnularId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Anular movimiento #{anularId}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2 py-1">
-            <Label className="text-xs">Motivo <span className="text-destructive">*</span></Label>
+            <Label className="text-xs">
+              Motivo <span className="text-destructive">*</span>
+            </Label>
             <Input
               placeholder="Describe el motivo..."
               value={motivo}
-              onChange={e => setMotivo(e.target.value)}
+              onChange={(e) => setMotivo(e.target.value)}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAnularId(null)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setAnularId(null)}>
+              Cancelar
+            </Button>
             <Button
               variant="destructive"
               disabled={!motivo.trim() || anular.isPending}
@@ -2982,7 +4141,11 @@ function TabHistorial({
 // ── TabResumenPago ────────────────────────────────────────────────────────────
 
 function TabResumenPago({
-  carrito, cliente, ventaId, cajaId, onExito,
+  carrito,
+  cliente,
+  ventaId,
+  cajaId,
+  onExito,
 }: {
   carrito: Venta | null
   cliente: ClienteResumen | null
@@ -2993,15 +4156,15 @@ function TabResumenPago({
   const { user } = useSessionStore()
   const canAnular = ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA'].includes(user?.rol ?? '')
 
-  const [medioPago,        setMedioPago]        = useState<MedioPagoVenta>('efectivo')
-  const [email,            setEmail]            = useState(cliente?.email ?? '')
+  const [medioPago, setMedioPago] = useState<MedioPagoVenta>('efectivo')
+  const [email, setEmail] = useState(cliente?.email ?? '')
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
   const [preporteadoMonto, setPreporteadoMonto] = useState('')
-  const [anularOpen,       setAnularOpen]       = useState(false)
-  const [motivoAnular,     setMotivoAnular]     = useState('')
+  const [anularOpen, setAnularOpen] = useState(false)
+  const [motivoAnular, setMotivoAnular] = useState('')
 
   const confirmar = useConfirmarVenta(ventaId, cajaId)
-  const anular    = useAnularVenta(ventaId, cajaId)
+  const anular = useAnularVenta(ventaId, cajaId)
 
   const handleAnular = async () => {
     if (!motivoAnular.trim()) return
@@ -3015,21 +4178,24 @@ function TabResumenPago({
     }
   }
 
-  const isMixto      = medioPago === 'mixto_preporteado'
+  const isMixto = medioPago === 'mixto_preporteado'
   const showEfectivo = medioPago === 'efectivo' || isMixto
-  const efectivo     = Number(efectivoRecibido) || 0
-  const preporteado  = Number(preporteadoMonto) || 0
-  const total        = carrito?.total ?? 0
-  const enEc         = isMixto ? Math.max(0, total - preporteado) : 0
-  const cambio       = showEfectivo ? Math.max(0, efectivo - (isMixto ? enEc : total)) : 0
-  const faltante     = showEfectivo ? Math.max(0, (isMixto ? enEc : total) - efectivo) : 0
+  const efectivo = Number(efectivoRecibido) || 0
+  const preporteado = Number(preporteadoMonto) || 0
+  const total = carrito?.total ?? 0
+  const enEc = isMixto ? Math.max(0, total - preporteado) : 0
+  const cambio = showEfectivo ? Math.max(0, efectivo - (isMixto ? enEc : total)) : 0
+  const faltante = showEfectivo ? Math.max(0, (isMixto ? enEc : total) - efectivo) : 0
 
-  const sellosTotal  = carrito?.detalle.filter(d => d.tipoProducto === 'estampilla').reduce((s, d) => s + d.subtotal, 0) ?? 0
+  const sellosTotal =
+    carrito?.detalle
+      .filter((d) => d.tipoProducto === 'estampilla')
+      .reduce((s, d) => s + d.subtotal, 0) ?? 0
 
   const ivaLinea = (d: { subtotal: number; descuento: number; porcentajeTax: number }) => {
     const t = d.porcentajeTax
     if (t === 0) return 0
-    return Math.round((d.subtotal + d.descuento) * t / (100 + t))
+    return Math.round(((d.subtotal + d.descuento) * t) / (100 + t))
   }
 
   const handleConfirmar = async () => {
@@ -3042,7 +4208,9 @@ function TabResumenPago({
       return
     }
     if (isMixto && preporteado >= total) {
-      toast.error('El monto preporteado no puede cubrir el total completo — usa "Preporteado" directamente')
+      toast.error(
+        'El monto preporteado no puede cubrir el total completo — usa "Preporteado" directamente',
+      )
       return
     }
     if (showEfectivo && efectivo > 0 && efectivo < (isMixto ? enEc : total)) {
@@ -3054,7 +4222,9 @@ function TabResumenPago({
         medioPago,
         emailFactura: email.trim(),
         // Si no ingresó monto, se asume pago exacto (cambio = 0)
-        ...(showEfectivo ? { efectivoRecibido: efectivo > 0 ? efectivo : (isMixto ? enEc : total) } : {}),
+        ...(showEfectivo
+          ? { efectivoRecibido: efectivo > 0 ? efectivo : isMixto ? enEc : total }
+          : {}),
       })
       toast.success('Pago confirmado')
       onExito()
@@ -3063,7 +4233,14 @@ function TabResumenPago({
     }
   }
 
-  if (!carrito || !carrito.detalle.length) {
+  const eliminarEnvio     = useEliminarEnvioDelCarrito(ventaId, cajaId)
+  const eliminarApartado  = useEliminarApartadoDelCarrito(ventaId)
+
+  const tieneItems =
+    (carrito?.detalle.length ?? 0) > 0 ||
+    (carrito?.enviosPendientes.length ?? 0) > 0 ||
+    (carrito?.apartadosPendientes.length ?? 0) > 0
+  if (!carrito || !tieneItems) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
         <ShoppingCart className="size-8 opacity-20" />
@@ -3074,7 +4251,6 @@ function TabResumenPago({
 
   return (
     <div className="flex flex-col h-full">
-
       {/* Prefactura header */}
       <div className="px-4 py-2.5 border-b bg-muted/20 shrink-0">
         <div className="flex items-center gap-3 mb-1">
@@ -3082,7 +4258,8 @@ function TabResumenPago({
             <>
               <UserRound className="size-4 text-muted-foreground shrink-0" />
               <span className="text-sm font-semibold">
-                {cliente.nombre}{cliente.apellido ? ` ${cliente.apellido}` : ''}
+                {cliente.nombre}
+                {cliente.apellido ? ` ${cliente.apellido}` : ''}
               </span>
               <span className="text-xs text-muted-foreground">
                 {cliente.tipoDocumento}: {cliente.numeroDocumento}
@@ -3102,74 +4279,197 @@ function TabResumenPago({
           </div>
           <div>
             <span className="text-muted-foreground">Total a pagar: </span>
-            <span className="font-bold text-primary tabular-nums text-sm">{fmt(carrito.total)}</span>
+            <span className="font-bold text-primary tabular-nums text-sm">
+              {fmt(carrito.total)}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Items table */}
+      {/* Items table — columnas idénticas al sistema 4-72 legacy */}
       <div className="flex-1 overflow-auto border-b">
-        <table className="w-full text-xs border-collapse">
+        <table className="w-full text-xs border-collapse min-w-[680px]">
           <thead>
             <tr className="border-b bg-muted/50 sticky top-0 z-10">
-              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Producto</th>
-              <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-14">Cantidad</th>
-              <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Descuento</th>
-              <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Impuesto</th>
-              <th className="px-2 py-2 text-right font-medium text-muted-foreground whitespace-nowrap w-24">Total</th>
+              <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">Producto / Servicio</th>
+              <th className="px-2 py-1.5 text-left font-medium text-muted-foreground whitespace-nowrap w-28">Ref.</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-12">Cant.</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Impuesto</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-20">Descuento</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-24">Precio</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-22">Seguro</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-24">Val. Unitario</th>
+              <th className="px-2 py-1.5 text-right font-medium text-muted-foreground whitespace-nowrap w-22">Preporteado</th>
             </tr>
           </thead>
           <tbody>
             {carrito.detalle.map((d) => {
               const iva = ivaLinea(d)
               const nombre = d.nombreProducto ?? `Producto #${d.productoId}`
-              const label  = d.codigoProducto ? `${d.codigoProducto} - ${nombre}` : nombre
               return (
                 <tr key={d.id} className="border-b hover:bg-muted/20">
-                  <td className="px-3 py-2">
-                    <p className="font-medium leading-tight">{label}</p>
+                  <td className="px-3 py-1.5">
+                    <p className="font-medium leading-tight">{nombre}</p>
                     {d.tipoProducto && (
                       <p className="text-[10px] text-muted-foreground capitalize">
                         {d.tipoProducto.replace('_', ' ')}
                       </p>
                     )}
                   </td>
-                  <td className="px-2 py-2 text-right tabular-nums">{d.cantidad}</td>
-                  <td className="px-2 py-2 text-right tabular-nums">
-                    {d.descuento > 0
-                      ? <span className="text-emerald-600">−{fmt(d.descuento)}</span>
-                      : <span className="text-muted-foreground/30">—</span>
-                    }
+                  <td className="px-2 py-1.5 text-muted-foreground font-mono text-[10px]">
+                    {d.codigoProducto ?? '—'}
                   </td>
-                  <td className="px-2 py-2 text-right tabular-nums text-amber-700 dark:text-amber-500">
-                    {iva > 0 ? fmt(iva) : <span className="text-muted-foreground/40">—</span>}
+                  <td className="px-2 py-1.5 text-right tabular-nums">{d.cantidad}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-amber-700 dark:text-amber-500">
+                    {iva > 0 ? fmt(iva) : <span className="text-muted-foreground/30">—</span>}
                   </td>
-                  <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmt(d.subtotal)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">
+                    {d.descuento > 0 ? (
+                      <span className="text-emerald-600">−{fmt(d.descuento)}</span>
+                    ) : (
+                      <span className="text-muted-foreground/30">—</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{fmt(d.precioUnitario)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/50">—</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(d.subtotal)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/50">—</td>
                 </tr>
               )
             })}
+            {/* Envíos pendientes */}
+            {(carrito.enviosPendientes ?? []).map((env) => (
+              <tr
+                key={`envio-${env.id}`}
+                className="border-b hover:bg-muted/20 bg-blue-50/30 dark:bg-blue-950/10"
+              >
+                <td className="px-3 py-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Truck className="size-3 text-blue-500 shrink-0" />
+                    <div>
+                      <p className="font-medium leading-tight">
+                        {env.destinatarioNombre
+                          ? `Envío a ${env.destinatarioNombre}`
+                          : 'Servicio postal'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {env.destinatarioCiudad ?? env.destinatarioPais} · {env.pesoTarificadoKg} kg
+                      </p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-2 py-1.5 text-muted-foreground font-mono text-[10px]">
+                  {env.numeroGuia}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums">1</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/40">—</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/40">—</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(env.valorServicio)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">
+                  {env.valorSeguro > 0
+                    ? fmt(env.valorSeguro)
+                    : <span className="text-muted-foreground/40">—</span>}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                  {fmt(env.valorServicio + env.valorSeguro + (env.valorCertificacion ?? 0))}
+                </td>
+                <td className="px-2 py-1.5 text-right tabular-nums">
+                  <div className="flex items-center justify-end gap-1.5">
+                    {env.valorEstampillas > 0
+                      ? <span className="text-violet-600">{fmt(env.valorEstampillas)}</span>
+                      : <span className="text-muted-foreground/40">—</span>}
+                    <button
+                      type="button"
+                      title="Eliminar envío"
+                      disabled={eliminarEnvio.isPending}
+                      onClick={() => eliminarEnvio.mutate(env.id)}
+                      className="text-muted-foreground/30 hover:text-destructive transition-colors shrink-0"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+
+            {/* Apartados pendientes */}
+            {(carrito.apartadosPendientes ?? []).map((ap) => (
+              <tr
+                key={`ap-${ap.id}`}
+                className="border-b hover:bg-muted/20 bg-emerald-50/30 dark:bg-emerald-950/10"
+              >
+                <td className="px-3 py-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <MailOpen className="size-3 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-medium leading-tight">Apartado postal #{ap.numero}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {TAMANO_LABEL[ap.tamano] ?? ap.tamano} · {ap.fechaInicio} → {ap.fechaFin}
+                      </p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-2 py-1.5 text-muted-foreground font-mono text-[10px]">—</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">1</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/40">—</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/40">—</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">{fmt(ap.valor ?? 0)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground/40">—</td>
+                <td className="px-2 py-1.5 text-right tabular-nums font-semibold">{fmt(ap.valor ?? 0)}</td>
+                <td className="px-2 py-1.5 text-right tabular-nums">
+                  <button
+                    type="button"
+                    title="Eliminar apartado"
+                    disabled={eliminarApartado.isPending}
+                    onClick={() => eliminarApartado.mutate(ap.id)}
+                    className="text-muted-foreground/30 hover:text-destructive transition-colors shrink-0"
+                  >
+                    <Trash2 className="size-3" />
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* 6-column totals bar — matches real 4-72 system */}
-      <div className="grid grid-cols-6 divide-x border-b bg-muted/30 text-xs shrink-0">
-        {[
-          { label: 'Estampillas',  value: sellosTotal > 0 ? fmt(sellosTotal) : '—' },
-          { label: 'IVA',          value: carrito.iva > 0 ? fmt(carrito.iva) : '—' },
-          { label: 'Preporteado',  value: isMixto && preporteado > 0 ? fmt(preporteado) : '—' },
-          { label: 'En EC',        value: isMixto ? fmt(enEc) : '—' },
-          { label: 'Descuento',    value: carrito.descuento > 0 ? `−${fmt(carrito.descuento)}` : '—' },
-          { label: 'Total',        value: fmt(carrito.total), primary: true },
-        ].map(col => (
-          <div key={col.label} className="px-2 py-2 text-center">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{col.label}</p>
-            <p className={cn('font-semibold tabular-nums mt-0.5', (col as { primary?: boolean }).primary && 'text-primary text-sm')}>
-              {col.value}
-            </p>
+      {/* Barra de totales — igual al sistema legacy 4-72 */}
+      {(() => {
+        const porteadoTotal = (carrito.enviosPendientes ?? []).reduce(
+          (s, e) => s + e.valorServicio + e.valorSeguro + (e.valorCertificacion ?? 0),
+          0,
+        )
+        const preporteadoEnvios = (carrito.enviosPendientes ?? []).reduce(
+          (s, e) => s + e.valorEstampillas,
+          0,
+        )
+        const enPago = carrito.total - sellosTotal - preporteadoEnvios
+        const cols = [
+          { label: 'Estampillas', value: sellosTotal > 0 ? fmt(sellosTotal) : '—' },
+          { label: 'En Pago', value: enPago > 0 ? fmt(enPago) : '—' },
+          { label: 'Porteado', value: porteadoTotal > 0 ? fmt(porteadoTotal) : '—' },
+          { label: 'IVA', value: carrito.iva > 0 ? fmt(carrito.iva) : '—' },
+          { label: 'Preporteado', value: isMixto && preporteado > 0 ? fmt(preporteado) : preporteadoEnvios > 0 ? fmt(preporteadoEnvios) : '—' },
+          { label: 'Total a pagar', value: fmt(carrito.total), primary: true },
+        ]
+        return (
+          <div className="grid grid-cols-6 divide-x border-b bg-muted/30 text-xs shrink-0">
+            {cols.map((col) => (
+              <div key={col.label} className="px-2 py-2 text-center">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-tight">
+                  {col.label}
+                </p>
+                <p className={cn(
+                  'font-semibold tabular-nums mt-0.5',
+                  (col as { primary?: boolean }).primary && 'text-primary text-sm',
+                )}>
+                  {col.value}
+                </p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )
+      })()}
 
       {/* Payment fields */}
       <div className="px-4 py-3 space-y-3 shrink-0 bg-card">
@@ -3182,7 +4482,7 @@ function TabResumenPago({
               className="pl-8 h-8 text-sm"
               placeholder="Email para factura electrónica *"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
           <p className="text-[10px] text-muted-foreground px-0.5">
@@ -3196,7 +4496,7 @@ function TabResumenPago({
             Medio de pago
           </Label>
           <div className="grid grid-cols-2 gap-1.5">
-            {MEDIOS_PAGO.map(m => (
+            {MEDIOS_PAGO.map((m) => (
               <label
                 key={m.value}
                 className={cn(
@@ -3214,10 +4514,14 @@ function TabResumenPago({
                   onChange={() => setMedioPago(m.value)}
                   className="sr-only"
                 />
-                <span className={cn(
-                  'size-3 rounded-full border-2 shrink-0 transition-colors',
-                  medioPago === m.value ? 'border-primary bg-primary' : 'border-muted-foreground/40',
-                )} />
+                <span
+                  className={cn(
+                    'size-3 rounded-full border-2 shrink-0 transition-colors',
+                    medioPago === m.value
+                      ? 'border-primary bg-primary'
+                      : 'border-muted-foreground/40',
+                  )}
+                />
                 <span className="text-xs font-medium leading-none">{m.label}</span>
               </label>
             ))}
@@ -3235,7 +4539,7 @@ function TabResumenPago({
                   className="h-8 text-sm w-36"
                   placeholder="0"
                   value={preporteadoMonto}
-                  onChange={e => setPreporteadoMonto(e.target.value)}
+                  onChange={(e) => setPreporteadoMonto(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
@@ -3257,21 +4561,33 @@ function TabResumenPago({
         {showEfectivo && (
           <div className="flex items-center gap-4 rounded-lg border px-3 py-2">
             <div className="space-y-1">
-              <Label className="text-xs">{isMixto ? 'Efectivo recibido (EC)' : 'Efectivo recibido'}</Label>
+              <Label className="text-xs">
+                {isMixto ? 'Efectivo recibido (EC)' : 'Efectivo recibido'}
+              </Label>
               <Input
                 type="number"
                 className="h-8 text-sm w-32"
                 placeholder="0"
                 value={efectivoRecibido}
-                onChange={e => setEfectivoRecibido(e.target.value)}
+                onChange={(e) => setEfectivoRecibido(e.target.value)}
               />
             </div>
             {efectivo > 0 && (
               <div className="space-y-0.5">
-                <p className={cn('text-[11px]', faltante > 0 ? 'text-destructive' : 'text-muted-foreground')}>
+                <p
+                  className={cn(
+                    'text-[11px]',
+                    faltante > 0 ? 'text-destructive' : 'text-muted-foreground',
+                  )}
+                >
                   {faltante > 0 ? 'Faltante' : 'Cambio'}
                 </p>
-                <p className={cn('font-semibold tabular-nums text-sm', faltante > 0 ? 'text-destructive' : 'text-emerald-600')}>
+                <p
+                  className={cn(
+                    'font-semibold tabular-nums text-sm',
+                    faltante > 0 ? 'text-destructive' : 'text-emerald-600',
+                  )}
+                >
                   {fmt(faltante > 0 ? faltante : cambio)}
                 </p>
               </div>
@@ -3294,7 +4610,10 @@ function TabResumenPago({
               variant="destructive"
               size="sm"
               disabled={confirmar.isPending || anular.isPending}
-              onClick={() => { setAnularOpen(true); setMotivoAnular('') }}
+              onClick={() => {
+                setAnularOpen(true)
+                setMotivoAnular('')
+              }}
             >
               Anular
             </Button>
@@ -3302,12 +4621,13 @@ function TabResumenPago({
         </div>
       </div>
 
-      <Dialog open={anularOpen} onOpenChange={open => !open && setAnularOpen(false)}>
+      <Dialog open={anularOpen} onOpenChange={(open) => !open && setAnularOpen(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Anular venta #{ventaId}</DialogTitle>
             <DialogDescription>
-              Se revertirá el carrito y el saldo de la caja será ajustado. Esta acción no se puede deshacer.
+              Se revertirá el carrito y el saldo de la caja será ajustado. Esta acción no se puede
+              deshacer.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
@@ -3315,12 +4635,14 @@ function TabResumenPago({
             <Textarea
               placeholder="Ingresa el motivo de la anulación"
               value={motivoAnular}
-              onChange={e => setMotivoAnular(e.target.value)}
+              onChange={(e) => setMotivoAnular(e.target.value)}
               className="resize-none h-20 text-sm"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAnularOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setAnularOpen(false)}>
+              Cancelar
+            </Button>
             <Button
               variant="destructive"
               disabled={!motivoAnular.trim() || anular.isPending}
@@ -3339,16 +4661,25 @@ function TabResumenPago({
 // ── CarritoPanel ──────────────────────────────────────────────────────────────
 
 function CarritoPanel({
-  ventaId, cajaId, onPagar,
-}: { ventaId: number | null; cajaId: number; onPagar: () => void }) {
+  ventaId,
+  cajaId,
+  onPagar,
+}: {
+  ventaId: number | null
+  cajaId: number
+  onPagar: () => void
+}) {
   const { data: carrito, isLoading } = useCarrito(ventaId ?? 0)
   const eliminar = useEliminarProducto(ventaId ?? 0, cajaId)
 
   const detalle = carrito?.detalle ?? []
 
   const handleEliminar = async (detalleId: number) => {
-    try { await eliminar.mutateAsync(detalleId) }
-    catch { toast.error('No se pudo eliminar') }
+    try {
+      await eliminar.mutateAsync(detalleId)
+    } catch {
+      toast.error('No se pudo eliminar')
+    }
   }
 
   return (
@@ -3356,9 +4687,7 @@ function CarritoPanel({
       <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
         <ShoppingCart className="size-4 text-primary" />
         <span className="text-xs font-semibold flex-1">Carrito</span>
-        {detalle.length > 0 && (
-          <Badge className="text-[10px] h-5 px-1.5">{detalle.length}</Badge>
-        )}
+        {detalle.length > 0 && <Badge className="text-[10px] h-5 px-1.5">{detalle.length}</Badge>}
       </div>
 
       {detalle.length > 0 && (
@@ -3383,7 +4712,7 @@ function CarritoPanel({
           </div>
         ) : (
           <div className="divide-y">
-            {detalle.map(d => (
+            {detalle.map((d) => (
               <div
                 key={d.id}
                 className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 hover:bg-muted/30 transition-colors"
@@ -3397,10 +4726,12 @@ function CarritoPanel({
                   </p>
                 </div>
                 <span className="text-xs tabular-nums text-right w-7">{d.cantidad}</span>
-                <span className={cn(
-                  'text-xs tabular-nums text-right w-14',
-                  d.descuento > 0 ? 'text-emerald-600' : 'text-muted-foreground/30',
-                )}>
+                <span
+                  className={cn(
+                    'text-xs tabular-nums text-right w-14',
+                    d.descuento > 0 ? 'text-emerald-600' : 'text-muted-foreground/30',
+                  )}
+                >
                   {d.descuento > 0 ? `−${fmt(d.descuento)}` : '—'}
                 </span>
                 <span className="text-xs font-semibold tabular-nums text-right w-16">
@@ -3440,7 +4771,9 @@ function CarritoPanel({
               </div>
             )}
             {(() => {
-              const sellosTot = carrito.detalle.filter(d => d.tipoProducto === 'estampilla').reduce((s, d) => s + d.subtotal, 0)
+              const sellosTot = carrito.detalle
+                .filter((d) => d.tipoProducto === 'estampilla')
+                .reduce((s, d) => s + d.subtotal, 0)
               return sellosTot > 0 ? (
                 <div className="flex justify-between text-muted-foreground">
                   <span>Estampillas</span>
@@ -3459,9 +4792,11 @@ function CarritoPanel({
           onClick={onPagar}
           disabled={!ventaId || !detalle.length}
         >
-          {detalle.length > 0 && carrito
-            ? <>Ir a pagar — {fmt(carrito.total)}</>
-            : 'Confirmar pago'}
+          {detalle.length > 0 && carrito ? (
+            <>Ir a pagar — {fmt(carrito.total)}</>
+          ) : (
+            'Confirmar pago'
+          )}
         </Button>
       </div>
     </div>
@@ -3471,29 +4806,37 @@ function CarritoPanel({
 // ── PagarDialog ───────────────────────────────────────────────────────────────
 
 interface PagarDialogProps {
-  open:          boolean
-  onOpenChange:  (v: boolean) => void
-  ventaId:       number
-  cajaId:        number
-  total:         number
-  iva:           number
-  sellosTotal:   number
-  clienteEmail:  string | null
-  onSuccess:     () => void
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  ventaId: number
+  cajaId: number
+  total: number
+  iva: number
+  sellosTotal: number
+  clienteEmail: string | null
+  onSuccess: () => void
 }
 
 function PagarDialog({
-  open, onOpenChange, ventaId, cajaId, total, iva, sellosTotal, clienteEmail, onSuccess,
+  open,
+  onOpenChange,
+  ventaId,
+  cajaId,
+  total,
+  iva,
+  sellosTotal,
+  clienteEmail,
+  onSuccess,
 }: PagarDialogProps) {
-  const [medioPago,         setMedioPago]         = useState<MedioPagoVenta>('efectivo')
-  const [efectivoRecibido,  setEfectivoRecibido]  = useState('')
-  const [email,             setEmail]             = useState(clienteEmail ?? '')
+  const [medioPago, setMedioPago] = useState<MedioPagoVenta>('efectivo')
+  const [efectivoRecibido, setEfectivoRecibido] = useState('')
+  const [email, setEmail] = useState(clienteEmail ?? '')
   const confirmar = useConfirmarVenta(ventaId, cajaId)
 
   const showEfectivo = medioPago === 'efectivo' || medioPago === 'mixto_preporteado'
-  const efectivo     = Number(efectivoRecibido) || 0
-  const cambio       = showEfectivo ? Math.max(0, efectivo - total) : 0
-  const faltante     = showEfectivo ? Math.max(0, total - efectivo) : 0
+  const efectivo = Number(efectivoRecibido) || 0
+  const cambio = showEfectivo ? Math.max(0, efectivo - total) : 0
+  const faltante = showEfectivo ? Math.max(0, total - efectivo) : 0
 
   const handleConfirmar = async () => {
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -3563,7 +4906,7 @@ function PagarDialog({
               className="pl-8 h-8 text-sm"
               placeholder="cliente@correo.com"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
         </div>
@@ -3574,7 +4917,7 @@ function PagarDialog({
             Medio de pago
           </Label>
           <div className="grid grid-cols-2 gap-1.5">
-            {MEDIOS_PAGO.map(m => (
+            {MEDIOS_PAGO.map((m) => (
               <label
                 key={m.value}
                 className={cn(
@@ -3592,10 +4935,14 @@ function PagarDialog({
                   onChange={() => setMedioPago(m.value)}
                   className="sr-only"
                 />
-                <span className={cn(
-                  'size-3 rounded-full border-2 shrink-0 transition-colors',
-                  medioPago === m.value ? 'border-primary bg-primary' : 'border-muted-foreground/40',
-                )} />
+                <span
+                  className={cn(
+                    'size-3 rounded-full border-2 shrink-0 transition-colors',
+                    medioPago === m.value
+                      ? 'border-primary bg-primary'
+                      : 'border-muted-foreground/40',
+                  )}
+                />
                 <span className="text-xs font-medium leading-none">{m.label}</span>
               </label>
             ))}
@@ -3612,7 +4959,7 @@ function PagarDialog({
                 className="h-8 text-sm"
                 placeholder="0"
                 value={efectivoRecibido}
-                onChange={e => setEfectivoRecibido(e.target.value)}
+                onChange={(e) => setEfectivoRecibido(e.target.value)}
               />
             </div>
             {efectivo > 0 && (
@@ -3625,10 +4972,12 @@ function PagarDialog({
                   <span className={cn(faltante > 0 ? 'text-destructive' : 'text-muted-foreground')}>
                     {faltante > 0 ? 'Faltante:' : 'Cambio:'}
                   </span>
-                  <span className={cn(
-                    'tabular-nums font-medium',
-                    faltante > 0 ? 'text-destructive' : 'text-emerald-600',
-                  )}>
+                  <span
+                    className={cn(
+                      'tabular-nums font-medium',
+                      faltante > 0 ? 'text-destructive' : 'text-emerald-600',
+                    )}
+                  >
                     {fmt(faltante > 0 ? faltante : cambio)}
                   </span>
                 </div>
@@ -3641,10 +4990,7 @@ function PagarDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button
-            onClick={handleConfirmar}
-            disabled={confirmar.isPending || !email.trim()}
-          >
+          <Button onClick={handleConfirmar} disabled={confirmar.isPending || !email.trim()}>
             {confirmar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
             Confirmar pago
           </Button>
@@ -3659,43 +5005,44 @@ function PagarDialog({
 type Tab = 'productos' | 'especiales' | 'apartado' | 'servicios' | 'historial' | 'pagar'
 
 const ALL_TABS: { value: Tab; label: string; flag?: string; primary?: boolean }[] = [
-  { value: 'productos',  label: 'Productos',  flag: 'ventas:tab_productos'  },
+  { value: 'productos', label: 'Productos', flag: 'ventas:tab_productos' },
   { value: 'especiales', label: 'Especiales', flag: 'ventas:tab_especiales' },
-  { value: 'apartado',   label: 'Apartado',   flag: 'ventas:tab_apartado'   },
-  { value: 'servicios',  label: 'Servicios',  flag: 'ventas:tab_servicios'  },
-  { value: 'historial',  label: 'Historial',  flag: 'ventas:tab_historial'  },
-  { value: 'pagar',      label: 'Pagar',      primary: true },
+  { value: 'apartado', label: 'Apartado', flag: 'ventas:tab_apartado' },
+  { value: 'servicios', label: 'Servicios', flag: 'ventas:tab_servicios' },
+  { value: 'historial', label: 'Historial', flag: 'ventas:tab_historial' },
+  { value: 'pagar', label: 'Pagar', primary: true },
 ]
 
 export default function CarritoVenta() {
   const { cajaId: cajaIdStr } = useParams<{ cajaId: string }>()
-  const navigate   = useNavigate()
-  const user       = useSessionStore(s => s.user)
-  const cajaId     = Number(cajaIdStr) || 0
+  const navigate = useNavigate()
+  const user = useSessionStore((s) => s.user)
+  const cajaId = Number(cajaIdStr) || 0
   const sucursalId = user?.sucursal_id ?? 0
 
   const { flags, flagsLoading } = useAcceso()
   const tabs = useMemo(
-    () => flagsLoading
-      ? []
-      : ALL_TABS.filter(t => !t.flag || (flags?.some(f => f.codigo === t.flag) ?? false)),
+    () =>
+      flagsLoading
+        ? []
+        : ALL_TABS.filter((t) => !t.flag || (flags?.some((f) => f.codigo === t.flag) ?? false)),
     [flags, flagsLoading],
   )
 
-  const { data: caja }        = useCaja(cajaId)
+  const { data: caja } = useCaja(cajaId)
   const { data: statusPunto } = useStatusPunto(sucursalId)
 
-  const cajaCard = statusPunto?.cajas.find(c => c.cajaId === cajaId)
+  const cajaCard = statusPunto?.cajas.find((c) => c.cajaId === cajaId)
   const sesionId = cajaCard?.sesionId ?? null
   const cajeroId = cajaCard?.cajeroId ?? null
 
-  const [crearCajeroOpen,  setCrearCajeroOpen]  = useState(false)
+  const [crearCajeroOpen, setCrearCajeroOpen] = useState(false)
   const [editarCajeroOpen, setEditarCajeroOpen] = useState(false)
-  const [ventaId,          setVentaId]          = useState<number | null>(null)
-  const [cliente,          setCliente]          = useState<ClienteResumen | null>(null)
-  const [carritoVisible,   setCarritoVisible]   = useState(true)
+  const [ventaId, setVentaId] = useState<number | null>(null)
+  const [cliente, setCliente] = useState<ClienteResumen | null>(null)
+  const [carritoVisible, setCarritoVisible] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>(() => {
-    const first = ALL_TABS.find(t => t.value !== 'historial' && t.value !== 'pagar')
+    const first = ALL_TABS.find((t) => t.value !== 'historial' && t.value !== 'pagar')
     return first?.value ?? 'historial'
   })
   const [pagarOpen, setPagarOpen] = useState(false)
@@ -3714,8 +5061,17 @@ export default function CarritoVenta() {
     }
   }
 
-  const { data: carrito }  = useCarrito(ventaId ?? 0)
-  const { data: resumen }  = useResumenTurno(cajaId)
+  const { data: carrito, error: carritoError } = useCarrito(ventaId ?? 0)
+  const { data: resumen } = useResumenTurno(cajaId)
+
+  // Venta pertenece a otra sesión (sesión cerrada/cambiada) → limpiar estado local
+  useEffect(() => {
+    if (carritoError instanceof ApiError && carritoError.status === 403 && ventaId) {
+      toast.error('La venta activa pertenece a otra sesión. Inicia una nueva venta.')
+      setVentaId(null)
+      setCliente(null)
+    }
+  }, [carritoError, ventaId])
 
   const handleVentaIniciada = (id: number, c: ClienteResumen) => {
     setVentaId(id)
@@ -3728,27 +5084,26 @@ export default function CarritoVenta() {
   }
 
   const handleClienteUpdate = (email: string | null, telefono: string | null) => {
-    setCliente(prev => prev ? { ...prev, email, telefono } : prev)
+    setCliente((prev) => (prev ? { ...prev, email, telefono } : prev))
   }
 
   const handlePagoExitoso = () => {
     setVentaId(null)
     setCliente(null)
-    const first = tabs.find(t => t.value !== 'historial' && t.value !== 'pagar')
+    const first = tabs.find((t) => t.value !== 'historial' && t.value !== 'pagar')
     setActiveTab(first?.value ?? 'historial')
   }
 
   // Si la tab activa queda deshabilitada por un cambio de flag, ir a la primera visible
   useEffect(() => {
-    if (!tabs.find(t => t.value === activeTab)) {
-      const first = tabs.find(t => t.value !== 'historial' && t.value !== 'pagar')
+    if (!tabs.find((t) => t.value === activeTab)) {
+      const first = tabs.find((t) => t.value !== 'historial' && t.value !== 'pagar')
       setActiveTab(first?.value ?? 'historial')
     }
   }, [tabs, activeTab])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-
       {/* Page header */}
       <header className="flex items-center gap-3 px-4 py-2.5 border-b bg-card shrink-0">
         <button
@@ -3760,9 +5115,7 @@ export default function CarritoVenta() {
         </button>
         <ShoppingCart className="size-4 text-primary shrink-0" />
         <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-bold leading-tight">
-            {caja?.codigo ?? `Caja #${cajaId}`}
-          </h1>
+          <h1 className="text-sm font-bold leading-tight">{caja?.codigo ?? `Caja #${cajaId}`}</h1>
           <p className="text-[11px] text-muted-foreground">
             {user?.nombre} · {new Date().toLocaleDateString('es-CO')}
           </p>
@@ -3836,7 +5189,6 @@ export default function CarritoVenta() {
 
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
-
         {/* Left: catalog */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {!cliente ? (
@@ -3844,7 +5196,9 @@ export default function CarritoVenta() {
               <Search className="size-10 opacity-10" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium">Busca o crea un cliente para comenzar</p>
-                <p className="text-xs opacity-60">Ingresa el número de documento en la barra de arriba y presiona Buscar.</p>
+                <p className="text-xs opacity-60">
+                  Ingresa el número de documento en la barra de arriba y presiona Buscar.
+                </p>
               </div>
             </div>
           ) : (
@@ -3852,7 +5206,7 @@ export default function CarritoVenta() {
               {/* Tab bar */}
               <div className="flex border-b shrink-0 items-stretch">
                 <div className="flex flex-1 overflow-x-auto">
-                  {tabs.map(t => (
+                  {tabs.map((t) => (
                     <button
                       key={t.value}
                       type="button"
@@ -3876,7 +5230,7 @@ export default function CarritoVenta() {
                 {/* Toggle carrito */}
                 <button
                   type="button"
-                  onClick={() => setCarritoVisible(v => !v)}
+                  onClick={() => setCarritoVisible((v) => !v)}
                   title={carritoVisible ? 'Ocultar carrito' : 'Mostrar carrito'}
                   className={cn(
                     'shrink-0 flex items-center gap-1.5 px-3 border-l -mb-px border-b-2 transition-colors',
@@ -3897,11 +5251,7 @@ export default function CarritoVenta() {
               {/* Tab content */}
               <div className="flex-1 overflow-hidden">
                 {activeTab === 'productos' && (
-                  <TabProductos
-                    sucursalId={sucursalId}
-                    ventaId={ventaId}
-                    cajaId={cajaId}
-                  />
+                  <TabProductos sucursalId={sucursalId} ventaId={ventaId} cajaId={cajaId} />
                 )}
                 {activeTab === 'especiales' && (
                   <TabProductosEspeciales
@@ -3915,6 +5265,8 @@ export default function CarritoVenta() {
                     sucursalId={sucursalId}
                     cajaId={cajaId}
                     clienteId={cliente.id}
+                    ventaId={ventaId}
+                    onAgregarExitoso={() => handleTabClick('pagar')}
                   />
                 )}
                 {activeTab === 'servicios' && (
@@ -3926,10 +5278,7 @@ export default function CarritoVenta() {
                   />
                 )}
                 {activeTab === 'historial' && (
-                  <TabHistorial
-                    cajaId={cajaId}
-                    userRol={user?.rol ?? ''}
-                  />
+                  <TabHistorial cajaId={cajaId} userRol={user?.rol ?? ''} />
                 )}
                 {activeTab === 'pagar' && ventaId != null && (
                   <TabResumenPago

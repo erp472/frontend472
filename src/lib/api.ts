@@ -70,6 +70,8 @@ export async function apiFetch<T>(
   }
 
   const raw = await res.text()
+  if (!raw) return undefined as T
+
   const data = secureJsonParse(raw, undefined, { protoAction: 'remove' })
 
   if (schema) {

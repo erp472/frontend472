@@ -34,6 +34,16 @@ function handleEvent(event: RealtimeEvent, _data: unknown) {
       queryClient.invalidateQueries({ queryKey: ['cajas'] })
       break
 
+    case 'ventas.venta_confirmada': {
+      const d = _data as { sucursalId?: number } | undefined
+      queryClient.invalidateQueries({ queryKey: ['ventas', 'dia'] })
+      if (d?.sucursalId) {
+        queryClient.invalidateQueries({ queryKey: ['ventas', 'dia', d.sucursalId] })
+      }
+      queryClient.invalidateQueries({ queryKey: ['inventario', 'alertas'] })
+      break
+    }
+
     default:
       break
   }

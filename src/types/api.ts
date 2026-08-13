@@ -353,6 +353,82 @@ export interface UpdateProductoInput {
   activo?:             boolean | undefined
 }
 
+// ── Estampillas Admin ─────────────────────────────────────────────────────────
+// Uses ProductoResponse — same shape, just forced tipo='estampilla' on backend
+
+export interface EstampillaQueryParams {
+  buscar?: string | undefined
+  activo?: boolean | undefined
+  pagina?: number | undefined
+  limite?: number | undefined
+}
+
+export interface CreateEstampillaInput {
+  codigo:          string
+  nombre:          string
+  precio:          number
+  cantidadMinima?: number | null
+  cantidadMaxima?: number | null
+}
+
+export interface UpdateEstampillaInput {
+  nombre?:         string
+  precio?:         number
+  cantidadMinima?: number | null
+  cantidadMaxima?: number | null
+  activo?:         boolean
+}
+
+// ── Productos Especiales Admin ────────────────────────────────────────────────
+
+export interface TarifaEscalonada {
+  minCantidad: number
+  maxCantidad: number | null
+  precio:      number
+}
+
+export interface ProductoEspecialResponse {
+  id:             number
+  codigo:         string
+  nombre:         string
+  precio:         number
+  cantidadMinima: number | null
+  cantidadMaxima: number | null
+  activo:         boolean
+  createdAt:      string
+  updatedAt:      string
+  tarifas:        TarifaEscalonada[]
+}
+
+export interface PaginatedProductosEspeciales {
+  datos: ProductoEspecialResponse[]
+  meta:  PaginaMeta
+}
+
+export interface ProductoEspecialQueryParams {
+  buscar?: string | undefined
+  activo?: boolean | undefined
+  pagina?: number | undefined
+  limite?: number | undefined
+}
+
+export interface CreateProductoEspecialInput {
+  codigo:          string
+  nombre:          string
+  precio:          number
+  cantidadMinima?: number | null
+  cantidadMaxima?: number | null
+  tarifas?:        TarifaEscalonada[]
+}
+
+export interface UpdateProductoEspecialInput {
+  nombre?:         string
+  precio?:         number
+  cantidadMinima?: number | null
+  cantidadMaxima?: number | null
+  activo?:         boolean
+}
+
 // ── Servicios ─────────────────────────────────────────────────────────────────
 
 export type TipoServicio = 'nacional' | 'internacional_ms' | 'internacional_courier' | 'apartado_postal' | 'alistamiento'
@@ -370,8 +446,42 @@ export interface ServicioResponse {
   factorVolumetrico:      number
   tiempoEntregaDias:      number | null
   codigoSigma:            string | null
+  tarifaCertificacion:    number | null
+  minimoSeguroPostal:     number | null
+  altoMaxCm:              number | null
+  anchoMaxCm:             number | null
+  largoMaxCm:             number | null
   activo:                 boolean
   createdAt:              string
+}
+
+export interface TarifaEnvioResponse {
+  id:                number
+  servicioId:        number
+  paisDestino:       string
+  ciudadDestino:     string | null
+  pesoMinKg:         number
+  pesoMaxKg:         number | null
+  tarifa:            number
+  tarifaKgAdicional: number | null
+  activa:            boolean
+  vigenciaInicio:    string | null
+  vigenciaFin:       string | null
+}
+
+export interface CreateTarifaInput {
+  paisDestino:        string
+  ciudadDestino?:     string | null
+  pesoMinKg:          number
+  pesoMaxKg?:         number | null
+  tarifa:             number
+  tarifaKgAdicional?: number | null
+}
+
+export interface UpdateTarifaInput {
+  tarifa?:            number
+  tarifaKgAdicional?: number | null
+  activa?:            boolean
 }
 
 export interface PaginatedServicios {
@@ -399,6 +509,10 @@ export interface CreateServicioInput {
   factor_volumetrico?:       number | undefined
   tiempo_entrega_dias?:      number | null | undefined
   codigo_sigma?:             string | null | undefined
+  minimo_seguro_postal?:     number | null | undefined
+  alto_max_cm?:              number | null | undefined
+  ancho_max_cm?:             number | null | undefined
+  largo_max_cm?:             number | null | undefined
 }
 
 export interface UpdateServicioInput {
@@ -412,4 +526,30 @@ export interface UpdateServicioInput {
   tiempo_entrega_dias?:      number | null | undefined
   codigo_sigma?:             string | null | undefined
   activo?:                   boolean | undefined
+  minimo_seguro_postal?:     number | null | undefined
+  alto_max_cm?:              number | null | undefined
+  ancho_max_cm?:             number | null | undefined
+  largo_max_cm?:             number | null | undefined
+}
+
+// ── Registro de Diferencias de Cierre ────────────────────────────────────────
+
+export interface DiferenciaRegistro {
+  id:             number
+  sesionCajaId:   number
+  cajaNombre:     string
+  tipoDiferencia: 'faltante' | 'sobrante'
+  monto:          string
+  estado:         'pendiente' | 'aprobada' | 'rechazada'
+  observaciones:  string | null
+  createdAt:      string
+}
+
+export interface DiferenciaRegistroFiltros {
+  tipo?:   'faltante' | 'sobrante'
+  estado?: 'pendiente' | 'aprobada' | 'rechazada'
+  desde?:  string
+  hasta?:  string
+  limite?: number
+  pagina?: number
 }

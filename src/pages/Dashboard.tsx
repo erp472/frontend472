@@ -1,11 +1,15 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   MapPin, Store, ReceiptText, Monitor, Package, Truck,
   BarChart2, Vault, ShoppingCart, Users, ShieldCheck,
   ToggleLeft, ScrollText, UserRound, ArrowRight, MailOpen,
   AlertTriangle, TrendingUp, TrendingDown, RefreshCw, XCircle,
-  Clock, ClipboardList, MailWarning,
+  Clock, ClipboardList, MailWarning, BellRing, ChevronDown, ChevronUp,
+  Box, PackageX,
 } from 'lucide-react'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { type User, useSessionStore } from '@/stores/useSessionStore'
 import { useStatusPunto, useDiferenciasPendientes, useAlertasCierreAutomatico, type CardAuxiliar, type DiferenciaPendiente } from '@/queries/cajas.queries'
-import { useResumenesPunto, useAlertasApartados, useAnulacionesPendientes } from '@/queries/ventas.queries'
+import { useResumenesPunto, useAlertasApartados, useAnulacionesPendientes, useVentasDia } from '@/queries/ventas.queries'
 import { useAlertasStock, useOrdenesPendientes } from '@/queries/inventario.queries'
 
 const ROL_LABELS: Record<string, string> = {
@@ -508,14 +512,166 @@ function Supervisor({ user }: { user: User }) {
 }
 
 function Cajero({ user }: { user: User }) {
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const sucursalId = user.sucursal_id ?? 0
+
+  const { data: ventas = [], isLoading: loadingVentas } = useVentasDia(sucursalId)
+  const { data: stockAlertas = [] }                     = useAlertasStock()
+
+  const stockSucursal = stockAlertas.filter(s => s.sucursalId === sucursalId)
+  const totalBajo     = stockSucursal.reduce((n, s) => n + s.bajo,    0)
+  const totalCritico  = stockSucursal.reduce((n, s) => n + s.critico, 0)
+
+  const totalVentas    = ventas.reduce((sum, v) => sum + v.total, 0)
+  const cantidadVentas = ventas.length
+  const totalAlertas   = totalBajo + totalCritico
+
   return (
-    <div className="p-6 max-w-md">
-      <Header user={user} subtitle="Mi caja" />
+    <div className="p-6 max-w-lg space-y-5">
+
+      {/* Header + botón alertas */}
+      <div className="flex items-start justify-between gap-4">
+        <Header user={user} subtitle="Mi caja" />
+        <Button
+          variant={totalAlertas > 0 ? 'default' : 'outline'}
+          size="sm"
+          className="shrink-0 gap-1.5 mt-0.5"
+          onClick={() => setSheetOpen(true)}
+        >
+          <BellRing className="size-4" />
+          Alertas del día
+          {totalAlertas > 0 && (
+            <Badge variant="secondary" className="ml-0.5 text-[10px] px-1.5 h-4">
+              {totalAlertas}
+            </Badge>
+          )}
+        </Button>
+      </div>
+
+      {/* Resumen del día */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className={cantidadVentas > 0 ? 'border-emerald-300' : 'border-border'}>
+          <CardContent className="pt-4 pb-4 px-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Ventas hoy</p>
+            <p className={cn('text-2xl font-bold tabular-nums', cantidadVentas > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>
+              {cantidadVentas}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">{fmt(String(totalVentas))}</p>
+          </CardContent>
+        </Card>
+        <Card className={totalAlertas > 0 ? 'border-orange-300' : 'border-border'}>
+          <CardContent className="pt-4 pb-4 px-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Stock bajo</p>
+            <p className={cn('text-2xl font-bold tabular-nums', totalCritico > 0 ? 'text-red-600' : totalBajo > 0 ? 'text-orange-500' : 'text-muted-foreground')}>
+              {totalAlertas}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {totalCritico > 0 ? `${totalCritico} sin stock` : totalBajo > 0 ? 'bajo mínimo' : 'Niveles normales'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Accesos rápidos */}
       <div className="grid grid-cols-2 gap-3">
         <QuickCard to="/ventas"   icon={ShoppingCart} title="Ventas"   description="Iniciar venta en mi caja" />
         <QuickCard to="/clientes" icon={UserRound}    title="Clientes" description="Buscar cliente" />
         <QuickCard to="/reportes" icon={BarChart2}    title="Reportes" description="Resumen de mi turno" />
       </div>
+
+      {/* Panel lateral de alertas */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
+          <SheetHeader className="px-5 pt-5 pb-3 border-b shrink-0">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <BellRing className="size-4" />
+              Actividad del día
+            </SheetTitle>
+          </SheetHeader>
+
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="px-5 py-4 space-y-5">
+
+              {/* Feed de ventas */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Ventas confirmadas ({cantidadVentas})
+                </p>
+                {loadingVentas ? (
+                  <div className="space-y-2">
+                    {[0, 1, 2].map(i => <Skeleton key={i} className="h-16 rounded-xl" />)}
+                  </div>
+                ) : ventas.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">Sin ventas registradas hoy</p>
+                ) : (
+                  <div className="space-y-2">
+                    {ventas.map(v => (
+                      <Card key={v.id} className="border-emerald-200/60">
+                        <CardContent className="px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                              {new Date(v.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span className="text-sm font-bold tabular-nums text-emerald-700">{fmt(String(v.total))}</span>
+                          </div>
+                          <div className="space-y-0.5">
+                            {v.detalle.map(d => (
+                              <div key={d.id} className="flex justify-between text-[11px]">
+                                <span className="text-foreground truncate">{d.nombreProducto}</span>
+                                <span className="text-muted-foreground shrink-0 ml-2">×{d.cantidad}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-1.5 pt-1.5 border-t">
+                            <Badge variant="outline" className="text-[9px] h-4 px-1.5">{v.medioPago}</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Alertas de inventario */}
+              {totalAlertas > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                      Alertas de inventario
+                    </p>
+                    <Card className="border-orange-200">
+                      <CardContent className="px-3 py-3 space-y-2">
+                        {totalCritico > 0 && (
+                          <div className="flex items-center gap-2">
+                            <PackageX className="size-3.5 text-red-500 shrink-0" />
+                            <p className="text-[11px] text-red-600 font-medium">
+                              {totalCritico} producto{totalCritico !== 1 ? 's' : ''} sin stock
+                            </p>
+                          </div>
+                        )}
+                        {totalBajo > 0 && (
+                          <div className="flex items-center gap-2">
+                            <Box className="size-3.5 text-orange-500 shrink-0" />
+                            <p className="text-[11px] text-orange-600">
+                              {totalBajo} producto{totalBajo !== 1 ? 's' : ''} bajo mínimo
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-[10px] text-muted-foreground pt-1 border-t">
+                          Notificar al administrador para reposición de stock
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </>
+              )}
+
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
     </div>
   )
 }

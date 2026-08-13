@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import {
   Search, Plus, Pencil, Trash2, Loader2, AlertCircle, MailOpen,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
@@ -56,7 +57,7 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   tamano:                z.enum(['pequeno', 'mediano', 'grande'] as const).optional(),
-  estado:                z.enum(['disponible', 'mantenimiento'] as const).optional(),
+  estado:                z.enum(['disponible', 'mantenimiento', 'reservado'] as const).optional(),
   diasAlertaVencimiento: z.preprocess((v) => v === '' ? undefined : Number(v), z.number().int().min(1).max(365).optional()),
 })
 
@@ -187,16 +188,24 @@ function ApartadoSheet({
                 </Select>
               </div>
 
-              {(item?.estado === 'disponible' || item?.estado === 'mantenimiento') && (
+              {item?.estado !== 'ocupado' && item?.estado !== 'vencido' && (
                 <div className="space-y-1.5">
                   <Label>Estado</Label>
-                  <Select defaultValue={item.estado} onValueChange={(v) => svU('estado', v as 'disponible' | 'mantenimiento')}>
+                  <Select defaultValue={item?.estado} onValueChange={(v) => svU('estado', v as 'disponible' | 'mantenimiento')}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      {item?.estado === 'reservado' && (
+                        <SelectItem value="reservado" disabled>Reservado (bloqueado)</SelectItem>
+                      )}
                       <SelectItem value="disponible">Disponible</SelectItem>
                       <SelectItem value="mantenimiento">Mantenimiento</SelectItem>
                     </SelectContent>
                   </Select>
+                  {item?.estado === 'reservado' && (
+                    <p className="text-[11px] text-amber-600">
+                      Selecciona "Disponible" para liberar este apartado bloqueado.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -267,10 +276,13 @@ function DeleteDialog({
 
 // ── Página ─────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 50
+
 export default function ApartadosAdmin() {
   const [buscar,       setBuscar]       = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroTamano, setFiltroTamano] = useState('')
+  const [pagina,       setPagina]       = useState(1)
   const [sheetItem,    setSheetItem]    = useState<ApartadoAdminItem | null>(null)
   const [sheetOpen,    setSheetOpen]    = useState(false)
   const [deleteItem,   setDeleteItem]   = useState<ApartadoAdminItem | null>(null)
@@ -280,7 +292,7 @@ export default function ApartadosAdmin() {
     tamano: filtroTamano || undefined,
   })
 
-  const items = (data ?? []).filter((a) => {
+  const filtered = (data ?? []).filter((a) => {
     if (!buscar) return true
     const q = buscar.toLowerCase()
     return (
@@ -290,6 +302,11 @@ export default function ApartadosAdmin() {
     )
   })
 
+  const totalPaginas = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginaActual = Math.min(pagina, totalPaginas)
+  const items        = filtered.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE)
+
+  function resetPagina() { setPagina(1) }
   function openCreate() { setSheetItem(null); setSheetOpen(true) }
   function openEdit(a: ApartadoAdminItem) { setSheetItem(a); setSheetOpen(true) }
 
@@ -315,10 +332,10 @@ export default function ApartadosAdmin() {
             className="pl-9 w-52"
             placeholder="Buscar número, sucursal…"
             value={buscar}
-            onChange={(e) => setBuscar(e.target.value)}
+            onChange={(e) => { setBuscar(e.target.value); resetPagina() }}
           />
         </div>
-        <Select value={filtroEstado} onValueChange={setFiltroEstado}>
+        <Select value={filtroEstado} onValueChange={(v) => { setFiltroEstado(v); resetPagina() }}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Todos los estados" />
           </SelectTrigger>
@@ -330,7 +347,7 @@ export default function ApartadosAdmin() {
             <SelectItem value="mantenimiento">Mantenimiento</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={filtroTamano} onValueChange={setFiltroTamano}>
+        <Select value={filtroTamano} onValueChange={(v) => { setFiltroTamano(v); resetPagina() }}>
           <SelectTrigger className="w-36">
             <SelectValue placeholder="Todos los tamaños" />
           </SelectTrigger>
@@ -428,17 +445,40 @@ export default function ApartadosAdmin() {
           </TableBody>
         </Table>
         {!isLoading && !isError && data && (
-          <div className="border-t px-4 py-2.5 text-xs text-muted-foreground tabular-nums flex gap-4">
-            <span>{items.length} de {data.length} apartados</span>
-            {data.filter(a => a.estado === 'disponible').length > 0 && (
-              <span className="text-emerald-600">
-                {data.filter(a => a.estado === 'disponible').length} disponibles
-              </span>
-            )}
-            {data.filter(a => a.estado === 'ocupado').length > 0 && (
-              <span className="text-blue-600">
-                {data.filter(a => a.estado === 'ocupado').length} ocupados
-              </span>
+          <div className="border-t px-4 py-2.5 text-xs text-muted-foreground tabular-nums flex items-center justify-between gap-4">
+            <div className="flex gap-4">
+              <span>{filtered.length} de {data.length} apartados</span>
+              {data.filter(a => a.estado === 'disponible').length > 0 && (
+                <span className="text-emerald-600">
+                  {data.filter(a => a.estado === 'disponible').length} disponibles
+                </span>
+              )}
+              {data.filter(a => a.estado === 'ocupado').length > 0 && (
+                <span className="text-blue-600">
+                  {data.filter(a => a.estado === 'ocupado').length} ocupados
+                </span>
+              )}
+            </div>
+            {totalPaginas > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline" size="icon" className="size-7"
+                  disabled={paginaActual <= 1}
+                  onClick={() => setPagina(p => p - 1)}
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <span className="min-w-[5rem] text-center">
+                  Pág. {paginaActual} / {totalPaginas}
+                </span>
+                <Button
+                  variant="outline" size="icon" className="size-7"
+                  disabled={paginaActual >= totalPaginas}
+                  onClick={() => setPagina(p => p + 1)}
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
             )}
           </div>
         )}
