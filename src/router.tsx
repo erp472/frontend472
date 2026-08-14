@@ -35,9 +35,11 @@ const AlertasCierrePage        = lazy(() => import('@/pages/cajas/AlertasCierre'
 const RegistroDiferenciasPage  = lazy(() => import('@/pages/cajas/RegistroDiferencias'))
 const ConsolidadoComercioPage  = lazy(() => import('@/pages/cajas/ConsolidadoComercio'))
 const PuntoVentasPage   = lazy(() => import('@/pages/ventas/PuntoVentas'))
-const CarritoVentaPage  = lazy(() => import('@/pages/ventas/CarritoVenta'))
-const GirosPage         = lazy(() => import('@/pages/ventas/GirosPage'))
-const RecaudosPage      = lazy(() => import('@/pages/ventas/RecaudosPage'))
+const CarritoVentaPage      = lazy(() => import('@/pages/ventas/CarritoVenta'))
+const GirosPage             = lazy(() => import('@/pages/ventas/GirosPage'))
+const RecaudosPage          = lazy(() => import('@/pages/ventas/RecaudosPage'))
+const ApartadosVentaPage    = lazy(() => import('@/pages/ventas/ApartadosVentaPage'))
+const GuiaViewerPage        = lazy(() => import('@/pages/ventas/GuiaViewer'))
 const ReportesPage      = lazy(() => import('@/pages/Reportes'))
 const ClientesPage      = lazy(() => import('@/pages/clientes/index'))
 const TiposClientePage  = lazy(() => import('@/pages/clientes/TiposClientePage'))
@@ -405,6 +407,7 @@ export const router = createBrowserRouter(
                           element: <FlagGuard flag="modulo:ventas" />,
                           children: [
                             { path: '/ventas',                          element: lazySuspense(PuntoVentasPage) },
+                            { path: '/ventas/apartados',                element: lazySuspense(ApartadosVentaPage) },
                             { path: '/ventas/caja/:cajaId',             element: lazySuspense(CarritoVentaPage) },
                             { path: '/ventas/caja/:cajaId/giros',       element: lazySuspense(GirosPage) },
                             { path: '/ventas/caja/:cajaId/recaudos',    element: lazySuspense(RecaudosPage) },
@@ -491,6 +494,7 @@ export const router = createBrowserRouter(
       children: [{ path: '/login', element: lazySuspense(Login) }],
     },
     { path: '/unauthorized', element: <Unauthorized /> },
+    { path: '/guia-viewer', element: lazySuspense(GuiaViewerPage) },
     // Workbench — solo ADMIN_SISTEMA
     {
       path: '/lab',

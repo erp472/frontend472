@@ -254,7 +254,7 @@ function DeleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Eliminar apartado</DialogTitle>
           <DialogDescription>

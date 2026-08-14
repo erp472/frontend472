@@ -1,9 +1,12 @@
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Bookmark,
+  Calculator,
   Check,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   ChevronsUpDown,
   Clock,
   Eye,
@@ -19,13 +22,14 @@ import {
   Tag,
   Trash2,
   Truck,
+  Upload,
   UserRound,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
+import { GUIA_VIEWER_KEY } from '@/pages/ventas/GuiaViewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -104,6 +108,7 @@ import {
   useEliminarApartadoDelCarrito,
   useEliminarEnvioDelCarrito,
   useEliminarProducto,
+  useGuardarDireccionFrecuente,
   useIniciarVenta,
   useResumenTurno,
   useDireccionesPorDocumento,
@@ -111,11 +116,40 @@ import {
   useTarifasEspecial,
   useVentasTurno,
 } from '@/queries/ventas.queries'
+import {
+  type AgregarItemPayload,
+  type EstadoLote,
+  type ItemMasivo,
+  type LoteMasivo,
+  type LoteMasivoResumen,
+  useAgregarItemMasivo,
+  useActualizarItemMasivo,
+  useAnularLoteMasivo,
+  useConfirmarLoteMasivo,
+  useCrearLoteMasivo,
+  useEliminarItemMasivo,
+  useImportarCsvMasivo,
+  useLoteMasivo,
+  useLotesMasivos,
+} from '@/queries/envios-masivos.queries'
 import { useSessionStore } from '@/stores/useSessionStore'
 
 // ── Validación de email ───────────────────────────────────────────────────────
 
 const EMAIL_RE = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+
+interface CotizPreview {
+  flete:               number
+  manejo:              number
+  seguro:              number
+  total:               number
+  pesoFisicoKg:        number
+  pesoTarificadoKg:    number
+  pesoVolumetricoKg:   number | null
+  fechaEntregaEstimada: string | null
+  servicioNombre:      string
+  aduanaUSD:           number | null
+}
 
 function validarEmail(v: string): string | null {
   if (!v.trim()) return 'El email es obligatorio'
@@ -188,7 +222,7 @@ function EditarClienteModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Pencil className="size-4" /> Editar datos del cliente
@@ -432,7 +466,7 @@ function CrearCajeroDialog({
         if (!v) handleClose()
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle>{confirmando ? 'Confirmar datos del cajero' : 'Crear cajero'}</DialogTitle>
         </DialogHeader>
@@ -630,7 +664,7 @@ function EditarCajeroDialog({
         if (!v) onClose()
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Editar cajero</DialogTitle>
         </DialogHeader>
@@ -813,7 +847,7 @@ function CrearClienteRapidoDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Crear cliente</DialogTitle>
         </DialogHeader>
@@ -1263,13 +1297,13 @@ const TAMANO_LABEL: Record<string, string> = {
   mediano: 'Mediano',
   grande: 'Grande',
 }
-const IVA_RATE = 0.19
-
 function addMonths(dateStr: string, months: number): string {
   const d = new Date(dateStr)
   d.setMonth(d.getMonth() + months)
   return d.toISOString().split('T')[0]
 }
+
+const TARIFA_APARTADO = 87_500
 
 function TabApartado({
   sucursalId,
@@ -1278,19 +1312,20 @@ function TabApartado({
   ventaId,
   onAgregarExitoso,
 }: {
-  sucursalId: number
-  cajaId: number
-  clienteId: number | null
-  ventaId: number | null
+  sucursalId:      number
+  cajaId:          number
+  clienteId:       number | null
+  ventaId:         number | null
   onAgregarExitoso?: () => void
 }) {
   const today = new Date().toISOString().split('T')[0]
 
   const [tamanoFiltro, setTamanoFiltro] = useState<string>('')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [selectedId,   setSelectedId]   = useState<number | null>(null)
+  const [fechaInicio,  setFechaInicio]  = useState(today)
+  const [comentarios,  setComentarios]  = useState('')
+
   const duracionMeses = 12
-  const [fechaInicio, setFechaInicio] = useState(today)
-  const [comentarios, setComentarios] = useState('')
 
   const { data: apartados, isLoading } = useApartadosDisponibles(
     sucursalId,
@@ -1299,27 +1334,17 @@ function TabApartado({
   const agregar = useAgregarApartadoAlCarrito(ventaId ?? 0, cajaId)
 
   const filtrados = apartados?.lista ?? []
-  const selected = filtrados.find((a) => a.id === selectedId) ?? null
+  const selected  = filtrados.find((a) => a.id === selectedId) ?? null
+  const fechaFin  = addMonths(fechaInicio, duracionMeses)
 
-  const fechaFin = addMonths(fechaInicio, duracionMeses)
-
-  const PRECIO = 87_500
-  const base = Math.round(PRECIO / (1 + IVA_RATE))
-  const iva = PRECIO - base
+  function resetForm() {
+    setSelectedId(null)
+    setComentarios('')
+    setFechaInicio(today)
+  }
 
   const handleAgregar = async () => {
-    if (!clienteId) {
-      toast.error('Busca un cliente primero')
-      return
-    }
-    if (!ventaId) {
-      toast.error('Inicia una venta primero')
-      return
-    }
-    if (!selected) {
-      toast.error('Selecciona un apartado')
-      return
-    }
+    if (!clienteId || !selected || !ventaId) return
     try {
       await agregar.mutateAsync({
         clienteId,
@@ -1331,18 +1356,16 @@ function TabApartado({
         ...(comentarios.trim() ? { comentarios: comentarios.trim() } : {}),
       })
       toast.success(`Apartado #${selected.numero} agregado al carrito`)
-      setSelectedId(null)
-      setComentarios('')
-      setFechaInicio(today)
+      resetForm()
       onAgregarExitoso?.()
-    } catch {
-      toast.error('No se pudo agregar el apartado')
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : 'No se pudo agregar el apartado')
     }
   }
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* ── Panel izquierdo: Nuevo Contrato ────────────────────────────────── */}
+      {/* ── Panel izquierdo: lista de apartados ──────────────────────────── */}
       <div className="w-44 shrink-0 flex flex-col border-r overflow-hidden">
         <div className="px-3 py-2 border-b shrink-0">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
@@ -1350,10 +1373,7 @@ function TabApartado({
           </p>
           <Select
             value={tamanoFiltro}
-            onValueChange={(v) => {
-              setTamanoFiltro(v)
-              setSelectedId(null)
-            }}
+            onValueChange={(v) => { setTamanoFiltro(v); setSelectedId(null) }}
           >
             <SelectTrigger className="h-7 text-xs">
               <SelectValue placeholder="Tamaño" />
@@ -1393,16 +1413,13 @@ function TabApartado({
                   onClick={() => setSelectedId(a.id)}
                   className={cn(
                     'w-full text-left rounded-md px-2 py-1.5 transition-colors',
-                    selectedId === a.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                    selectedId === a.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'hover:bg-muted',
                   )}
                 >
                   <p className="text-xs font-bold leading-none">#{a.numero}</p>
-                  <p
-                    className={cn(
-                      'text-[10px] mt-0.5',
-                      selectedId === a.id ? 'text-primary-foreground/70' : 'text-muted-foreground',
-                    )}
-                  >
+                  <p className={cn('text-[10px] mt-0.5', selectedId === a.id ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
                     {TAMANO_LABEL[a.tamano] ?? a.tamano}
                   </p>
                 </button>
@@ -1412,7 +1429,7 @@ function TabApartado({
         </ScrollArea>
       </div>
 
-      {/* ── Panel derecho: Formulario ───────────────────────────────────────── */}
+      {/* ── Panel derecho: formulario ─────────────────────────────────────── */}
       <ScrollArea className="flex-1">
         <div className="px-4 py-3 space-y-3">
           {/* Apartado seleccionado */}
@@ -1429,7 +1446,7 @@ function TabApartado({
             )}
           </div>
 
-          {/* Duración */}
+          {/* Duración y fechas */}
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
               Duración
@@ -1457,13 +1474,13 @@ function TabApartado({
               <div className="space-y-1">
                 <Label className="text-xs">Precio</Label>
                 <div className="h-8 flex items-center px-3 rounded-md border bg-muted/40">
-                  <span className="text-sm font-bold tabular-nums text-primary">{fmt(PRECIO)}</span>
+                  <span className="text-sm font-bold tabular-nums text-primary">{fmt(TARIFA_APARTADO)}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Denominación Tarifas IVA */}
+          {/* Denominación IVA */}
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
               Denominación Tarifas IVA
@@ -1472,35 +1489,23 @@ function TabApartado({
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="bg-muted/50 border-b">
-                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">
-                      Tarifa
-                    </th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">
-                      Compras
-                    </th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">
-                      IVA
-                    </th>
-                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">
-                      Base Imp.
-                    </th>
+                    <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Tarifa</th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Compras</th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">IVA</th>
+                    <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Base Imp.</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selected ? (
                     <tr>
-                      <td className="px-2 py-2 tabular-nums">{(IVA_RATE * 100).toFixed(0)}%</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{fmt(PRECIO)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums text-amber-600">
-                        {fmt(iva)}
-                      </td>
-                      <td className="px-2 py-2 text-right tabular-nums">{fmt(base)}</td>
+                      <td className="px-2 py-2 text-muted-foreground">Exento</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(TARIFA_APARTADO)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{fmt(0)}</td>
+                      <td className="px-2 py-2 text-right tabular-nums">{fmt(TARIFA_APARTADO)}</td>
                     </tr>
                   ) : (
                     <tr>
-                      <td colSpan={4} className="px-2 py-3 text-center text-muted-foreground">
-                        —
-                      </td>
+                      <td colSpan={4} className="px-2 py-3 text-center text-muted-foreground">—</td>
                     </tr>
                   )}
                 </tbody>
@@ -1520,24 +1525,22 @@ function TabApartado({
             />
           </div>
 
-          {/* Botones */}
+          {/* Acciones */}
           <div className="flex gap-2">
             <Button
               className="flex-1"
               disabled={!selectedId || !clienteId || !ventaId || agregar.isPending}
               onClick={handleAgregar}
             >
-              {agregar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+              {agregar.isPending
+                ? <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                : <ShoppingCart className="size-3.5 mr-1.5" />}
               Agregar al carrito
             </Button>
             <Button
               variant="outline"
               disabled={agregar.isPending}
-              onClick={() => {
-                setSelectedId(null)
-                setComentarios('')
-                setFechaInicio(today)
-              }}
+              onClick={resetForm}
             >
               Limpiar
             </Button>
@@ -1545,12 +1548,7 @@ function TabApartado({
 
           {!clienteId && (
             <p className="text-[11px] text-center text-muted-foreground">
-              Busca un cliente para poder contratar
-            </p>
-          )}
-          {clienteId && !ventaId && (
-            <p className="text-[11px] text-center text-muted-foreground">
-              Inicia la venta para agregar al carrito
+              Busca un cliente para poder agregar al carrito
             </p>
           )}
         </div>
@@ -1631,7 +1629,7 @@ function EspecialProductoModal({
         if (!v) onClose()
       }}
     >
-      <DialogContent className="max-w-sm gap-0 p-0 overflow-hidden">
+      <DialogContent className="max-w-[460px] gap-0 p-0 overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-4 pt-4 pb-3 border-b bg-card">
           <DialogTitle className="text-sm leading-snug pr-6">{p?.nombre ?? '—'}</DialogTitle>
@@ -1978,6 +1976,674 @@ function PaisCombobox({ value, onChange }: { value: string; onChange: (v: string
   )
 }
 
+// ── TabMasivos ────────────────────────────────────────────────────────────────
+
+const COP_FMT = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
+const fmtCop  = (v: number) => COP_FMT.format(v)
+
+const ESTADO_LOTE_LABEL: Record<EstadoLote, string> = {
+  borrador:   'Borrador',
+  confirmado: 'Confirmado',
+  anulado:    'Anulado',
+}
+const ESTADO_LOTE_COLOR: Record<EstadoLote, string> = {
+  borrador:   'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+  confirmado: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+  anulado:    'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+}
+
+// ── ItemForm (add / edit dialog) ──────────────────────────────────────────────
+
+function ItemDialog({
+  loteId,
+  item,
+  open,
+  onClose,
+}: {
+  loteId: number
+  item:   ItemMasivo | null
+  open:   boolean
+  onClose: () => void
+}) {
+  const agregar    = useAgregarItemMasivo(loteId)
+  const actualizar = useActualizarItemMasivo(loteId, item?.id ?? 0)
+
+  const [nombre,   setNombre]   = useState('')
+  const [doc,      setDoc]      = useState('')
+  const [email,    setEmail]    = useState('')
+  const [tel,      setTel]      = useState('')
+  const [dir,      setDir]      = useState('')
+  const [ciudad,   setCiudad]   = useState('')
+  const [pais,     setPais]     = useState('CO')
+  const [cp,       setCp]       = useState('')
+  const [peso,     setPeso]     = useState('0.1')
+  const [contenido, setContenido] = useState('')
+  const [obs,      setObs]      = useState('')
+
+  const reset = () => {
+    setNombre(''); setDoc(''); setEmail(''); setTel('')
+    setDir(''); setCiudad(''); setPais('CO'); setCp('')
+    setPeso('0.1'); setContenido(''); setObs('')
+  }
+
+  useEffect(() => {
+    if (!open) return
+    if (item) {
+      setNombre(item.destinatario.nombre)
+      setDoc(item.destinatario.documento ?? '')
+      setEmail(item.destinatario.email ?? '')
+      setTel(item.destinatario.telefono ?? '')
+      setDir(item.destinatario.direccion ?? '')
+      setCiudad(item.destinatario.ciudad ?? '')
+      setPais(item.destinatario.pais)
+      setCp(item.destinatario.codigoPostal ?? '')
+      setPeso(String(item.calculo.pesoFisicoKg))
+      setContenido(item.contenido ?? '')
+      setObs(item.observaciones ?? '')
+    } else {
+      reset()
+    }
+  }, [open, item])
+
+  const pesoNum = parseFloat(peso.replace(',', '.'))
+  const valido  = nombre.trim().length > 0 && !isNaN(pesoNum) && pesoNum > 0
+
+  const payload: AgregarItemPayload = {
+    destinatarioNombre:    nombre.trim(),
+    destinatarioDocumento: doc.trim()    || undefined,
+    destinatarioEmail:     email.trim()  || undefined,
+    destinatarioTelefono:  tel.trim()    || undefined,
+    destinatarioDireccion: dir.trim()    || undefined,
+    destinatarioCiudad:    ciudad.trim() || undefined,
+    destinatarioPais:      pais || 'CO',
+    destinatarioCp:        cp.trim()     || undefined,
+    pesoFisicoKg:          pesoNum,
+    contenido:             contenido.trim() || undefined,
+    observaciones:         obs.trim()    || undefined,
+  }
+
+  const handleSubmit = () => {
+    if (!valido) return
+    if (item) {
+      actualizar.mutate(payload, {
+        onSuccess: () => { toast.success('Destinatario actualizado'); onClose() },
+        onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
+      })
+    } else {
+      agregar.mutate(payload, {
+        onSuccess: (r) => {
+          toast.success(`Destinatario agregado · ${fmtCop(r.item.calculo.valorTotal)}`)
+          onClose()
+          reset()
+        },
+        onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
+      })
+    }
+  }
+
+  const isPending = agregar.isPending || actualizar.isPending
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle className="text-sm">
+            {item ? 'Editar destinatario' : 'Agregar destinatario'}
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            El costo se calcula automáticamente al guardar según el servicio del lote
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-1">
+          <div className="rounded-md border p-3 space-y-2 bg-muted/10">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Destinatario</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1 col-span-2">
+                <Label className="text-[10px]">Nombre *</Label>
+                <Input className="h-7 text-xs" placeholder="Nombre o empresa" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">Documento</Label>
+                <Input className="h-7 text-xs" placeholder="NIT / CC" value={doc} onChange={(e) => setDoc(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">Teléfono</Label>
+                <Input className="h-7 text-xs" placeholder="Teléfono" value={tel} onChange={(e) => setTel(e.target.value)} />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-[10px]">Dirección</Label>
+                <Input className="h-7 text-xs" placeholder="Dirección completa" value={dir} onChange={(e) => setDir(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">Ciudad</Label>
+                <Input className="h-7 text-xs" placeholder="Ciudad destino" value={ciudad} onChange={(e) => setCiudad(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">País</Label>
+                <Input className="h-7 text-xs" placeholder="CO" value={pais} onChange={(e) => setPais(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">Código postal</Label>
+                <Input className="h-7 text-xs" placeholder="110111" value={cp} onChange={(e) => setCp(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">Peso físico (kg) *</Label>
+                <Input className="h-7 text-xs" type="number" min="0.01" step="0.01" placeholder="0.20" value={peso} onChange={(e) => setPeso(e.target.value)} />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-[10px]">Contenido</Label>
+                <Input className="h-7 text-xs" placeholder="Descripción del contenido" value={contenido} onChange={(e) => setContenido(e.target.value)} />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-[10px]">Observaciones</Label>
+                <Input className="h-7 text-xs" placeholder="Notas adicionales" value={obs} onChange={(e) => setObs(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button size="sm" disabled={!valido || isPending} onClick={handleSubmit}>
+            {isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            {item ? 'Guardar cambios' : 'Agregar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── CsvDialog ─────────────────────────────────────────────────────────────────
+
+function CsvDialog({ loteId, open, onClose }: { loteId: number; open: boolean; onClose: () => void }) {
+  const importar  = useImportarCsvMasivo(loteId)
+  const [csv, setCsv] = useState('')
+
+  const handleImportar = () => {
+    if (!csv.trim()) return
+    importar.mutate(csv, {
+      onSuccess: (r) => {
+        toast.success(`Importados ${r.importados} destinatarios${r.errores.length ? ` · ${r.errores.length} errores` : ''}`)
+        if (r.errores.length) {
+          r.errores.slice(0, 3).forEach((e) => toast.error(`Fila ${e.fila}: ${e.error}`))
+        }
+        onClose()
+        setCsv('')
+      },
+      onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al importar'),
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="text-sm">Importar desde CSV</DialogTitle>
+          <DialogDescription className="text-xs">
+            Columnas: nombre, documento, email, telefono, direccion, ciudad, pais, codigoPostal, pesoKg, contenido
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <p className="text-[10px] text-muted-foreground">Separador: coma (,) o punto y coma (;) · Primera fila = encabezado ignorado</p>
+          <Textarea
+            className="text-xs font-mono resize-none"
+            rows={10}
+            placeholder="nombre,documento,email,telefono,direccion,ciudad,pais,codigoPostal,pesoKg,contenido
+Juan Pérez,12345678,,3001234567,Calle 1 #2-3,Bogotá,CO,110111,0.5,Documentos"
+            value={csv}
+            onChange={(e) => setCsv(e.target.value)}
+          />
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button size="sm" disabled={!csv.trim() || importar.isPending} onClick={handleImportar}>
+            {importar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            Importar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── LoteDetalle ───────────────────────────────────────────────────────────────
+
+function LoteDetalle({
+  loteId,
+  cajaId,
+  onBack,
+}: {
+  loteId: number
+  cajaId: number
+  onBack: () => void
+}) {
+  const { data: lote, isLoading } = useLoteMasivo(loteId)
+  const confirmar = useConfirmarLoteMasivo(loteId)
+  const anular    = useAnularLoteMasivo()
+  const eliminar  = useEliminarItemMasivo(loteId)
+
+  const [itemDialogOpen, setItemDialogOpen]   = useState(false)
+  const [editingItem,    setEditingItem]       = useState<ItemMasivo | null>(null)
+  const [csvOpen,        setCsvOpen]           = useState(false)
+
+  const isBorrador = lote?.estado === 'borrador'
+
+  const handleConfirmar = () => {
+    confirmar.mutate(cajaId, {
+      onSuccess: (r) => {
+        toast.success(`Lote confirmado · ${r.enviosCreados} guías generadas`)
+        onBack()
+      },
+      onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al confirmar'),
+    })
+  }
+
+  const handleAnular = () => {
+    anular.mutate(loteId, {
+      onSuccess: () => { toast.success('Lote anulado'); onBack() },
+      onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
+    })
+  }
+
+  const handleEliminar = (itemId: number) => {
+    eliminar.mutate(itemId, {
+      onSuccess: () => toast.success('Destinatario eliminado'),
+      onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
+    })
+  }
+
+  if (isLoading || !lote) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0 bg-muted/10">
+        <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={onBack}>
+          <ChevronLeft className="size-4" />
+        </Button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold truncate">{lote.remitente.nombre}</span>
+            <span className={`text-[10px] font-medium px-1.5 py-px rounded-full ${ESTADO_LOTE_COLOR[lote.estado]}`}>
+              {ESTADO_LOTE_LABEL[lote.estado]}
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {lote.servicio?.nombreservicios ?? ''} · {lote.totales.items} destinatario{lote.totales.items !== 1 ? 's' : ''} · {fmtCop(lote.totales.total)}
+          </p>
+        </div>
+        {isBorrador && (
+          <div className="flex gap-1.5 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] px-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              disabled={anular.isPending}
+              onClick={handleAnular}
+            >
+              Anular
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-[11px] px-2"
+              disabled={confirmar.isPending || lote.totales.items === 0}
+              onClick={handleConfirmar}
+            >
+              {confirmar.isPending ? <Loader2 className="size-3 animate-spin" /> : 'Confirmar'}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Remitente info */}
+      <div className="px-3 py-2 border-b shrink-0 bg-muted/5">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Remitente compartido</p>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+          <span className="font-medium text-foreground">{lote.remitente.nombre}</span>
+          {lote.remitente.documento && <span>Doc: {lote.remitente.documento}</span>}
+          {lote.remitente.telefono  && <span>Tel: {lote.remitente.telefono}</span>}
+          {lote.remitente.ciudad    && <span>Ciudad: {lote.remitente.ciudad}</span>}
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      {isBorrador && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
+          <Button size="sm" className="h-7 text-[11px] gap-1" onClick={() => { setEditingItem(null); setItemDialogOpen(true) }}>
+            <Plus className="size-3" />
+            Destinatario
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => setCsvOpen(true)}>
+            <Upload className="size-3" />
+            Importar CSV
+          </Button>
+        </div>
+      )}
+
+      {/* Items table */}
+      <div className="flex-1 overflow-auto">
+        {!lote.items || lote.items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-10 text-center px-6">
+            <p className="text-xs text-muted-foreground">Sin destinatarios aún</p>
+            {isBorrador && (
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => { setEditingItem(null); setItemDialogOpen(true) }}>
+                <Plus className="size-3" />
+                Agregar primero
+              </Button>
+            )}
+          </div>
+        ) : (
+          <table className="w-full text-[11px]">
+            <thead className="sticky top-0 bg-muted/70 backdrop-blur-sm">
+              <tr>
+                <th className="px-3 py-1.5 text-left font-medium text-muted-foreground w-7">#</th>
+                <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Destinatario</th>
+                <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-14">Peso</th>
+                <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-20">Total</th>
+                {isBorrador && <th className="px-2 py-1.5 w-14" />}
+              </tr>
+            </thead>
+            <tbody>
+              {lote.items.map((item) => (
+                <tr key={item.id} className="border-b last:border-b-0 hover:bg-muted/20">
+                  <td className="px-3 py-2 text-muted-foreground tabular-nums">{item.fila}</td>
+                  <td className="px-2 py-2">
+                    <p className="font-medium truncate max-w-[140px]">{item.destinatario.nombre}</p>
+                    <p className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                      {[item.destinatario.ciudad, item.destinatario.pais].filter(Boolean).join(', ')}
+                    </p>
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
+                    {item.calculo.pesoFisicoKg}kg
+                  </td>
+                  <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                    {fmtCop(item.calculo.valorTotal)}
+                  </td>
+                  {isBorrador && (
+                    <td className="px-2 py-2">
+                      <div className="flex gap-1 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-6"
+                          onClick={() => { setEditingItem(item); setItemDialogOpen(true) }}
+                        >
+                          <Pencil className="size-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-6 text-destructive hover:text-destructive"
+                          disabled={eliminar.isPending}
+                          onClick={() => handleEliminar(item.id)}
+                        >
+                          <Trash2 className="size-3" />
+                        </Button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Totales footer */}
+      {lote.items && lote.items.length > 0 && (
+        <div className="px-3 py-2 border-t shrink-0 bg-muted/10 flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">{lote.totales.items} destinatarios · {lote.totales.pesoKg}kg total</span>
+          <span className="text-xs font-bold tabular-nums">{fmtCop(lote.totales.total)}</span>
+        </div>
+      )}
+
+      {/* Dialogs */}
+      <ItemDialog
+        loteId={loteId}
+        item={editingItem}
+        open={itemDialogOpen}
+        onClose={() => setItemDialogOpen(false)}
+      />
+      <CsvDialog loteId={loteId} open={csvOpen} onClose={() => setCsvOpen(false)} />
+    </div>
+  )
+}
+
+// ── LoteMasivoRow ─────────────────────────────────────────────────────────────
+
+function LoteMasivoRow({
+  lote,
+  onSelect,
+}: {
+  lote:     LoteMasivoResumen
+  onSelect: (id: number) => void
+}) {
+  return (
+    <button
+      type="button"
+      className="w-full flex items-start gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-muted/30 transition-colors text-left"
+      onClick={() => onSelect(lote.id)}
+    >
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold truncate max-w-[180px]">{lote.remitente}</span>
+          <span className={`text-[10px] font-medium px-1.5 py-px rounded-full ${ESTADO_LOTE_COLOR[lote.estado]}`}>
+            {ESTADO_LOTE_LABEL[lote.estado]}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+          <span>{lote.totalItems} destinatario{lote.totalItems !== 1 ? 's' : ''}</span>
+          <span className="font-semibold text-foreground tabular-nums">{fmtCop(lote.totalCop)}</span>
+          <span>{new Date(lote.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' })}</span>
+        </div>
+      </div>
+      <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+    </button>
+  )
+}
+
+// ── TabMasivos ─────────────────────────────────────────────────────────────────
+
+function TabMasivos({
+  sucursalId,
+  cajaId,
+  clienteId,
+}: {
+  sucursalId: number
+  cajaId:     number
+  clienteId:  number | null
+}) {
+  const { data: lotes, isLoading } = useLotesMasivos(sucursalId)
+  const crearLote = useCrearLoteMasivo()
+  const { data: servicios } = useServiciosPostales(sucursalId)
+
+  const [activeLoteId, setActiveLoteId] = useState<number | null>(null)
+  const [crearOpen,    setCrearOpen]    = useState(false)
+  const [servicioId,   setServicioId]   = useState(0)
+  const [remNombre,    setRemNombre]    = useState('')
+  const [remDoc,       setRemDoc]       = useState('')
+  const [remTel,       setRemTel]       = useState('')
+  const [remCiudad,    setRemCiudad]    = useState('')
+  const [obs,          setObs]          = useState('')
+
+  const serviciosFiltrados = servicios?.filter(
+    (s: ServicioCatalogo) => s.tipo !== 'apartado_postal',
+  )
+  const puedeCrear = servicioId > 0 && remNombre.trim().length > 0
+
+  const resetForm = () => {
+    setServicioId(0); setRemNombre(''); setRemDoc(''); setRemTel(''); setRemCiudad(''); setObs('')
+  }
+
+  const handleCrear = () => {
+    if (!puedeCrear) return
+    crearLote.mutate(
+      {
+        sucursalId,
+        cajaId,
+        servicioId,
+        clienteId:  clienteId ?? undefined,
+        remitente: {
+          nombre:    remNombre.trim(),
+          documento: remDoc.trim()    || undefined,
+          telefono:  remTel.trim()    || undefined,
+          ciudad:    remCiudad.trim() || undefined,
+        },
+        observaciones: obs.trim() || undefined,
+      },
+      {
+        onSuccess: (lote) => {
+          toast.success('Lote masivo creado')
+          setCrearOpen(false)
+          resetForm()
+          setActiveLoteId(lote.id)
+        },
+        onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al crear lote'),
+      },
+    )
+  }
+
+  if (activeLoteId !== null) {
+    return (
+      <LoteDetalle
+        loteId={activeLoteId}
+        cajaId={cajaId}
+        onBack={() => setActiveLoteId(null)}
+      />
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Cabecera */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b shrink-0 bg-muted/20">
+        <div className="flex items-center gap-2">
+          <MailOpen className="size-3.5 text-primary" />
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Envíos Masivos
+          </span>
+          <span className="text-[10px] font-medium px-1.5 py-px rounded-full bg-primary/10 text-primary border border-primary/20">
+            Preporteado
+          </span>
+        </div>
+        <Button size="sm" className="h-7 text-[11px] gap-1" onClick={() => setCrearOpen(true)}>
+          <Plus className="size-3" />
+          Nuevo lote
+        </Button>
+      </div>
+
+      {/* Lista de lotes */}
+      <div className="flex-1 overflow-auto">
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : !lotes || lotes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12 text-center px-6">
+            <div className="rounded-full bg-muted p-3">
+              <MailOpen className="size-6 text-muted-foreground/40" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-muted-foreground">Sin lotes masivos</p>
+              <p className="text-[11px] text-muted-foreground/70 max-w-[220px]">
+                Crea un lote para enviar correspondencia preporteada a múltiples destinatarios
+              </p>
+            </div>
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs mt-1" onClick={() => setCrearOpen(true)}>
+              <Plus className="size-3.5" />
+              Crear primer lote
+            </Button>
+          </div>
+        ) : (
+          <div>
+            {lotes.map((l) => (
+              <LoteMasivoRow key={l.id} lote={l} onSelect={setActiveLoteId} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Dialog: Crear lote */}
+      <Dialog open={crearOpen} onOpenChange={setCrearOpen}>
+        <DialogContent className="max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="text-sm flex items-center gap-2">
+              <MailOpen className="size-4" />
+              Nuevo lote de envíos masivos
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Un remitente → N destinatarios · Pago con estampillas (preporteado)
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            <div className="space-y-1">
+              <Label className="text-xs">Servicio postal *</Label>
+              <Select value={servicioId ? String(servicioId) : ''} onValueChange={(v) => setServicioId(Number(v))}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Seleccionar servicio…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {serviciosFiltrados?.map((s: ServicioCatalogo) => (
+                    <SelectItem key={s.id} value={String(s.id)} className="text-xs">
+                      {s.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-md border p-3 space-y-2 bg-muted/20">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Remitente (compartido para todos los destinatarios)
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-[10px]">Nombre *</Label>
+                  <Input className="h-7 text-xs" placeholder="Nombre o empresa" value={remNombre} onChange={(e) => setRemNombre(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Documento</Label>
+                  <Input className="h-7 text-xs" placeholder="NIT / CC" value={remDoc} onChange={(e) => setRemDoc(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Teléfono</Label>
+                  <Input className="h-7 text-xs" placeholder="Teléfono" value={remTel} onChange={(e) => setRemTel(e.target.value)} />
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-[10px]">Ciudad origen</Label>
+                  <Input className="h-7 text-xs" placeholder="Ej: Bogotá" value={remCiudad} onChange={(e) => setRemCiudad(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Observaciones</Label>
+              <Textarea className="text-xs resize-none" rows={2} placeholder="Referencia interna, contrato…" value={obs} onChange={(e) => setObs(e.target.value)} />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCrearOpen(false)}>Cancelar</Button>
+            <Button size="sm" disabled={!puedeCrear || crearLote.isPending} onClick={handleCrear}>
+              {crearLote.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+              Crear lote
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 // ── TabServiciosPostales ──────────────────────────────────────────────────────
 
 interface PersonaDir {
@@ -2216,19 +2882,18 @@ function DireccionInput({
   const set = <K extends keyof DirState>(k: K, v: DirState[K]) => onChange({ ...value, [k]: v })
   const preview = composeAddress(value)
   const internacional = paisId === null
-  const [showGuardadas, setShowGuardadas] = useState(false)
 
   return (
     <div className="space-y-2">
-      {/* Tabs: Normalizada | Sin normalizar | Guardadas */}
+      {/* Tabs: Normalizada | Sin normalizar */}
       {!internacional && (
         <div className="flex rounded-md border overflow-hidden divide-x text-[11px] font-medium">
           <button
             type="button"
-            onClick={() => { set('modo', 'normalizada'); setShowGuardadas(false) }}
+            onClick={() => set('modo', 'normalizada')}
             className={cn(
               'flex-1 py-1 text-center transition-colors',
-              !showGuardadas && value.modo === 'normalizada'
+              value.modo === 'normalizada'
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-muted/60',
             )}
@@ -2237,78 +2902,21 @@ function DireccionInput({
           </button>
           <button
             type="button"
-            onClick={() => { set('modo', 'libre'); setShowGuardadas(false) }}
+            onClick={() => set('modo', 'libre')}
             className={cn(
               'flex-1 py-1 text-center transition-colors',
-              !showGuardadas && value.modo === 'libre'
+              value.modo === 'libre'
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-muted/60',
             )}
           >
             Sin normalizar
           </button>
-          <button
-            type="button"
-            onClick={() => setShowGuardadas((g) => !g)}
-            className={cn(
-              'flex-1 py-1 text-center transition-colors flex items-center justify-center gap-1',
-              showGuardadas
-                ? 'bg-primary text-primary-foreground'
-                : savedAddresses.length > 0
-                  ? 'text-primary hover:bg-primary/10'
-                  : 'text-muted-foreground hover:bg-muted/60',
-            )}
-          >
-            <Clock className="size-2.5" />
-            Guardadas
-            {savedAddresses.length > 0 && (
-              <span className={cn(
-                'rounded-full px-1 text-[9px] font-bold',
-                showGuardadas ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary',
-              )}>
-                {savedAddresses.length}
-              </span>
-            )}
-          </button>
         </div>
       )}
 
-      {/* Panel: lista de guardadas */}
-      {showGuardadas && (
-        <div className="rounded-md border overflow-hidden max-h-56 overflow-y-auto">
-          {savedAddresses.length === 0 ? (
-            <p className="py-6 text-center text-xs text-muted-foreground">
-              Las direcciones se guardan automáticamente al crear envíos
-            </p>
-          ) : (
-            savedAddresses.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => { onSelectSaved?.(d); setShowGuardadas(false) }}
-                className="w-full text-left px-3 py-2.5 border-b last:border-0 hover:bg-accent/60 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="text-xs font-medium truncate">{d.nombre}</p>
-                    {d.empresa && <p className="text-[10px] text-muted-foreground truncate">{d.empresa}</p>}
-                    {(d.direccion || d.ciudad) && (
-                      <p className="text-[10px] text-muted-foreground font-mono truncate">
-                        {[d.direccion, d.ciudad].filter(Boolean).join(' — ')}
-                      </p>
-                    )}
-                    {d.telefono && <p className="text-[10px] text-muted-foreground">{d.telefono}</p>}
-                  </div>
-                  <span className="shrink-0 rounded border px-1.5 text-[9px] text-muted-foreground whitespace-nowrap">{d.usos}×</span>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* Formulario de dirección — visible solo cuando NO está activo el panel Guardadas */}
-      {!showGuardadas && !internacional && value.modo === 'normalizada' ? (
+      {/* Formulario de dirección */}
+      {!internacional && value.modo === 'normalizada' ? (
         <div className="rounded-md border p-2 space-y-2">
           {/* Vía principal */}
           <div className="space-y-1">
@@ -2459,44 +3067,39 @@ function DireccionInput({
         />
       ) : (
         /* Internacional sin datos BD — texto libre */
-        !showGuardadas && (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Departamento / Estado</Label>
-              <Input
-                className="h-7 text-xs"
-                placeholder="Estado / Región"
-                value={value.departamento}
-                onChange={(e) => set('departamento', e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">
-                Ciudad <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                className="h-7 text-xs"
-                placeholder="Ciudad"
-                value={value.ciudad}
-                onChange={(e) => set('ciudad', e.target.value)}
-              />
-            </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Departamento / Estado</Label>
+            <Input
+              className="h-7 text-xs"
+              placeholder="Estado / Región"
+              value={value.departamento}
+              onChange={(e) => set('departamento', e.target.value)}
+            />
           </div>
-        )
-      )}
-
-      {/* Adición — oculta cuando Guardadas está activo */}
-      {!showGuardadas && (
-        <div className="space-y-1">
-          <Label className="text-xs">Adición de dirección</Label>
-          <Input
-            className="h-7 text-xs"
-            placeholder="Apto 301, Torre A, Interior 2..."
-            value={value.adicion}
-            onChange={(e) => set('adicion', e.target.value)}
-          />
+          <div className="space-y-1">
+            <Label className="text-xs">
+              Ciudad <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              className="h-7 text-xs"
+              placeholder="Ciudad"
+              value={value.ciudad}
+              onChange={(e) => set('ciudad', e.target.value)}
+            />
+          </div>
         </div>
       )}
+
+      <div className="space-y-1">
+        <Label className="text-xs">Adición de dirección</Label>
+        <Input
+          className="h-7 text-xs"
+          placeholder="Apto 301, Torre A, Interior 2..."
+          value={value.adicion}
+          onChange={(e) => set('adicion', e.target.value)}
+        />
+      </div>
     </div>
   )
 }
@@ -2539,12 +3142,40 @@ function AddressModal({
   const [selPhIdx, setSelPhIdx] = useState<number | null>(null)
   const [phTipo, setPhTipo] = useState('CELULAR')
   const [phNum, setPhNum] = useState('')
+  const [guardadasOpen, setGuardadasOpen] = useState(false)
 
   // Colombia siempre tiene departamentos/ciudades en BD; otros países usan texto libre
   const paisId = paisContexto === 'CO' ? COLOMBIA_PAIS_ID : null
 
-  const { data: historial = [], isLoading: historialLoading } = useDireccionesPorDocumento(documento)
+  const { data: historial = [], isLoading: historialLoading } = useDireccionesPorDocumento(documento, rol)
   const { data: guardadas = [] } = useDireccionesFrecuentes(open && clienteId ? clienteId : 0, rol)
+  const guardar = useGuardarDireccionFrecuente(clienteId ?? 0)
+
+  const handleGuardarDireccion = async () => {
+    if (!nombre.trim()) return
+    const dir = selDirIdx !== null ? addresses[selDirIdx].dir : (hasAddressData(draftDir) ? draftDir : null)
+    const telefono = selPhIdx !== null ? phones[selPhIdx]?.numero : phones[0]?.numero
+    const emailRaw = email.trim()
+    const emailVal = emailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : undefined
+    try {
+      await guardar.mutateAsync({
+        rol:          rol ?? 'remitente',
+        nombre:       nombre.trim(),
+        empresa:      empresa.trim() || undefined,
+        telefono:     telefono?.trim() || undefined,
+        email:        emailVal,
+        direccion:    dir ? composeAddress(dir) || undefined : undefined,
+        ciudad:       dir?.ciudad.trim() || undefined,
+        departamento: dir?.departamento?.trim() || undefined,
+        pais:         paisContexto || 'CO',
+        codigoPostal: cp.trim() || undefined,
+        documento:    documento.trim() || undefined,
+      })
+      toast.success('Dirección guardada')
+    } catch {
+      toast.error('No se pudo guardar la dirección')
+    }
+  }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intencional — solo reejecutar cuando cambia open (datos del modal vienen por props)
   useEffect(() => {
@@ -2612,9 +3243,30 @@ function AddressModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-5xl flex flex-col max-h-[90vh] p-0">
-        <DialogHeader className="px-6 pt-5 pb-0 shrink-0">
-          <DialogTitle className="text-sm">{title}</DialogTitle>
+      <DialogContent className="max-w-5xl sm:max-w-5xl w-[calc(100vw-2rem)] h-[90vh] flex flex-col p-0">
+        {/* wrapper relativo para el panel overlay de guardadas */}
+        <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden rounded-xl">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b shrink-0">
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle className="text-sm">{title}</DialogTitle>
+            {clienteId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-xs gap-1.5 shrink-0"
+                onClick={() => setGuardadasOpen(true)}
+              >
+                <Bookmark className="size-3" />
+                Direcciones guardadas
+                {guardadas.length > 0 && (
+                  <span className="rounded-full bg-primary/10 text-primary px-1.5 text-[10px] font-bold">
+                    {guardadas.length}
+                  </span>
+                )}
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto">
@@ -2765,6 +3417,36 @@ function AddressModal({
                       />
                       <button
                         type="button"
+                        disabled={!nombre.trim() || !clienteId || guardar.isPending}
+                        title="Guardar dirección"
+                        onClick={async () => {
+                          if (!nombre.trim() || !clienteId) return
+                          const telefono = selPhIdx !== null ? phones[selPhIdx]?.numero : phones[0]?.numero
+                          try {
+                            await guardar.mutateAsync({
+                              rol:          rol ?? 'remitente',
+                              nombre:       nombre.trim(),
+                              empresa:      empresa.trim() || undefined,
+                              telefono:     telefono?.trim() || undefined,
+                              email:        email.trim() || undefined,
+                              direccion:    composeAddress(a.dir) || undefined,
+                              ciudad:       a.dir.ciudad?.trim() || undefined,
+                              departamento: a.dir.departamento?.trim() || undefined,
+                              pais:         paisContexto || 'CO',
+                              codigoPostal: cp.trim() || undefined,
+                              documento:    documento.trim() || undefined,
+                            })
+                            toast.success('Dirección guardada')
+                          } catch {
+                            toast.error('No se pudo guardar la dirección')
+                          }
+                        }}
+                        className="text-muted-foreground/40 hover:text-primary transition-colors shrink-0 disabled:opacity-30"
+                      >
+                        <Bookmark className="size-3" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           const next = addresses.filter((_, idx) => idx !== i)
                           setAddresses(next)
@@ -2890,9 +3572,155 @@ function AddressModal({
             OK
           </Button>
         </DialogFooter>
+
+        {/* Panel de direcciones guardadas — overlay sin Dialog anidado */}
+        {guardadasOpen && (() => {
+          const tieneDoc = documento.trim().length >= 3
+          const idsDoc = new Set(historial.map((d) => d.id))
+          const extras = guardadas.filter((d) => !idsDoc.has(d.id))
+          return (
+            <div className="absolute inset-0 z-20 flex flex-col bg-popover rounded-xl">
+              <div className="px-5 pt-5 pb-3 border-b shrink-0">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium flex items-center gap-2">
+                    <Bookmark className="size-4 text-primary" />
+                    Direcciones guardadas
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2.5 text-xs gap-1.5 shrink-0"
+                    disabled={!nombre.trim() || guardar.isPending}
+                    onClick={handleGuardarDireccion}
+                  >
+                    {guardar.isPending ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
+                    Guardar actual
+                  </Button>
+                </div>
+                {tieneDoc && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Mostrando resultados para identificación{' '}
+                    <span className="font-mono font-medium text-foreground">{documento}</span>
+                  </p>
+                )}
+              </div>
+              <ScrollArea className="flex-1 min-h-0">
+                {tieneDoc && (
+                  <>
+                    {historialLoading ? (
+                      <div className="flex items-center gap-2 px-5 py-3 text-xs text-muted-foreground border-b">
+                        <Loader2 className="size-3 animate-spin" />
+                        Buscando por identificación...
+                      </div>
+                    ) : historial.length > 0 ? (
+                      <>
+                        <div className="px-5 py-1.5 bg-primary/5 border-b">
+                          <p className="text-[10px] font-semibold text-primary uppercase tracking-wide">
+                            Por identificación · {documento}
+                          </p>
+                        </div>
+                        <div className="divide-y">
+                          {historial.map((d) => (
+                            <DireccionCard key={d.id} d={d} onSelect={(sel) => { handleAutofillFromHistory(sel); setGuardadasOpen(false) }} />
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="px-5 py-3 text-xs text-muted-foreground/70 border-b italic">
+                        Sin direcciones guardadas para {documento}
+                      </p>
+                    )}
+                  </>
+                )}
+                {extras.length > 0 && (
+                  <>
+                    <div className="px-5 py-1.5 bg-muted/40 border-b">
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                        Otras guardadas
+                      </p>
+                    </div>
+                    <div className="divide-y">
+                      {extras.map((d) => (
+                        <DireccionCard key={d.id} d={d} onSelect={(sel) => { handleAutofillFromHistory(sel); setGuardadasOpen(false) }} />
+                      ))}
+                    </div>
+                  </>
+                )}
+                {!tieneDoc && guardadas.length === 0 && (
+                  <div className="flex flex-col items-center justify-center gap-2 py-14 px-6 text-center">
+                    <Bookmark className="size-8 text-muted-foreground/20" />
+                    <p className="text-sm text-muted-foreground">Sin direcciones guardadas</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      Escribe un número de identificación en el formulario y las direcciones guardadas para ese documento aparecerán aquí.
+                    </p>
+                  </div>
+                )}
+              </ScrollArea>
+              <div className="border-t px-5 py-3 shrink-0">
+                <Button variant="outline" size="sm" className="w-full" onClick={() => setGuardadasOpen(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )
+        })()}
+        </div>
       </DialogContent>
     </Dialog>
   )
+}
+
+function DireccionCard({ d, onSelect }: { d: DireccionFrecuente; onSelect: (d: DireccionFrecuente) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(d)}
+      className="w-full text-left px-5 py-3 hover:bg-accent/60 transition-colors"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-sm font-medium truncate">{d.nombre}</p>
+          {d.empresa && (
+            <p className="text-xs text-muted-foreground truncate">{d.empresa}</p>
+          )}
+          {(d.direccion || d.ciudad) && (
+            <p className="text-xs text-muted-foreground font-mono truncate">
+              {[d.direccion, d.ciudad].filter(Boolean).join(' — ')}
+            </p>
+          )}
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            {d.documento && <span className="font-mono">{d.documento}</span>}
+            {d.telefono && <span>{d.telefono}</span>}
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <span className="inline-block rounded border px-1.5 text-[10px] text-muted-foreground mb-1">{d.usos}×</span>
+          <p className="text-[10px] text-muted-foreground/60">
+            {new Date(d.ultimoUso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: '2-digit' })}
+          </p>
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ── Utilidades compartidas para visor de guías ───────────────────────────────
+
+const VIEWER_FEATURES = 'width=960,height=860,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes'
+
+function abrirGuia(guia: GuiaEnvio, preWin?: Window | null) {
+  localStorage.setItem(GUIA_VIEWER_KEY, JSON.stringify(guia))
+  const url = `${window.location.origin}/guia-viewer`
+  if (preWin) {
+    preWin.location.href = url
+  } else {
+    window.open(url, `guia-${Date.now()}`, VIEWER_FEATURES)
+  }
+}
+
+function abrirVentanaGuia() {
+  return window.open('about:blank', `guia-${Date.now()}`, VIEWER_FEATURES)
 }
 
 function TabServiciosPostales({
@@ -2900,11 +3728,13 @@ function TabServiciosPostales({
   cajaId,
   clienteId,
   ventaId,
+  onCotizChange,
 }: {
   sucursalId: number
   cajaId: number
   clienteId: number | null
   ventaId: number | null
+  onCotizChange?: (c: CotizPreview | null) => void
 }) {
   const [pais, setPais] = useState('CO')
   const [servicioId, setServicioId] = useState(0)
@@ -2925,7 +3755,8 @@ function TabServiciosPostales({
   const [medioPago, setMedioPago] = useState<MedioPagoEnvio>('efectivo')
   const [tipoTrayecto, setTipoTrayecto] = useState<TipoTrayecto>('NACIONAL')
   const [enviosGenerados, setEnviosGenerados] = useState<EnvioLocal[]>([])
-  const [guiaActual, setGuiaActual] = useState<GuiaEnvio | null>(null)
+
+
   const [modalPersona, setModalPersona] = useState<'remitente' | 'destinatario' | null>(null)
   const [cajaSeleccion, setCajaSeleccion] = useState<number>(7)
   const [cajaCantidad, setCajaCantidad] = useState(1)
@@ -2991,6 +3822,34 @@ function TabServiciosPostales({
 
   const envioPending = crearEnvio.isPending || agregarEnvioCarrito.isPending
 
+  // Emit cotización to parent so it can be displayed in CarritoPanel
+  useEffect(() => {
+    if (!cotizacion || !onCotizChange) return
+    const _flete     = cotizacion.valorServicio
+    const _manejo    = cotizacion.valorCertificacion ?? 0
+    const _minimoSeg = selectedService?.minimoSeguroPostal ?? 0
+    const _seguro    = seguroAdicional && Number(valorDeclarado) > 0
+      ? Math.max(Math.round(Number(valorDeclarado) * 0.5 / 100), _minimoSeg)
+      : 0
+    onCotizChange({
+      flete:               _flete,
+      manejo:              _manejo,
+      seguro:              _seguro,
+      total:               _flete + _manejo + _seguro,
+      pesoFisicoKg:        cotizacion.pesoFisicoKg,
+      pesoTarificadoKg:    cotizacion.pesoTarificadoKg,
+      pesoVolumetricoKg:   cotizacion.pesoVolumetricoKg ?? null,
+      fechaEntregaEstimada: cotizacion.fechaEntregaEstimada ?? null,
+      servicioNombre:      selectedService?.nombre ?? '—',
+      aduanaUSD:           cotizacion.aduanaEstimadoUSD ? Number(cotizacion.aduanaEstimadoUSD) : null,
+    })
+  }, [cotizacion, selectedService, seguroAdicional, valorDeclarado, onCotizChange])
+
+  // Clear cotizacion in parent when no cotizacion available
+  useEffect(() => {
+    if (!cotizacion && onCotizChange) onCotizChange(null)
+  }, [cotizacion, onCotizChange])
+
   const puedeGuardar =
     servicioId > 0 &&
     pesoKg > 0 &&
@@ -3020,7 +3879,7 @@ function TabServiciosPostales({
     setEsCorrespondencia(false)
   }
 
-  const ejecutarGenerar = async () => {
+  const ejecutarGenerar = async (preWin?: Window | null) => {
     const dirTexto = composeAddress(destinatario.dir)
     const body: CrearEnvioPayload = {
       servicioId,
@@ -3075,7 +3934,7 @@ function TabServiciosPostales({
       ? await agregarEnvioCarrito.mutateAsync(body)
       : await crearEnvio.mutateAsync(body)
 
-    setGuiaActual(result.guia)
+    abrirGuia(result.guia, preWin)
     setActiveTab('envios')
     setEnviosGenerados((prev) => [
       ...prev,
@@ -3110,12 +3969,15 @@ function TabServiciosPostales({
 
   const handleConfirmarYGenerar = async () => {
     setConfirmOpen(false)
+    // Abrir ventana sincrónicamente (antes de cualquier await) para evitar popup blocker
+    const preWin = abrirVentanaGuia()
     try {
       if (ventaId && cajaOpt) {
         await agregarProd.mutateAsync({ productoId: cajaSeleccion, cantidad: cajaCantidad })
       }
-      await ejecutarGenerar()
+      await ejecutarGenerar(preWin)
     } catch {
+      preWin?.close()
       toast.error('No se pudo completar la operación')
     }
   }
@@ -3197,6 +4059,13 @@ function TabServiciosPostales({
                 {enviosGenerados.length}
               </span>
             )}
+          </TabsTrigger>
+          <TabsTrigger value="masivos" className="text-xs gap-1.5">
+            <MailOpen className="size-3" />
+            Masivos
+            <span className="text-[9px] font-medium px-1 py-px rounded bg-primary/15 text-primary leading-none">
+              Preporteado
+            </span>
           </TabsTrigger>
         </TabsList>
 
@@ -3591,84 +4460,20 @@ function TabServiciosPostales({
               </div>
             </ScrollArea>
 
-            {/* Mini-reporte de cotización en tiempo real */}
-            {servicioId > 0 && pesoKg > 0 && (
-              <div className="border-t px-3 py-2.5 bg-muted/20 shrink-0">
+            {/* Cotización — se muestra en CarritoPanel (derecha) cuando carritoVisible */}
+            {servicioId > 0 && pesoKg > 0 && (cotizLoading || cotizError) && (
+              <div className="border-t px-3 py-2 bg-muted/20 shrink-0">
                 {cotizLoading ? (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="size-3 animate-spin" />
-                    Calculando...
+                    Calculando cotización...
                   </div>
-                ) : cotizError ? (
+                ) : (
                   <div className="flex items-center gap-1.5 text-xs text-destructive">
                     <AlertTriangle className="size-3" />
                     Sin tarifa para ese peso / destino
                   </div>
-                ) : cotizacion ? (() => {
-                  const _flete      = cotizacion.valorServicio
-                  const _manejo     = cotizacion.valorCertificacion ?? 0
-                  const _tarifaTotal = _flete + _manejo
-                  const _minimoSeg  = selectedService?.minimoSeguroPostal ?? 0
-                  const _seguro     = seguroAdicional && Number(valorDeclarado) > 0
-                    ? Math.max(Math.round(Number(valorDeclarado) * 0.5 / 100), _minimoSeg)
-                    : 0
-                  const _total      = _tarifaTotal + _seguro
-                  return (
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                        Cotización
-                      </p>
-
-                      {/* Pesos */}
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                        <span className="text-muted-foreground">Peso físico</span>
-                        <span className="tabular-nums text-right">{cotizacion.pesoFisicoKg.toFixed(3)} kg</span>
-                        <span className="text-muted-foreground">Peso volumétrico</span>
-                        <span className="tabular-nums text-right">
-                          {cotizacion.pesoVolumetricoKg != null ? `${cotizacion.pesoVolumetricoKg.toFixed(3)} kg` : '—'}
-                        </span>
-                        <span className="text-muted-foreground font-medium">Peso tarificado</span>
-                        <span className="tabular-nums text-right font-semibold">{cotizacion.pesoTarificadoKg.toFixed(3)} kg</span>
-                      </div>
-
-                      <div className="h-px bg-border" />
-
-                      {/* Valores */}
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                        <span className="text-muted-foreground">Valor flete</span>
-                        <span className="tabular-nums text-right">{fmt(_flete)}</span>
-                        <span className="text-muted-foreground">Tasa de manejo</span>
-                        <span className="tabular-nums text-right">{_manejo > 0 ? fmt(_manejo) : '—'}</span>
-                        <span className="text-muted-foreground font-medium">Tarifa total</span>
-                        <span className="tabular-nums text-right font-medium">{fmt(_tarifaTotal)}</span>
-                        <span className="text-muted-foreground">Descuento</span>
-                        <span className="tabular-nums text-right text-muted-foreground">—</span>
-                        <span className="text-muted-foreground">Seguro</span>
-                        <span className="tabular-nums text-right">{_seguro > 0 ? fmt(_seguro) : '—'}</span>
-                        <span className="text-muted-foreground">Impuesto</span>
-                        <span className="tabular-nums text-right text-muted-foreground">
-                          {cotizacion.aduanaEstimadoUSD ? `USD ${Number(cotizacion.aduanaEstimadoUSD).toFixed(2)}` : '—'}
-                        </span>
-                      </div>
-
-                      <div className="h-px bg-border" />
-
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold">Valor total</span>
-                        <span className="tabular-nums text-sm font-bold text-primary">{fmt(_total)}</span>
-                      </div>
-
-                      {cotizacion.fechaEntregaEstimada && (
-                        <p className="text-[10px] text-muted-foreground">
-                          Entrega est.{' '}
-                          {new Date(cotizacion.fechaEntregaEstimada).toLocaleDateString('es-CO', {
-                            weekday: 'short', day: 'numeric', month: 'short',
-                          })}
-                        </p>
-                      )}
-                    </div>
-                  )
-                })() : null}
+                )}
               </div>
             )}
 
@@ -3690,7 +4495,7 @@ function TabServiciosPostales({
                   variant="outline"
                   size="sm"
                   className="w-full text-xs gap-1.5"
-                  onClick={() => setGuiaActual(previewGuia)}
+                  onClick={() => previewGuia && abrirGuia(previewGuia)}
                 >
                   <Eye className="size-3.5" />
                   Ver borrador de guía
@@ -3794,7 +4599,7 @@ function TabServiciosPostales({
                         <button
                           type="button"
                           className="text-[10px] text-muted-foreground underline-offset-2 hover:underline hover:text-primary"
-                          onClick={() => setGuiaActual(e.guiaData)}
+                          onClick={() => abrirGuia(e.guiaData)}
                         >
                           Ver guía
                         </button>
@@ -3807,38 +4612,12 @@ function TabServiciosPostales({
 
           </ScrollArea>
         </TabsContent>
-      </Tabs>
 
-      {/* ── Modal: Guía postal ───────────────────────────────────────────── */}
-      <Dialog open={guiaActual !== null} onOpenChange={(open) => { if (!open) setGuiaActual(null) }}>
-        <DialogContent className="max-w-[960px] p-6 gap-4">
-          <DialogHeader>
-            <DialogTitle className="font-mono text-base">
-              {guiaActual?.estado === 'BORRADOR'
-                ? 'Vista previa — BORRADOR'
-                : <>Guía <span className="text-primary">{guiaActual?.numeroGuia}</span></>}
-            </DialogTitle>
-            <DialogDescription className="sr-only">
-              Guía postal generada — lista para imprimir
-            </DialogDescription>
-          </DialogHeader>
-          {guiaActual && (
-            <div className="overflow-x-auto">
-              <GuiaPostalSvg guia={guiaActual} />
-            </div>
-          )}
-          <DialogFooter className="gap-2 sm:justify-between">
-            <Button variant="ghost" size="sm" onClick={() => setGuiaActual(null)}>
-              Cerrar
-            </Button>
-            {guiaActual?.estado !== 'BORRADOR' && (
-              <Button size="sm" onClick={() => window.print()}>
-                Imprimir guía
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {/* ── Tab 3: Masivos ──────────────────────────────────────────────── */}
+        <TabsContent value="masivos" className="flex flex-col flex-1 overflow-hidden m-0 border-t">
+          <TabMasivos sucursalId={sucursalId} cajaId={cajaId} clienteId={clienteId} />
+        </TabsContent>
+      </Tabs>
 
       {/* ── Modal: Remitente / Destinatario (con tab Guardadas integrada) ── */}
       <AddressModal
@@ -3857,7 +4636,7 @@ function TabServiciosPostales({
 
       {/* ── Diálogo de confirmación ──────────────────────────────────────── */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[460px]">
           <DialogHeader>
             <DialogTitle className="text-sm">Confirmar guía postal</DialogTitle>
             <DialogDescription className="text-xs">
@@ -4105,7 +4884,7 @@ function TabHistorial({ cajaId, userRol }: { cajaId: number; userRol: string }) 
       )}
 
       <Dialog open={!!anularId} onOpenChange={(open) => !open && setAnularId(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[460px]">
           <DialogHeader>
             <DialogTitle>Anular movimiento #{anularId}</DialogTitle>
           </DialogHeader>
@@ -4162,6 +4941,8 @@ function TabResumenPago({
   const [preporteadoMonto, setPreporteadoMonto] = useState('')
   const [anularOpen, setAnularOpen] = useState(false)
   const [motivoAnular, setMotivoAnular] = useState('')
+  const [guiasConfirmadas, setGuiasConfirmadas] = useState<GuiaEnvio[]>([])
+  const [cambioFinal, setCambioFinal] = useState<number | null>(null)
 
   const confirmar = useConfirmarVenta(ventaId, cajaId)
   const anular = useAnularVenta(ventaId, cajaId)
@@ -4199,8 +4980,9 @@ function TabResumenPago({
   }
 
   const handleConfirmar = async () => {
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error('Ingresa un email válido para la factura')
+    const emailVal = email.trim()
+    if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+      toast.error('El email ingresado no es válido')
       return
     }
     if (isMixto && preporteado <= 0) {
@@ -4217,17 +4999,28 @@ function TabResumenPago({
       toast.error('El efectivo recibido no cubre el valor a pagar')
       return
     }
+    // Para efectivo sin monto ingresado, enviar el total exacto como efectivoRecibido
+    const efectivoEnviar = showEfectivo
+      ? (efectivo > 0 ? efectivo : isMixto ? enEc : total)
+      : undefined
+    // Si el total es 0 y el pago es efectivo, no se puede procesar
+    if (showEfectivo && (!efectivoEnviar || efectivoEnviar <= 0)) {
+      toast.error('El total de la venta no puede ser cero')
+      return
+    }
     try {
-      await confirmar.mutateAsync({
+      const result = await confirmar.mutateAsync({
         medioPago,
-        emailFactura: email.trim(),
-        // Si no ingresó monto, se asume pago exacto (cambio = 0)
-        ...(showEfectivo
-          ? { efectivoRecibido: efectivo > 0 ? efectivo : isMixto ? enEc : total }
-          : {}),
+        ...(emailVal ? { emailFactura: emailVal } : {}),
+        ...(efectivoEnviar !== undefined ? { efectivoRecibido: efectivoEnviar } : {}),
       })
       toast.success('Pago confirmado')
-      onExito()
+      if (result.guias && result.guias.length > 0) {
+        setGuiasConfirmadas(result.guias)
+        setCambioFinal(result.cambio)
+      } else {
+        onExito()
+      }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'No se pudo confirmar el pago')
     }
@@ -4238,13 +5031,73 @@ function TabResumenPago({
 
   const tieneItems =
     (carrito?.detalle.length ?? 0) > 0 ||
-    (carrito?.enviosPendientes.length ?? 0) > 0 ||
-    (carrito?.apartadosPendientes.length ?? 0) > 0
+    (carrito?.enviosPendientes?.length ?? 0) > 0 ||
+    (carrito?.apartadosPendientes?.length ?? 0) > 0
   if (!carrito || !tieneItems) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
         <ShoppingCart className="size-8 opacity-20" />
         <p className="text-xs">El carrito está vacío</p>
+      </div>
+    )
+  }
+
+  // Panel post-pago: muestra guías generadas para imprimir antes de iniciar nueva venta
+  if (guiasConfirmadas.length > 0) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="px-4 py-3 border-b bg-emerald-50/60 dark:bg-emerald-950/20 shrink-0">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="size-5 text-emerald-600" />
+            <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+              Pago confirmado
+            </span>
+            {cambioFinal != null && cambioFinal > 0 && (
+              <span className="ml-auto text-xs text-emerald-600 font-semibold">
+                Cambio: {fmt(cambioFinal)}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {guiasConfirmadas.length === 1
+              ? 'Guía lista para imprimir.'
+              : `${guiasConfirmadas.length} guías listas para imprimir.`}
+          </p>
+        </div>
+
+        <ScrollArea className="flex-1">
+          <div className="px-4 py-3 space-y-2">
+            {guiasConfirmadas.map((g) => (
+              <div
+                key={g.numeroGuia}
+                className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5"
+              >
+                <Truck className="size-4 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-mono font-semibold">{g.numeroGuia}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {g.destinatario.nombre ?? '—'} · {g.destinatario.ciudad ?? g.destinatario.pais}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 shrink-0"
+                  onClick={() => abrirGuia(g)}
+                >
+                  <Eye className="size-3.5" />
+                  Ver / Imprimir
+                </Button>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+
+        <div className="px-4 py-3 border-t shrink-0">
+          <Button className="w-full" onClick={onExito}>
+            Nueva venta
+          </Button>
+        </div>
       </div>
     )
   }
@@ -4393,7 +5246,7 @@ function TabResumenPago({
             ))}
 
             {/* Apartados pendientes */}
-            {(carrito.apartadosPendientes ?? []).map((ap) => (
+            {(carrito.apartadosPendientes ?? []).map((ap: ApartadoPostal) => (
               <tr
                 key={`ap-${ap.id}`}
                 className="border-b hover:bg-muted/20 bg-emerald-50/30 dark:bg-emerald-950/10"
@@ -4600,7 +5453,7 @@ function TabResumenPago({
           <Button
             className="flex-1"
             onClick={handleConfirmar}
-            disabled={confirmar.isPending || !email.trim()}
+            disabled={confirmar.isPending}
           >
             {confirmar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
             Confirmar pago — {fmt(carrito.total)}
@@ -4622,7 +5475,7 @@ function TabResumenPago({
       </div>
 
       <Dialog open={anularOpen} onOpenChange={(open) => !open && setAnularOpen(false)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[460px]">
           <DialogHeader>
             <DialogTitle>Anular venta #{ventaId}</DialogTitle>
             <DialogDescription>
@@ -4664,15 +5517,21 @@ function CarritoPanel({
   ventaId,
   cajaId,
   onPagar,
+  cotizPreview,
 }: {
   ventaId: number | null
   cajaId: number
   onPagar: () => void
+  cotizPreview?: CotizPreview | null
 }) {
   const { data: carrito, isLoading } = useCarrito(ventaId ?? 0)
-  const eliminar = useEliminarProducto(ventaId ?? 0, cajaId)
+  const eliminar         = useEliminarProducto(ventaId ?? 0, cajaId)
+  const eliminarApartado = useEliminarApartadoDelCarrito(ventaId ?? 0)
 
-  const detalle = carrito?.detalle ?? []
+  const detalle   = carrito?.detalle ?? []
+  const envios    = carrito?.enviosPendientes ?? []
+  const apartados = carrito?.apartadosPendientes ?? []
+  const tieneItems = detalle.length > 0 || envios.length > 0 || apartados.length > 0
 
   const handleEliminar = async (detalleId: number) => {
     try {
@@ -4682,19 +5541,28 @@ function CarritoPanel({
     }
   }
 
+  const handleEliminarApartado = async (apartadoId: number) => {
+    try {
+      await eliminarApartado.mutateAsync(apartadoId)
+    } catch {
+      toast.error('No se pudo eliminar el apartado')
+    }
+  }
+
   return (
     <div className="flex flex-col h-full border-l">
       <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
         <ShoppingCart className="size-4 text-primary" />
         <span className="text-xs font-semibold flex-1">Carrito</span>
-        {detalle.length > 0 && <Badge className="text-[10px] h-5 px-1.5">{detalle.length}</Badge>}
+        {tieneItems && (
+          <Badge className="text-[10px] h-5 px-1.5">{detalle.length + envios.length + apartados.length}</Badge>
+        )}
       </div>
 
-      {detalle.length > 0 && (
-        <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 px-2.5 py-1 border-b bg-muted/40 text-[10px] text-muted-foreground font-medium shrink-0">
+      {tieneItems && (
+        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 px-2.5 py-1 border-b bg-muted/40 text-[10px] text-muted-foreground font-medium shrink-0">
           <span>Artículo</span>
           <span className="text-right w-7">Cant.</span>
-          <span className="text-right w-14">Desc.</span>
           <span className="text-right w-16">Total</span>
           <span className="w-4" />
         </div>
@@ -4705,7 +5573,7 @@ function CarritoPanel({
           <div className="flex items-center justify-center py-10">
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
-        ) : !ventaId || !detalle.length ? (
+        ) : !ventaId || !tieneItems ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
             <ShoppingCart className="size-8 opacity-20" />
             <p className="text-xs">El carrito está vacío</p>
@@ -4715,7 +5583,7 @@ function CarritoPanel({
             {detalle.map((d) => (
               <div
                 key={d.id}
-                className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 hover:bg-muted/30 transition-colors"
+                className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 hover:bg-muted/30 transition-colors"
               >
                 <div className="min-w-0">
                   <p className="text-xs font-medium leading-tight line-clamp-2">
@@ -4726,14 +5594,6 @@ function CarritoPanel({
                   </p>
                 </div>
                 <span className="text-xs tabular-nums text-right w-7">{d.cantidad}</span>
-                <span
-                  className={cn(
-                    'text-xs tabular-nums text-right w-14',
-                    d.descuento > 0 ? 'text-emerald-600' : 'text-muted-foreground/30',
-                  )}
-                >
-                  {d.descuento > 0 ? `−${fmt(d.descuento)}` : '—'}
-                </span>
                 <span className="text-xs font-semibold tabular-nums text-right w-16">
                   {fmt(d.subtotal)}
                 </span>
@@ -4747,9 +5607,115 @@ function CarritoPanel({
                 </button>
               </div>
             ))}
+            {envios.map((env) => (
+              <div
+                key={`env-${env.id}`}
+                className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 bg-blue-50/40 dark:bg-blue-950/20"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium leading-tight line-clamp-1 text-blue-700 dark:text-blue-300">
+                    Guía {env.numeroGuia}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {env.destinatarioNombre ?? '—'} · {env.destinatarioCiudad ?? '—'}
+                  </p>
+                </div>
+                <span className="text-xs tabular-nums text-right w-7 text-muted-foreground">1</span>
+                <span className="text-xs font-semibold tabular-nums text-right w-16 text-blue-700 dark:text-blue-300">
+                  {fmt(env.valorTotal)}
+                </span>
+                <span className="w-4" />
+              </div>
+            ))}
+            {apartados.map((ap) => (
+              <div
+                key={`ap-${ap.id}`}
+                className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 bg-emerald-50/40 dark:bg-emerald-950/20"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-medium leading-tight line-clamp-1 text-emerald-700 dark:text-emerald-300">
+                    Apartado #{ap.numero}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground truncate capitalize">
+                    {ap.tamano} · 12 meses
+                  </p>
+                </div>
+                <span className="text-xs tabular-nums text-right w-7 text-muted-foreground">1</span>
+                <span className="text-xs font-semibold tabular-nums text-right w-16 text-emerald-700 dark:text-emerald-300">
+                  {fmt(ap.valor ?? 87_500)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleEliminarApartado(ap.id)}
+                  disabled={eliminarApartado.isPending}
+                  className="flex justify-center w-4 text-muted-foreground/30 hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="size-3" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </ScrollArea>
+
+      {/* Cotización de envío — visible cuando tab servicios tiene cotización activa */}
+      {cotizPreview && (
+        <div className="border-t px-3 py-2.5 bg-blue-50/60 dark:bg-blue-950/20 shrink-0 space-y-1.5">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Calculator className="size-3 text-blue-600 dark:text-blue-400" />
+            <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">
+              Cotización — {cotizPreview.servicioNombre}
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+            <span className="text-muted-foreground">Peso físico</span>
+            <span className="tabular-nums text-right">{cotizPreview.pesoFisicoKg.toFixed(3)} kg</span>
+            {cotizPreview.pesoVolumetricoKg != null && (
+              <>
+                <span className="text-muted-foreground">Peso vol.</span>
+                <span className="tabular-nums text-right">{cotizPreview.pesoVolumetricoKg.toFixed(3)} kg</span>
+              </>
+            )}
+            <span className="text-muted-foreground font-medium">Peso tarif.</span>
+            <span className="tabular-nums text-right font-semibold">{cotizPreview.pesoTarificadoKg.toFixed(3)} kg</span>
+          </div>
+          <div className="h-px bg-blue-200/60 dark:bg-blue-800/40" />
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+            <span className="text-muted-foreground">Flete</span>
+            <span className="tabular-nums text-right">{fmt(cotizPreview.flete)}</span>
+            {cotizPreview.manejo > 0 && (
+              <>
+                <span className="text-muted-foreground">Manejo</span>
+                <span className="tabular-nums text-right">{fmt(cotizPreview.manejo)}</span>
+              </>
+            )}
+            {cotizPreview.seguro > 0 && (
+              <>
+                <span className="text-muted-foreground">Seguro</span>
+                <span className="tabular-nums text-right">{fmt(cotizPreview.seguro)}</span>
+              </>
+            )}
+            {cotizPreview.aduanaUSD != null && (
+              <>
+                <span className="text-muted-foreground">Aduana</span>
+                <span className="tabular-nums text-right text-muted-foreground">USD {cotizPreview.aduanaUSD.toFixed(2)}</span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center justify-between pt-0.5 border-t border-blue-200/60 dark:border-blue-800/40">
+            <span className="text-xs font-bold text-blue-700 dark:text-blue-300">Total envío</span>
+            <span className="tabular-nums text-sm font-bold text-blue-700 dark:text-blue-300">{fmt(cotizPreview.total)}</span>
+          </div>
+          {cotizPreview.fechaEntregaEstimada && (
+            <p className="text-[10px] text-muted-foreground">
+              Entrega est.{' '}
+              {new Date(cotizPreview.fechaEntregaEstimada).toLocaleDateString('es-CO', {
+                weekday: 'short', day: 'numeric', month: 'short',
+              })}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="border-t p-3 space-y-2 shrink-0">
         {carrito && (
@@ -4790,9 +5756,9 @@ function CarritoPanel({
         <Button
           className="w-full h-10 text-sm font-semibold"
           onClick={onPagar}
-          disabled={!ventaId || !detalle.length}
+          disabled={!ventaId || !tieneItems}
         >
-          {detalle.length > 0 && carrito ? (
+          {tieneItems && carrito ? (
             <>Ir a pagar — {fmt(carrito.total)}</>
           ) : (
             'Confirmar pago'
@@ -4873,7 +5839,7 @@ function PagarDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[538px]">
         <DialogHeader>
           <DialogTitle>Confirmar pago</DialogTitle>
         </DialogHeader>
@@ -5041,6 +6007,7 @@ export default function CarritoVenta() {
   const [ventaId, setVentaId] = useState<number | null>(null)
   const [cliente, setCliente] = useState<ClienteResumen | null>(null)
   const [carritoVisible, setCarritoVisible] = useState(true)
+  const [cotizPreview, setCotizPreview] = useState<CotizPreview | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const first = ALL_TABS.find((t) => t.value !== 'historial' && t.value !== 'pagar')
     return first?.value ?? 'historial'
@@ -5063,6 +6030,11 @@ export default function CarritoVenta() {
 
   const { data: carrito, error: carritoError } = useCarrito(ventaId ?? 0)
   const { data: resumen } = useResumenTurno(cajaId)
+
+  // Clear cotizPreview when leaving the servicios tab
+  useEffect(() => {
+    if (activeTab !== 'servicios') setCotizPreview(null)
+  }, [activeTab])
 
   // Venta pertenece a otra sesión (sesión cerrada/cambiada) → limpiar estado local
   useEffect(() => {
@@ -5275,6 +6247,7 @@ export default function CarritoVenta() {
                     cajaId={cajaId}
                     clienteId={cliente.id}
                     ventaId={ventaId}
+                    onCotizChange={setCotizPreview}
                   />
                 )}
                 {activeTab === 'historial' && (
@@ -5307,6 +6280,7 @@ export default function CarritoVenta() {
               ventaId={ventaId}
               cajaId={cajaId}
               onPagar={() => handleTabClick('pagar')}
+              cotizPreview={activeTab === 'servicios' ? cotizPreview : null}
             />
           </div>
         )}

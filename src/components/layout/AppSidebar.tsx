@@ -126,7 +126,19 @@ const navMain: NavGroup[] = [
           { title: 'Alertas de cierre', url: '/cajas/cierre', icon: Bell,            permiso: 'caja:consultar' },
         ],
       },
-      { title: 'Ventas', url: '/ventas', icon: ShoppingCart, activePrefix: '/ventas', permiso: 'ventas:consultar', flag: 'modulo:ventas', plataforma: 'tauri', roles: ['CAJERO'] },
+      {
+        title:        'Ventas',
+        icon:         ShoppingCart,
+        activePrefix: '/ventas',
+        permiso:      'ventas:consultar',
+        flag:         'modulo:ventas',
+        plataforma:   'tauri',
+        roles:        ['CAJERO'],
+        children: [
+          { title: 'Punto de venta',      url: '/ventas',            icon: ShoppingCart, permiso: 'ventas:consultar' },
+          { title: 'Apartados postales',  url: '/ventas/apartados',  icon: MailOpen,     permiso: 'ventas:consultar' },
+        ],
+      },
       {
         title:         'Clientes',
         icon:          UserRound,

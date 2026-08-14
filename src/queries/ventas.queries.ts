@@ -184,6 +184,7 @@ export interface ConfirmarVentaResult {
   venta: Venta; movimiento: MovimientoVenta
   saldoActual: number; alertas: string[]
   cambio: number | null
+  guias: GuiaEnvio[]
 }
 
 export interface DireccionFrecuente {
@@ -301,7 +302,16 @@ export function useApartadosDisponibles(sucursalId: number, tamano?: string) {
   if (tamano) params.set('tamano', tamano)
   return useQuery({
     queryKey: VENTAS_KEYS.apartados(sucursalId, tamano),
-    queryFn:  () => apiFetch<ApartadosDisponiblesResponse>(`/ventas/apartados/disponibles?${params}`),
+    queryFn:  async () => {
+      const raw = await apiFetch<ApartadosDisponiblesResponse | ApartadoPostal[]>(
+        `/ventas/apartados/disponibles?${params}`,
+      )
+      // normaliza array plano (dist viejo) y objeto { totalDisponibles, lista } (fuente actual)
+      if (Array.isArray(raw)) {
+        return { totalDisponibles: raw.length, lista: raw } as ApartadosDisponiblesResponse
+      }
+      return raw
+    },
     enabled:  sucursalId > 0,
   })
 }
@@ -637,6 +647,34 @@ export function useDireccionesFrecuentes(clienteId: number, rol?: 'remitente' | 
     queryFn:  () => apiFetch<DireccionFrecuente[]>(`/ventas/clientes/${clienteId}/direcciones${qs}`),
     enabled:  clienteId > 0,
     staleTime: 60_000,
+  })
+}
+
+export interface GuardarDireccionPayload {
+  rol:          'remitente' | 'destinatario'
+  nombre:       string
+  empresa?:     string
+  telefono?:    string
+  email?:       string
+  direccion?:   string
+  ciudad?:      string
+  departamento?: string
+  pais?:        string
+  codigoPostal?: string
+  documento?:   string
+}
+
+export function useGuardarDireccionFrecuente(clienteId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: GuardarDireccionPayload) =>
+      apiFetch<void>(`/ventas/clientes/${clienteId}/direcciones`, {
+        method: 'POST',
+        body: JSON.stringify({ pais: 'CO', ...data }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: VENTAS_KEYS.direccionesFrecuentes(clienteId) })
+    },
   })
 }
 

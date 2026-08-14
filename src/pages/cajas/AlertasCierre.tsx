@@ -1525,7 +1525,7 @@ export default function AlertasCierre() {
 
       {/* Confirmación reset automático */}
       <Dialog open={showReset} onOpenChange={setShowReset}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[460px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <RotateCcw className="size-4" />

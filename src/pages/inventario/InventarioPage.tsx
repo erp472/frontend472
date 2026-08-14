@@ -98,7 +98,7 @@ function AjusteModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[538px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="size-4" /> Ajuste físico de stock
@@ -166,7 +166,7 @@ function EntradaModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[538px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PlusCircle className="size-4" /> Entrada de mercancía

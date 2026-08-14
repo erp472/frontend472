@@ -180,7 +180,7 @@ function CajaCard({
 
       {/* Picker de cajero */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
             <DialogTitle>Asignar cajero a {caja.nombre}</DialogTitle>
           </DialogHeader>
@@ -363,7 +363,7 @@ function SucursalPanel({ sucursalId, sucursalNombre }: { sucursalId: number; suc
 
       {/* Picker de cajeros libres */}
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
             <DialogTitle>Agregar cajero a {sucursalNombre}</DialogTitle>
           </DialogHeader>

@@ -70,7 +70,7 @@ function CrearRolModal({ open, onClose, onCreated }: CrearRolModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[538px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="size-4 text-primary" />
@@ -177,7 +177,7 @@ function RolModal({ rol, open, onClose, onDeleted }: RolModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[538px]">
         {phase === 'edit' ? (
           <>
             <DialogHeader>

@@ -189,7 +189,7 @@ export default function FeatureFlags() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[538px]">
           <DialogHeader>
             <DialogTitle>Nuevo Feature Flag</DialogTitle>
           </DialogHeader>

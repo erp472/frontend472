@@ -162,7 +162,7 @@ function CustodiaDialog({
         if (!v) handleClose()
       }}
     >
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-[538px] p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-5 pt-5 pb-0">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <ArrowLeftRight className="size-4" /> Cambio de Custodia
@@ -579,7 +579,7 @@ function CajeroDashboard({
 
       {/* Modal de cierre */}
       <Dialog open={showCierre} onOpenChange={setShowCierre}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[460px]">
           <DialogHeader>
             <DialogTitle className="text-base">Cerrar turno — {card.nombre}</DialogTitle>
           </DialogHeader>

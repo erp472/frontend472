@@ -558,7 +558,7 @@ function CustodiaDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose() }}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[538px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowLeftRight className="size-4" /> Cambio de Custodia

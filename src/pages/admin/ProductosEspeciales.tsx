@@ -223,7 +223,7 @@ function TarifasDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-[614px]">
         <DialogHeader>
           <DialogTitle>Tarifas escalonadas — {producto?.nombre}</DialogTitle>
           <DialogDescription>

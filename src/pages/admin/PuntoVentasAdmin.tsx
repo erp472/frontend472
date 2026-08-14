@@ -56,7 +56,7 @@ function AperturaDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { setBase(''); onClose() } }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Aperturar caja</DialogTitle>
           <DialogDescription>
@@ -146,7 +146,7 @@ function CrearCajaPrincipalDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Crear caja principal</DialogTitle>
           <DialogDescription>
@@ -231,7 +231,7 @@ function AgregarCajeroDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-[460px]">
         <DialogHeader>
           <DialogTitle>Agregar cajero</DialogTitle>
           <DialogDescription>

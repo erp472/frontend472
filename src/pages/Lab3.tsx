@@ -906,7 +906,7 @@ function AddressModal({ open, onClose, onSave, title }: {
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-[614px]">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
@@ -1796,7 +1796,7 @@ function Despacho() {
 
       {/* Modal nueva saca */}
       <Dialog open={modalNueva} onOpenChange={v => !v && setModalNueva(false)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[460px]">
           <DialogHeader><DialogTitle>Nueva saca</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -1832,7 +1832,7 @@ function Despacho() {
 
       {/* Modal cierre de saca */}
       <Dialog open={modalCierre} onOpenChange={v => !v && setModalCierre(false)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-[460px]">
           <DialogHeader><DialogTitle>Cerrar saca {saca?.precinto}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="text-sm space-y-1 bg-muted/30 rounded-lg p-3">

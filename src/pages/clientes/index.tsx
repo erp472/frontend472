@@ -233,7 +233,7 @@ function NuevoClienteDialog({ open, onClose, onCreado }: {
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-[538px]">
         <DialogHeader>
           <DialogTitle>Nuevo cliente</DialogTitle>
         </DialogHeader>
