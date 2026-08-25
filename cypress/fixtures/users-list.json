@@ -1,0 +1,34 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "nombre": "Ana Cajera",
+      "email": "cajera@4-72.com.co",
+      "rol": "CAJERO",
+      "sucursal_id": 1,
+      "activo": true,
+      "ultimoLogin": "2026-08-21T08:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "nombre": "Pedro Supervisor",
+      "email": "supervisor@4-72.com.co",
+      "rol": "SUPERVISOR_REGIONAL",
+      "sucursal_id": 1,
+      "activo": true,
+      "ultimoLogin": "2026-08-21T07:00:00.000Z"
+    },
+    {
+      "id": 3,
+      "nombre": "Admin Sistema",
+      "email": "admin@4-72.com.co",
+      "rol": "ADMIN_SISTEMA",
+      "sucursal_id": 1,
+      "activo": true,
+      "ultimoLogin": "2026-08-21T06:00:00.000Z"
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "limit": 20
+}

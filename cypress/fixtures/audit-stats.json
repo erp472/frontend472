@@ -1,0 +1,12 @@
+{
+  "totalAcciones": 1250,
+  "accionesHoy": 48,
+  "usuariosActivos": 5,
+  "accionesPorTipo": {
+    "LOGIN": 200,
+    "CREAR": 500,
+    "ACTUALIZAR": 300,
+    "ELIMINAR": 50,
+    "CONSULTAR": 200
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "sucursalId": 1,
+  "cajaPadreId": 1,
+  "panel": {
+    "baseGeneral": "500000",
+    "cajaGeneral": "650000",
+    "cajaFuerteGeneral": "300000",
+    "acumuladoMonedaCirculante": "350000"
+  },
+  "cajas": [
+    {
+      "cajaId": 10,
+      "sesionId": 1,
+      "codigo": "AUX-001",
+      "nombre": "Caja Auxiliar 1",
+      "tipo": "pos",
+      "cajeroId": 1,
+      "estado": "abierta",
+      "saldoActual": "150000",
+      "baseDia": "100000",
+      "limiteAlerta": null,
+      "ingresosSesion": "100000",
+      "egresosSesion": "50000",
+      "girosCount": 0,
+      "girosValor": "0",
+      "alertas": []
+    },
+    {
+      "cajaId": 1,
+      "sesionId": 100,
+      "codigo": "GEN-001",
+      "nombre": "Caja General",
+      "tipo": "general",
+      "cajeroId": null,
+      "estado": "abierta",
+      "saldoActual": "300000",
+      "baseDia": "500000",
+      "limiteAlerta": null,
+      "ingresosSesion": "200000",
+      "egresosSesion": "0",
+      "girosCount": 0,
+      "girosValor": "0",
+      "alertas": []
+    }
+  ]
+}

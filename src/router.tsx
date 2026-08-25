@@ -23,6 +23,7 @@ const SucursalesPage = lazy(() => import('@/pages/admin/Sucursales'))
 const EquiposPage    = lazy(() => import('@/pages/admin/Equipos'))
 const ProductosPage           = lazy(() => import('@/pages/admin/Productos'))
 const EstampillasAdminPage    = lazy(() => import('@/pages/admin/EstampillasAdmin'))
+const FilateliaAdminPage      = lazy(() => import('@/pages/admin/FilateliaAdmin'))
 const ProductosEspecialesPage = lazy(() => import('@/pages/admin/ProductosEspeciales'))
 const ServiciosPage           = lazy(() => import('@/pages/admin/Servicios'))
 const ApartadosPage           = lazy(() => import('@/pages/admin/ApartadosAdmin'))
@@ -34,12 +35,15 @@ const DetalleCajaPage          = lazy(() => import('@/pages/cajas/DetalleCaja'))
 const AlertasCierrePage        = lazy(() => import('@/pages/cajas/AlertasCierre'))
 const RegistroDiferenciasPage  = lazy(() => import('@/pages/cajas/RegistroDiferencias'))
 const ConsolidadoComercioPage  = lazy(() => import('@/pages/cajas/ConsolidadoComercio'))
-const PuntoVentasPage   = lazy(() => import('@/pages/ventas/PuntoVentas'))
+const PuntoVentasPage       = lazy(() => import('@/pages/ventas/PuntoVentas'))
+const DashboardVentasPage   = lazy(() => import('@/pages/ventas/DashboardVentas'))
 const CarritoVentaPage      = lazy(() => import('@/pages/ventas/CarritoVenta'))
 const GirosPage             = lazy(() => import('@/pages/ventas/GirosPage'))
 const RecaudosPage          = lazy(() => import('@/pages/ventas/RecaudosPage'))
 const ApartadosVentaPage    = lazy(() => import('@/pages/ventas/ApartadosVentaPage'))
 const GuiaViewerPage        = lazy(() => import('@/pages/ventas/GuiaViewer'))
+const EnviosMasivosPage     = lazy(() => import('@/pages/ventas/EnviosMasivosPage'))
+const GuiaDemoPage          = lazy(() => import('@/pages/GuiaDemo'))
 const ReportesPage      = lazy(() => import('@/pages/Reportes'))
 const ClientesPage      = lazy(() => import('@/pages/clientes/index'))
 const TiposClientePage  = lazy(() => import('@/pages/clientes/TiposClientePage'))
@@ -52,13 +56,19 @@ function HomeRedirect() {
   const user = useSessionStore(s => s.user)
 
   if (user?.rol === 'CAJERO' || user?.rol === 'USUARIO_POST') {
-    return <Navigate to="/ventas" replace />
+    return <Navigate to="/ventas/estadisticas" replace />
   }
   return (
     <Suspense fallback={<PageLoader />}>
       <Dashboard />
     </Suspense>
   )
+}
+
+// ── Ventas index: PuntoVentas maneja internamente el rol (cajero vs supervisor) ─
+
+function VentasIndex() {
+  return lazySuspense(PuntoVentasPage)
 }
 
 // ── Cajas redirect ────────────────────────────────────────────────────────────
@@ -310,6 +320,7 @@ export const router = createBrowserRouter(
                       children: [
                         { path: '/admin/productos',           element: lazySuspense(ProductosPage) },
                         { path: '/admin/estampillas',         element: lazySuspense(EstampillasAdminPage) },
+                        { path: '/admin/filatelia',           element: lazySuspense(FilateliaAdminPage) },
                         { path: '/admin/productos-especiales', element: lazySuspense(ProductosEspecialesPage) },
                       ],
                     },
@@ -406,11 +417,13 @@ export const router = createBrowserRouter(
                         {
                           element: <FlagGuard flag="modulo:ventas" />,
                           children: [
-                            { path: '/ventas',                          element: lazySuspense(PuntoVentasPage) },
+                            { path: '/ventas',                          element: <VentasIndex /> },
+                            { path: '/ventas/estadisticas',             element: lazySuspense(DashboardVentasPage) },
                             { path: '/ventas/apartados',                element: lazySuspense(ApartadosVentaPage) },
                             { path: '/ventas/caja/:cajaId',             element: lazySuspense(CarritoVentaPage) },
                             { path: '/ventas/caja/:cajaId/giros',       element: lazySuspense(GirosPage) },
                             { path: '/ventas/caja/:cajaId/recaudos',    element: lazySuspense(RecaudosPage) },
+                            { path: '/ventas/masivos',                  element: lazySuspense(EnviosMasivosPage) },
                           ],
                         },
                       ],
@@ -495,6 +508,7 @@ export const router = createBrowserRouter(
     },
     { path: '/unauthorized', element: <Unauthorized /> },
     { path: '/guia-viewer', element: lazySuspense(GuiaViewerPage) },
+    { path: '/guia-demo',   element: lazySuspense(GuiaDemoPage) },
     // Workbench — solo ADMIN_SISTEMA
     {
       path: '/lab',

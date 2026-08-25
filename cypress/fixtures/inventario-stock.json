@@ -1,0 +1,35 @@
+{
+  "sucursalId": 1,
+  "items": [
+    {
+      "productoId": 1,
+      "codigo": "EST-001",
+      "nombre": "Estampilla Nacional $300",
+      "tipo": "estampilla",
+      "stockActual": 500,
+      "stockMinimo": 100,
+      "enAlerta": false
+    },
+    {
+      "productoId": 2,
+      "codigo": "SOB-001",
+      "nombre": "Sobre Nacional",
+      "tipo": "sobre",
+      "stockActual": 50,
+      "stockMinimo": 100,
+      "enAlerta": true
+    },
+    {
+      "productoId": 3,
+      "codigo": "EMP-001",
+      "nombre": "Empaque Pequeño",
+      "tipo": "empaque",
+      "stockActual": 200,
+      "stockMinimo": 50,
+      "enAlerta": false
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "limit": 20
+}

@@ -1,0 +1,11 @@
+{
+  "id": 10,
+  "sucursalId": 1,
+  "cajaPadreId": 1,
+  "codigo": "AUX-001",
+  "nombre": "Caja Auxiliar 1",
+  "tipo": "pos",
+  "baseDia": "100000",
+  "limiteAlerta": null,
+  "activo": true
+}

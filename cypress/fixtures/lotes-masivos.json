@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "estado": "borrador",
+    "remitente": "Empresa ABC S.A.S.",
+    "totalItems": 3,
+    "totalCop": 31500,
+    "createdAt": "2026-08-21T10:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "estado": "confirmado",
+    "remitente": "XYZ Corp",
+    "totalItems": 10,
+    "totalCop": 105000,
+    "createdAt": "2026-08-20T14:00:00.000Z"
+  }
+]

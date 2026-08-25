@@ -25,6 +25,7 @@ import {
   UserCog,
   TrendingUp,
   Stamp,
+  BookOpen,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -84,7 +85,7 @@ const navMain: NavGroup[] = [
   {
     label: 'Principal',
     items: [
-      { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+      { title: 'Dashboard', url: '/', icon: LayoutDashboard, roles: ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA', 'INVENTARIOS', 'ADMINISTRATIVO'] },
     ],
   },
   {
@@ -106,6 +107,7 @@ const navMain: NavGroup[] = [
       { title: 'Stock',      url: '/inventario',                 icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'INVENTARIOS'], flag: 'modulo_inventario' },
       { title: 'Productos',  url: '/admin/productos',            icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
       { title: 'Estampillas', url: '/admin/estampillas',         icon: Stamp,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
+      { title: 'Filatelia',   url: '/admin/filatelia',           icon: BookOpen, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
       { title: 'Productos Especiales', url: '/admin/productos-especiales', icon: Layers, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_productos' },
       { title: 'Servicios',  url: '/admin/servicios',            icon: Truck,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_servicios'  },
       { title: 'Apartados',  url: '/admin/apartados',            icon: MailOpen, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
@@ -135,8 +137,9 @@ const navMain: NavGroup[] = [
         plataforma:   'tauri',
         roles:        ['CAJERO'],
         children: [
-          { title: 'Punto de venta',      url: '/ventas',            icon: ShoppingCart, permiso: 'ventas:consultar' },
-          { title: 'Apartados postales',  url: '/ventas/apartados',  icon: MailOpen,     permiso: 'ventas:consultar' },
+          { title: 'Punto de venta',      url: '/ventas',                icon: ShoppingCart, permiso: 'ventas:consultar' },
+          { title: 'Estadísticas del día', url: '/ventas/estadisticas', icon: BarChart2,   permiso: 'ventas:consultar' },
+          { title: 'Apartados postales',  url: '/ventas/apartados',     icon: MailOpen,    permiso: 'ventas:consultar' },
         ],
       },
       {

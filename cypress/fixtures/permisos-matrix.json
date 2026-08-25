@@ -1,0 +1,20 @@
+{
+  "roles": ["CAJERO", "SUPERVISOR_REGIONAL", "ADMIN_SISTEMA"],
+  "permisos": [
+    {
+      "codigo": "ventas:consultar",
+      "descripcion": "Ver ventas",
+      "roles": ["CAJERO", "SUPERVISOR_REGIONAL", "ADMIN_SISTEMA"]
+    },
+    {
+      "codigo": "caja:consultar",
+      "descripcion": "Ver cajas",
+      "roles": ["SUPERVISOR_REGIONAL", "ADMIN_SISTEMA"]
+    },
+    {
+      "codigo": "admin:usuarios",
+      "descripcion": "Administrar usuarios",
+      "roles": ["ADMIN_SISTEMA"]
+    }
+  ]
+}

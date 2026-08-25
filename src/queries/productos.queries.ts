@@ -4,6 +4,8 @@ import type {
   ProductoResponse, PaginatedProductos,
   ProductoQueryParams, CreateProductoInput, UpdateProductoInput,
   EstampillaQueryParams, CreateEstampillaInput, UpdateEstampillaInput,
+  FilateliaQueryParams, CreateFilateliaInput, UpdateFilateliaInput,
+  EstampillaDisponible,
   ProductoEspecialResponse, PaginatedProductosEspeciales,
   ProductoEspecialQueryParams, CreateProductoEspecialInput, UpdateProductoEspecialInput,
   TarifaEscalonada,
@@ -111,6 +113,70 @@ export function useDeleteEstampilla() {
     mutationFn: (id: number) =>
       apiFetch<ProductoResponse>(`/admin/estampillas/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ESTAMPILLA_KEYS.all() }),
+  })
+}
+
+// ── Filatelia admin ───────────────────────────────────────────────────────────
+
+export const FILATELIA_KEYS = {
+  all:    ()                          => ['admin-filatelia'] as const,
+  list:   (p: FilateliaQueryParams)   => ['admin-filatelia', 'list', p] as const,
+  detail: (id: number)                => ['admin-filatelia', id] as const,
+}
+
+export function useFilatelias(params: FilateliaQueryParams = {}) {
+  const qs = new URLSearchParams()
+  if (params.buscar)         qs.set('buscar', params.buscar)
+  if (params.serie)          qs.set('serie',  params.serie)
+  if (params.activo != null) qs.set('activo', String(params.activo))
+  if (params.pagina)         qs.set('pagina', String(params.pagina))
+  if (params.limite)         qs.set('limite', String(params.limite))
+
+  return useQuery({
+    queryKey:        FILATELIA_KEYS.list(params),
+    queryFn:         () => apiFetch<PaginatedProductos>(`/admin/filatelia?${qs}`),
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useCreateFilatelia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: CreateFilateliaInput) =>
+      apiFetch<ProductoResponse>('/admin/filatelia', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: FILATELIA_KEYS.all() }),
+  })
+}
+
+export function useUpdateFilatelia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: UpdateFilateliaInput }) =>
+      apiFetch<ProductoResponse>(`/admin/filatelia/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: FILATELIA_KEYS.all() })
+      qc.invalidateQueries({ queryKey: FILATELIA_KEYS.detail(id) })
+    },
+  })
+}
+
+export function useDeleteFilatelia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<ProductoResponse>(`/admin/filatelia/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: FILATELIA_KEYS.all() }),
+  })
+}
+
+// ── Estampillas disponibles (preporteado) ────────────────────────────────────
+
+export function useEstampillasDisponibles(cajaId: number | null) {
+  return useQuery({
+    queryKey: ['estampillas-disponibles', cajaId],
+    queryFn:  () => apiFetch<EstampillaDisponible[]>(`/ventas/punto/${cajaId}/estampillas-disponibles`),
+    enabled:  cajaId != null,
+    staleTime: 60_000,
   })
 }
 

@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Banknote,
   Bookmark,
   Calculator,
   Check,
@@ -11,25 +12,32 @@ import {
   Clock,
   Eye,
   EyeOff,
+  FileDown,
   Loader2,
   MailOpen,
   Package,
   Pencil,
   Plus,
+  Printer,
   RefreshCw,
+  RotateCcw,
   Search,
   ShoppingCart,
+  Stamp,
+  Table2,
   Tag,
   Trash2,
   Truck,
   Upload,
   UserRound,
+  Wallet,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { GUIA_VIEWER_KEY } from '@/pages/ventas/GuiaViewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -62,6 +70,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -77,6 +86,7 @@ import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useAsignarCajero, useCaja, useStatusPunto } from '@/queries/cajas.queries'
 import {
+  type Cliente,
   type TipoDocumento,
   useCliente,
   useCreateCliente,
@@ -115,7 +125,10 @@ import {
   useServiciosPostales,
   useTarifasEspecial,
   useVentasTurno,
+  useSaldoAFavor,
+  descargarGuiaEnvioPdf,
 } from '@/queries/ventas.queries'
+import { useEstampillasDisponibles } from '@/queries/productos.queries'
 import {
   type AgregarItemPayload,
   type EstadoLote,
@@ -124,14 +137,18 @@ import {
   type LoteMasivoResumen,
   useAgregarItemMasivo,
   useActualizarItemMasivo,
-  useAnularLoteMasivo,
+  useEliminarLoteMasivo,
   useConfirmarLoteMasivo,
+  useCobrarLoteMasivo,
   useCrearLoteMasivo,
   useEliminarItemMasivo,
+  useGenerarGuiasPdf,
+  descargarGuiasPdf,
   useImportarCsvMasivo,
   useLoteMasivo,
   useLotesMasivos,
 } from '@/queries/envios-masivos.queries'
+import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
 import { useSessionStore } from '@/stores/useSessionStore'
 
 // ── Validación de email ───────────────────────────────────────────────────────
@@ -344,13 +361,17 @@ const TIPO_DOC_OPTIONS: { value: string; label: string }[] = [
   { value: 'pasaporte', label: 'PP — Pasaporte' },
 ]
 
-const TIPOS_PRODUCTO: { value: TipoProducto | ''; label: string }[] = [
-  { value: '', label: 'Productos' },
-  { value: 'estampilla', label: 'Estampillas' },
+const TIPOS_PRODUCTO: { value: TipoProducto; label: string }[] = [
+  { value: 'empaque',          label: 'Cajas' },
+  { value: 'estampilla',       label: 'Estampillas' },
+  { value: 'material_oficina', label: 'Papelería' },
+  { value: 'filatelia',        label: 'Filatelia' },
 ]
 
 const MEDIOS_PAGO: { value: MedioPagoVenta; label: string }[] = [
-  { value: 'efectivo', label: 'Efectivo' },
+  { value: 'efectivo',          label: 'Efectivo' },
+  { value: 'preporteado',       label: 'Preporteado' },
+  { value: 'mixto_preporteado', label: 'Mixto (prepor. + efectivo)' },
 ]
 
 type MedioPagoEnvio = Exclude<MedioPagoVenta, 'cheque'>
@@ -1150,6 +1171,14 @@ function StockBadge({ stock, minimo }: { stock: number | null; minimo: number | 
 
 // ── TabProductos ──────────────────────────────────────────────────────────────
 
+type ProductoSeleccionado = {
+  id: number
+  nombre: string
+  precio: number
+  porcentajeTax: number
+  stockActual: number | null
+}
+
 function TabProductos({
   sucursalId,
   ventaId,
@@ -1159,9 +1188,12 @@ function TabProductos({
   ventaId: number | null
   cajaId: number
 }) {
-  const [tipoFiltro, setTipoFiltro] = useState<TipoProducto | ''>('')
+  const [tipoFiltro, setTipoFiltro] = useState<TipoProducto>('empaque')
   const [busqueda, setBusqueda] = useState('')
-  const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, tipoFiltro || undefined)
+  const [seleccionado, setSeleccionado] = useState<ProductoSeleccionado | null>(null)
+  const [cantidadStr, setCantidadStr] = useState('1')
+
+  const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, tipoFiltro)
   const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
 
   const filtrado =
@@ -1170,21 +1202,109 @@ function TabProductos({
         p.tipo !== 'otro' && (!busqueda || p.nombre.toLowerCase().includes(busqueda.toLowerCase())),
     ) ?? []
 
-  const handleAgregar = async (productoId: number, nombre: string) => {
+  const handleSeleccionar = (p: ProductoSeleccionado) => {
     if (!ventaId) {
       toast.error('Busca un cliente primero')
       return
     }
+    setCantidadStr('1')
+    setSeleccionado(p)
+  }
+
+  const handleConfirmarCantidad = async () => {
+    if (!seleccionado || !ventaId) return
+    const cantidad = Math.max(1, parseInt(cantidadStr) || 1)
+    const stockMax = seleccionado.stockActual
+    if (stockMax !== null && cantidad > stockMax) {
+      toast.error(`Stock insuficiente — máximo disponible: ${stockMax}`)
+      return
+    }
     try {
-      await agregar.mutateAsync({ productoId, cantidad: 1 })
-      toast.success(`${nombre} agregado`)
+      await agregar.mutateAsync({ productoId: seleccionado.id, cantidad })
+      toast.success(`${seleccionado.nombre} ×${cantidad} agregado`)
+      setSeleccionado(null)
     } catch {
       toast.error('No se pudo agregar el producto')
     }
   }
 
+  const cantidadNum = Math.max(1, parseInt(cantidadStr) || 1)
+  const totalDialogo = seleccionado ? seleccionado.precio * cantidadNum : 0
+
   return (
     <div className="flex flex-col h-full">
+      {/* Dialog cantidad */}
+      <Dialog open={!!seleccionado} onOpenChange={(v) => { if (!v) setSeleccionado(null) }}>
+        <DialogContent className="max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle className="text-sm leading-snug line-clamp-2">
+              {seleccionado?.nombre}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {fmt(seleccionado?.precio ?? 0)} c/u
+              {seleccionado?.porcentajeTax === 0 && ' · Sin IVA'}
+              {seleccionado?.stockActual != null && ` · Stock: ${seleccionado.stockActual}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Cantidad</Label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCantidadStr(String(Math.max(1, cantidadNum - 1)))}
+                  className="flex items-center justify-center size-8 rounded-md border hover:bg-muted transition-colors text-sm font-bold"
+                >
+                  −
+                </button>
+                <Input
+                  type="number"
+                  min="1"
+                  max={seleccionado?.stockActual ?? undefined}
+                  className="h-8 text-center text-sm font-semibold tabular-nums w-20"
+                  value={cantidadStr}
+                  onChange={(e) => setCantidadStr(e.target.value.replace(/\D/g, '') || '1')}
+                  onKeyDown={(e) => e.key === 'Enter' && handleConfirmarCantidad()}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const max = seleccionado?.stockActual
+                    if (max === null || max === undefined || cantidadNum < max) {
+                      setCantidadStr(String(cantidadNum + 1))
+                    }
+                  }}
+                  className="flex items-center justify-center size-8 rounded-md border hover:bg-muted transition-colors text-sm font-bold"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="rounded-lg bg-muted/40 border px-3 py-2 flex justify-between text-sm">
+              <span className="text-muted-foreground">Total</span>
+              <span className="font-bold tabular-nums text-primary">{fmt(totalDialogo)}</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSeleccionado(null)}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleConfirmarCantidad}
+              disabled={agregar.isPending}
+            >
+              {agregar.isPending ? (
+                <Loader2 className="size-3.5 animate-spin mr-1.5" />
+              ) : (
+                <ShoppingCart className="size-3.5 mr-1.5" />
+              )}
+              Agregar al carrito
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Búsqueda */}
       <div className="px-3 pt-2 pb-1 shrink-0">
         <div className="relative">
@@ -1203,9 +1323,9 @@ function TabProductos({
           <button
             key={t.value}
             type="button"
-            onClick={() => setTipoFiltro(t.value as TipoProducto | '')}
+            onClick={() => setTipoFiltro(t.value)}
             className={cn(
-              'px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors',
+              'px-2.5 py-0.5 rounded-full text-[11px] font-medium border transition-colors whitespace-nowrap',
               tipoFiltro === t.value
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground',
@@ -1229,7 +1349,6 @@ function TabProductos({
         ) : (
           <div className="grid grid-cols-2 gap-2 p-3 xl:grid-cols-3">
             {filtrado.map((p) => {
-              // p.precio es bruto (incluye IVA) — extraer en lugar de añadir
               const iva = Math.round((p.precio * p.porcentajeTax) / (100 + p.porcentajeTax))
               const total = p.precio
               const sinStock = p.stockActual !== null && p.stockActual === 0
@@ -1237,8 +1356,16 @@ function TabProductos({
                 <button
                   key={p.id}
                   type="button"
-                  disabled={!ventaId || agregar.isPending || sinStock}
-                  onClick={() => handleAgregar(p.id, p.nombre)}
+                  disabled={!ventaId || sinStock}
+                  onClick={() =>
+                    handleSeleccionar({
+                      id: p.id,
+                      nombre: p.nombre,
+                      precio: p.precio,
+                      porcentajeTax: p.porcentajeTax,
+                      stockActual: p.stockActual,
+                    })
+                  }
                   className={cn(
                     'group rounded-lg border p-3 text-left flex flex-col gap-2 transition-all',
                     sinStock
@@ -2020,10 +2147,20 @@ function ItemDialog({
   const [contenido, setContenido] = useState('')
   const [obs,      setObs]      = useState('')
 
+  // Origen específico (opcional — la empresa puede tener varias ubicaciones)
+  const [origenEnabled, setOrigenEnabled] = useState(false)
+  const [orNombre,      setOrNombre]      = useState('')
+  const [orDoc,         setOrDoc]         = useState('')
+  const [orTel,         setOrTel]         = useState('')
+  const [orCiudad,      setOrCiudad]      = useState('')
+  const [orDir,         setOrDir]         = useState('')
+
   const reset = () => {
     setNombre(''); setDoc(''); setEmail(''); setTel('')
     setDir(''); setCiudad(''); setPais('CO'); setCp('')
     setPeso('0.1'); setContenido(''); setObs('')
+    setOrigenEnabled(false)
+    setOrNombre(''); setOrDoc(''); setOrTel(''); setOrCiudad(''); setOrDir('')
   }
 
   useEffect(() => {
@@ -2040,6 +2177,18 @@ function ItemDialog({
       setPeso(String(item.calculo.pesoFisicoKg))
       setContenido(item.contenido ?? '')
       setObs(item.observaciones ?? '')
+      // Poblar origen si el item lo tiene
+      if (item.remitente) {
+        setOrigenEnabled(true)
+        setOrNombre(item.remitente.nombre ?? '')
+        setOrDoc(item.remitente.documento ?? '')
+        setOrTel(item.remitente.telefono ?? '')
+        setOrCiudad(item.remitente.ciudad ?? '')
+        setOrDir(item.remitente.direccion ?? '')
+      } else {
+        setOrigenEnabled(false)
+        setOrNombre(''); setOrDoc(''); setOrTel(''); setOrCiudad(''); setOrDir('')
+      }
     } else {
       reset()
     }
@@ -2049,6 +2198,15 @@ function ItemDialog({
   const valido  = nombre.trim().length > 0 && !isNaN(pesoNum) && pesoNum > 0
 
   const payload: AgregarItemPayload = {
+    ...(origenEnabled && orNombre.trim() ? {
+      remitente: {
+        nombre:    orNombre.trim(),
+        documento: orDoc.trim()    || undefined,
+        telefono:  orTel.trim()    || undefined,
+        ciudad:    orCiudad.trim() || undefined,
+        direccion: orDir.trim()    || undefined,
+      },
+    } : {}),
     destinatarioNombre:    nombre.trim(),
     destinatarioDocumento: doc.trim()    || undefined,
     destinatarioEmail:     email.trim()  || undefined,
@@ -2141,6 +2299,45 @@ function ItemDialog({
               </div>
             </div>
           </div>
+
+          {/* Origen específico */}
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Origen específico
+                </p>
+                <p className="text-[9px] text-muted-foreground mt-0.5">
+                  {origenEnabled ? 'Reemplaza el remitente del lote para este envío' : 'Usa el remitente compartido del lote'}
+                </p>
+              </div>
+              <Switch checked={origenEnabled} onCheckedChange={setOrigenEnabled} />
+            </div>
+            {origenEnabled && (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-[10px]">Nombre / Sucursal *</Label>
+                  <Input className="h-7 text-xs" placeholder="Nombre o sucursal de origen" value={orNombre} onChange={(e) => setOrNombre(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Documento</Label>
+                  <Input className="h-7 text-xs" placeholder="NIT / CC" value={orDoc} onChange={(e) => setOrDoc(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Teléfono</Label>
+                  <Input className="h-7 text-xs" placeholder="Teléfono" value={orTel} onChange={(e) => setOrTel(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Ciudad origen</Label>
+                  <Input className="h-7 text-xs" placeholder="Ciudad" value={orCiudad} onChange={(e) => setOrCiudad(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Dirección</Label>
+                  <Input className="h-7 text-xs" placeholder="Dirección" value={orDir} onChange={(e) => setOrDir(e.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <DialogFooter className="gap-2">
@@ -2208,41 +2405,582 @@ Juan Pérez,12345678,,3001234567,Calle 1 #2-3,Bogotá,CO,110111,0.5,Documentos"
   )
 }
 
+// ── CiudadCell ────────────────────────────────────────────────────────────────
+
+const COLOMBIA_ID = 82
+
+function CiudadCell({
+  deptoId,
+  ciudadId,
+  nombre,
+  onChange,
+}: {
+  deptoId:  number | null
+  ciudadId: number | null
+  nombre:   string
+  onChange: (deptoId: number | null, ciudadId: number | null, nombre: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const { data: deptos,   isLoading: ldeptos   } = useDepartamentos(COLOMBIA_ID)
+  const { data: ciudades, isLoading: lciudades } = useCiudades(deptoId)
+
+  const deptoLabel = deptos?.find(d => d.id === deptoId)?.nombre
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'w-full px-1.5 py-0.5 text-left text-[11px] outline-none truncate',
+            'hover:bg-muted/30 focus:bg-primary/5 focus:ring-1 focus:ring-inset focus:ring-primary',
+            !nombre && 'text-muted-foreground',
+          )}
+        >
+          {nombre
+            ? <>{nombre}{deptoLabel && <span className="text-[9px] text-muted-foreground ml-1">({deptoLabel})</span>}</>
+            : 'Ciudad...'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[230px] p-2.5 space-y-2" align="start" side="bottom">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Seleccionar ciudad
+        </p>
+        {/* Departamento */}
+        <Select
+          value={deptoId ? String(deptoId) : ''}
+          onValueChange={v => onChange(Number(v), null, '')}
+          disabled={ldeptos}
+        >
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue placeholder={ldeptos ? 'Cargando…' : 'Departamento'} />
+          </SelectTrigger>
+          <SelectContent className="max-h-52">
+            {deptos?.map(d => (
+              <SelectItem key={d.id} value={String(d.id)} className="text-xs">{d.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {/* Ciudad */}
+        <Select
+          value={ciudadId ? String(ciudadId) : ''}
+          onValueChange={v => {
+            const c = ciudades?.find(c => c.id === Number(v))
+            if (c) { onChange(deptoId, c.id, c.nombre); setOpen(false) }
+          }}
+          disabled={!deptoId || lciudades}
+        >
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue placeholder={!deptoId ? 'Elige depto.' : lciudades ? 'Cargando…' : 'Ciudad'} />
+          </SelectTrigger>
+          <SelectContent className="max-h-52">
+            {ciudades?.map(c => (
+              <SelectItem key={c.id} value={String(c.id)} className="text-xs">{c.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {nombre && (
+          <button
+            type="button"
+            className="text-[10px] text-destructive w-full text-left hover:underline px-0.5"
+            onClick={() => { onChange(null, null, ''); setOpen(false) }}
+          >
+            Limpiar selección
+          </button>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// ── TablaRapidaMasiva ─────────────────────────────────────────────────────────
+
+type FilaMasiva = {
+  id:           string
+  // Origen
+  orNombre:     string
+  orDeptoId:    number | null
+  orCiudadId:   number | null
+  orCiudad:     string          // nombre de ciudad (se envía al API)
+  orDir:        string
+  orDoc:        string
+  orTel:        string
+  // Destinatario
+  destNombre:   string
+  destDoc:      string
+  destDeptoId:  number | null
+  destCiudadId: number | null
+  destCiudad:   string          // nombre de ciudad
+  destDir:      string
+  destTel:      string
+  destCp:       string
+  // Envío
+  peso:         string
+  contenido:    string
+  error?:       string
+}
+
+type ColMasiva = {
+  key:         keyof Omit<FilaMasiva, 'id' | 'error' | 'orDeptoId' | 'orCiudadId' | 'destDeptoId' | 'destCiudadId'>
+  label:       string
+  placeholder: string
+  width:       string
+  required?:   boolean
+  type?:       'text' | 'number' | 'geo'
+  group:       'or' | 'dest' | 'pkg'
+}
+
+const COLS_OR: ColMasiva[] = [
+  { key: 'orNombre', label: 'Nombre / sucursal', placeholder: 'Empresa u oficina', width: 'min-w-[130px]',            group: 'or' },
+  { key: 'orCiudad', label: 'Ciudad origen',      placeholder: 'Ciudad',           width: 'min-w-[140px]', type: 'geo', group: 'or' },
+  { key: 'orDir',    label: 'Dirección',          placeholder: 'Dirección',        width: 'min-w-[110px]',            group: 'or' },
+  { key: 'orDoc',    label: 'Doc.',               placeholder: 'NIT / CC',         width: 'min-w-[80px]',             group: 'or' },
+  { key: 'orTel',    label: 'Teléfono',           placeholder: 'Tel.',             width: 'min-w-[80px]',             group: 'or' },
+]
+const COLS_DEST: ColMasiva[] = [
+  { key: 'destNombre', label: 'Nombre *',   placeholder: 'Destinatario',  width: 'min-w-[130px]', required: true,            group: 'dest' },
+  { key: 'destDoc',    label: 'Documento',  placeholder: 'CC / NIT',      width: 'min-w-[85px]',                             group: 'dest' },
+  { key: 'destCiudad', label: 'Ciudad',     placeholder: 'Ciudad destino',width: 'min-w-[140px]',             type: 'geo',   group: 'dest' },
+  { key: 'destDir',    label: 'Dirección',  placeholder: 'Dirección',     width: 'min-w-[110px]',                            group: 'dest' },
+  { key: 'destTel',    label: 'Teléfono',   placeholder: 'Tel.',          width: 'min-w-[85px]',                             group: 'dest' },
+  { key: 'destCp',     label: 'C.P.',       placeholder: '110111',        width: 'w-14',                                     group: 'dest' },
+]
+const COLS_PKG: ColMasiva[] = [
+  { key: 'peso',      label: 'Peso kg *', placeholder: '0.10',        width: 'w-16', required: true, type: 'number', group: 'pkg' },
+  { key: 'contenido', label: 'Contenido', placeholder: 'Descripción', width: 'min-w-[100px]',                        group: 'pkg' },
+]
+const COLS_MASIVA: ColMasiva[] = [...COLS_OR, ...COLS_DEST, ...COLS_PKG]
+
+type ClienteDefault = Pick<Cliente, 'nombreCompleto' | 'numeroDocumento' | 'telefono' | 'ciudad' | 'direccion'>
+
+function nuevaFilaMasiva(cd?: Partial<ClienteDefault>): FilaMasiva {
+  return {
+    id:           crypto.randomUUID(),
+    orNombre:     cd?.nombreCompleto  ?? '',
+    orDeptoId:    null,
+    orCiudadId:   null,
+    orCiudad:     cd?.ciudad          ?? '',  // texto libre desde cliente; se sobrescribe al elegir del select
+    orDir:        cd?.direccion       ?? '',
+    orDoc:        cd?.numeroDocumento ?? '',
+    orTel:        cd?.telefono        ?? '',
+    destNombre:   '',
+    destDoc:      '',
+    destDeptoId:  null,
+    destCiudadId: null,
+    destCiudad:   '',
+    destDir:      '',
+    destTel:      '',
+    destCp:       '',
+    peso:         '',
+    contenido:    '',
+  }
+}
+
+const fmtCopMasiva = (v: number) =>
+  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v)
+
+function TablaRapidaMasiva({
+  loteId,
+  savedItems,
+  clienteDefault,
+  onGuardado,
+}: {
+  loteId:         number
+  savedItems:     ItemMasivo[]
+  clienteDefault?: Partial<ClienteDefault>
+  onGuardado:     () => void
+}) {
+  const [filas, setFilas]         = useState<FilaMasiva[]>(() => Array.from({ length: 8 }, () => nuevaFilaMasiva(clienteDefault)))
+  const [guardando, setGuardando] = useState(false)
+  const [progreso,  setProgreso]  = useState({ actual: 0, total: 0 })
+  const cellRefs   = useRef<Map<string, HTMLInputElement>>(new Map())
+  const agregar    = useAgregarItemMasivo(loteId)
+  const eliminarIt = useEliminarItemMasivo(loteId)
+
+  // Pre-llenar filas vacías cuando carga el cliente
+  useEffect(() => {
+    if (!clienteDefault?.nombreCompleto) return
+    setFilas(prev => prev.map(f => {
+      if (f.destNombre || f.peso) return f // fila con datos del operador: no tocar
+      return { ...f,
+        orNombre: f.orNombre || clienteDefault.nombreCompleto  || '',
+        // orCiudad se elige del select de la BD; se pre-llena solo si viene como texto del cliente
+        orCiudad: f.orCiudad || (!f.orCiudadId ? (clienteDefault.ciudad ?? '') : f.orCiudad),
+        orDir:    f.orDir    || clienteDefault.direccion        || '',
+        orDoc:    f.orDoc    || clienteDefault.numeroDocumento  || '',
+        orTel:    f.orTel    || clienteDefault.telefono         || '',
+      }
+    }))
+  }, [clienteDefault?.nombreCompleto])
+
+  const setRef    = (row: number, col: number) => (el: HTMLInputElement | null) => {
+    const k = `${row}-${col}`
+    if (el) cellRefs.current.set(k, el); else cellRefs.current.delete(k)
+  }
+  const focusCell = (row: number, col: number) => cellRefs.current.get(`${row}-${col}`)?.focus()
+
+  const update = (id: string, field: string, value: string) =>
+    setFilas(prev => prev.map(f => f.id === id ? { ...f, [field]: value, error: undefined } : f))
+
+  const updateGeo = (id: string, grupo: 'or' | 'dest', deptoId: number | null, ciudadId: number | null, nombre: string) =>
+    setFilas(prev => prev.map(f => {
+      if (f.id !== id) return f
+      return grupo === 'or'
+        ? { ...f, orDeptoId: deptoId, orCiudadId: ciudadId, orCiudad: nombre, error: undefined }
+        : { ...f, destDeptoId: deptoId, destCiudadId: ciudadId, destCiudad: nombre, error: undefined }
+    }))
+
+  const remove   = (id: string) =>
+    setFilas(prev => prev.length > 1 ? prev.filter(f => f.id !== id) : prev)
+  const addFilas = (n = 5) =>
+    setFilas(prev => [...prev, ...Array.from({ length: n }, () => nuevaFilaMasiva(clienteDefault))])
+
+  const handleKeyDown = (e: React.KeyboardEvent, rowIdx: number, colIdx: number) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (rowIdx === filas.length - 1) {
+        setFilas(prev => [...prev, nuevaFilaMasiva(clienteDefault)])
+        setTimeout(() => focusCell(rowIdx + 1, colIdx), 20)
+      } else {
+        focusCell(rowIdx + 1, colIdx)
+      }
+    }
+    if (e.key === 'Tab' && !e.shiftKey && rowIdx === filas.length - 1 && colIdx === COLS_MASIVA.length - 1) {
+      e.preventDefault()
+      setFilas(prev => [...prev, nuevaFilaMasiva(clienteDefault)])
+      setTimeout(() => focusCell(rowIdx + 1, 0), 20)
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent, rowIdx: number, colIdx: number) => {
+    const text = e.clipboardData.getData('text')
+    if (!text.includes('\t') && !text.includes('\n')) return
+    e.preventDefault()
+    const rows = text.replace(/\r\n/g, '\n').trim().split('\n')
+    setFilas(prev => {
+      const updated = [...prev]
+      rows.forEach((pastedRow, ri) => {
+        const tr = rowIdx + ri
+        const cells = pastedRow.split('\t')
+        if (tr >= updated.length) updated.push(nuevaFilaMasiva(clienteDefault))
+        const fila: FilaMasiva = { ...updated[tr] }
+        cells.forEach((cell, ci) => {
+          const tc = colIdx + ci
+          if (tc < COLS_MASIVA.length && COLS_MASIVA[tc].type !== 'geo')
+            (fila as Record<string, string>)[COLS_MASIVA[tc].key] = cell.trim()
+        })
+        updated[tr] = fila
+      })
+      return updated
+    })
+  }
+
+  const filasConDatos = filas.filter(f => f.destNombre.trim() && Number(f.peso) > 0)
+
+  const handleGuardar = async () => {
+    let hasErrors = false
+    const validated = filas.map(fila => {
+      if (!fila.destNombre.trim()) return fila
+      const peso = Number(fila.peso)
+      if (!peso || peso <= 0) { hasErrors = true; return { ...fila, error: 'Peso inválido' } }
+      return fila
+    })
+    if (hasErrors) { setFilas(validated); return }
+
+    setGuardando(true)
+    setProgreso({ total: filasConDatos.length, actual: 0 })
+    let exitos = 0
+
+    for (const fila of filasConDatos) {
+      try {
+        await agregar.mutateAsync({
+          ...(fila.orNombre.trim() ? {
+            remitente: {
+              nombre:    fila.orNombre.trim(),
+              documento: fila.orDoc    || undefined,
+              telefono:  fila.orTel    || undefined,
+              ciudad:    fila.orCiudad || undefined,
+              direccion: fila.orDir    || undefined,
+            },
+          } : {}),
+          destinatarioNombre:    fila.destNombre,
+          destinatarioDocumento: fila.destDoc    || undefined,
+          destinatarioCiudad:    fila.destCiudad || undefined,
+          destinatarioPais:      fila.destPais   || 'CO',
+          destinatarioDireccion: fila.destDir    || undefined,
+          destinatarioTelefono:  fila.destTel    || undefined,
+          destinatarioCp:        fila.destCp     || undefined,
+          pesoFisicoKg:          Number(fila.peso),
+          contenido:             fila.contenido  || undefined,
+        })
+        exitos++
+      } catch (err: unknown) {
+        toast.error(`"${fila.destNombre}": ${err instanceof Error ? err.message : 'Error'}`)
+      }
+      setProgreso(p => ({ ...p, actual: p.actual + 1 }))
+    }
+
+    setGuardando(false)
+    if (exitos > 0) {
+      toast.success(`${exitos} paquete(s) agregado(s)`)
+      setFilas(Array.from({ length: 8 }, () => nuevaFilaMasiva(clienteDefault)))
+      onGuardado()
+    }
+  }
+
+  const totalCols = COLS_MASIVA.length
+  const pendingOffset = savedItems.length  // para numerar filas nuevas desde donde termina lo guardado
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Contador + acciones */}
+      <div className="flex shrink-0 items-center justify-between px-3 py-1 border-b bg-muted/10">
+        <span className="text-[10px] text-muted-foreground">
+          {savedItems.length > 0 && <span className="text-emerald-600 font-medium">{savedItems.length} guardado{savedItems.length !== 1 ? 's' : ''} · </span>}
+          {filasConDatos.length > 0 ? <span className="font-medium">{filasConDatos.length} pendiente{filasConDatos.length !== 1 ? 's' : ''}</span> : 'Ingresa datos abajo'}
+        </span>
+        <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-1 px-2" onClick={() => addFilas(5)}>
+          <Plus className="size-3" />5 filas
+        </Button>
+      </div>
+
+      {/* Tabla unificada */}
+      <div className="flex-1 overflow-auto">
+        <table className="w-full border-collapse text-[11px]">
+          {/* Grupos de columnas */}
+          <thead className="sticky top-0 z-10">
+            <tr className="text-[9px] font-semibold uppercase tracking-wider">
+              <th className="border-b border-r bg-muted/60 px-1" rowSpan={2}>#</th>
+              <th colSpan={COLS_OR.length}   className="border-b border-r bg-blue-50/80   dark:bg-blue-950/30  px-2 py-0.5 text-blue-700   dark:text-blue-400  text-center">Origen</th>
+              <th colSpan={COLS_DEST.length} className="border-b border-r bg-amber-50/80  dark:bg-amber-950/30 px-2 py-0.5 text-amber-700  dark:text-amber-400 text-center">Destinatario</th>
+              <th colSpan={COLS_PKG.length}  className="border-b border-r bg-purple-50/80 dark:bg-purple-950/30 px-2 py-0.5 text-purple-700 dark:text-purple-400 text-center">Envío</th>
+              <th className="border-b bg-muted/60 px-1 text-center" rowSpan={2}>Valor</th>
+              <th className="border-b bg-muted/60 w-6" rowSpan={2} />
+            </tr>
+            <tr>
+              {COLS_MASIVA.map((col, i) => (
+                <th
+                  key={col.key}
+                  className={cn(
+                    'border-b px-1.5 py-1 text-left font-medium whitespace-nowrap',
+                    col.width,
+                    i < COLS_OR.length   && 'bg-blue-50/50   dark:bg-blue-950/20   border-r',
+                    i >= COLS_OR.length && i < COLS_OR.length + COLS_DEST.length && 'bg-amber-50/50  dark:bg-amber-950/20  border-r',
+                    i >= COLS_OR.length + COLS_DEST.length && 'bg-purple-50/50 dark:bg-purple-950/20 border-r',
+                  )}
+                >
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Filas guardadas (read-only) */}
+            {savedItems.map((item, si) => (
+              <tr key={item.id} className="border-b bg-muted/20 hover:bg-muted/30 text-muted-foreground">
+                <td className="border-r px-1 text-center tabular-nums text-[10px] font-medium text-emerald-600">{si + 1}</td>
+                {/* OR */}
+                <td className="border-r px-1.5 py-0.5 truncate max-w-[130px]">{item.remitente?.nombre ?? <span className="italic text-[10px]">del lote</span>}</td>
+                <td className="border-r px-1.5 py-0.5">{item.remitente?.ciudad ?? ''}</td>
+                <td className="border-r px-1.5 py-0.5">{item.remitente?.direccion ?? ''}</td>
+                <td className="border-r px-1.5 py-0.5">{item.remitente?.documento ?? ''}</td>
+                <td className="border-r px-1.5 py-0.5">{item.remitente?.telefono ?? ''}</td>
+                {/* DEST */}
+                <td className="border-r px-1.5 py-0.5 font-medium text-foreground truncate max-w-[130px]">{item.destinatario.nombre}</td>
+                <td className="border-r px-1.5 py-0.5">{item.destinatario.documento ?? ''}</td>
+                <td className="border-r px-1.5 py-0.5">{item.destinatario.ciudad ?? ''}</td>
+                <td className="border-r px-1.5 py-0.5">{item.destinatario.pais}</td>
+                <td className="border-r px-1.5 py-0.5">{item.destinatario.direccion ?? ''}</td>
+                <td className="border-r px-1.5 py-0.5">{item.destinatario.telefono ?? ''}</td>
+                <td className="border-r px-1.5 py-0.5">{item.destinatario.codigoPostal ?? ''}</td>
+                {/* PKG */}
+                <td className="border-r px-1.5 py-0.5 tabular-nums">{item.calculo.pesoFisicoKg} kg</td>
+                <td className="border-r px-1.5 py-0.5">{item.contenido ?? ''}</td>
+                {/* VALOR */}
+                <td className="px-1.5 py-0.5 tabular-nums font-semibold text-right text-foreground whitespace-nowrap">
+                  {fmtCopMasiva(item.calculo.valorTotal)}
+                </td>
+                <td className="px-0.5 text-center">
+                  <button
+                    onClick={() => eliminarIt.mutate(item.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error') })}
+                    className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+
+            {/* Separador visual si hay guardados */}
+            {savedItems.length > 0 && (
+              <tr>
+                <td colSpan={totalCols + 3} className="bg-muted/40 py-0.5 text-center">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-widest">— Nuevas filas —</span>
+                </td>
+              </tr>
+            )}
+
+            {/* Filas editables (pending) */}
+            {filas.map((fila, rowIdx) => (
+              <tr key={fila.id} className={cn('group border-b last:border-0', fila.error && 'bg-destructive/5')}>
+                <td className="border-r px-1 text-center text-muted-foreground tabular-nums text-[10px]">
+                  {pendingOffset + rowIdx + 1}
+                </td>
+                {COLS_MASIVA.map((col, colIdx) => (
+                  <td key={col.key} className={cn('border-r p-0', col.width)}>
+                    {col.type === 'geo' ? (
+                      <CiudadCell
+                        deptoId={col.group === 'or' ? fila.orDeptoId  : fila.destDeptoId}
+                        ciudadId={col.group === 'or' ? fila.orCiudadId : fila.destCiudadId}
+                        nombre={(fila as Record<string, string>)[col.key]}
+                        onChange={(deptoId, ciudadId, nombre) =>
+                          updateGeo(fila.id, col.group as 'or' | 'dest', deptoId, ciudadId, nombre)
+                        }
+                      />
+                    ) : (
+                      <input
+                        ref={setRef(rowIdx, colIdx)}
+                        type={col.type ?? 'text'}
+                        step={col.type === 'number' ? '0.001' : undefined}
+                        min={col.type === 'number' ? '0.001' : undefined}
+                        placeholder={col.placeholder}
+                        value={(fila as Record<string, string>)[col.key]}
+                        onChange={e => update(fila.id, col.key, e.target.value)}
+                        onKeyDown={e => handleKeyDown(e, rowIdx, colIdx)}
+                        onPaste={e => handlePaste(e, rowIdx, colIdx)}
+                        className={cn(
+                          'w-full bg-transparent px-1.5 py-0.5 outline-none',
+                          'focus:bg-primary/5 focus:ring-1 focus:ring-inset focus:ring-primary',
+                          col.required && fila.error && !(fila as Record<string, string>)[col.key]?.trim() && 'bg-destructive/10',
+                        )}
+                      />
+                    )}
+                  </td>
+                ))}
+                {/* Columna valor (vacía para pending) */}
+                <td className="px-1.5 text-center text-[10px] text-muted-foreground">—</td>
+                <td className="px-0.5 text-center">
+                  <button
+                    onClick={() => remove(fila.id)}
+                    className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pie */}
+      <div className="flex shrink-0 items-center justify-between border-t bg-muted/10 px-3 py-1.5">
+        <p className="text-[9px] text-muted-foreground">
+          <kbd className="rounded border px-0.5 font-mono text-[9px]">Tab</kbd> ·{' '}
+          <kbd className="rounded border px-0.5 font-mono text-[9px]">Enter</kbd> para navegar · Pegar desde Excel / Sheets
+        </p>
+        <Button
+          size="sm"
+          className="h-6 text-[10px] px-2 gap-1"
+          disabled={guardando || filasConDatos.length === 0}
+          onClick={handleGuardar}
+        >
+          {guardando
+            ? <><Loader2 className="size-3 animate-spin" />{progreso.actual}/{progreso.total}</>
+            : <><CheckCircle2 className="size-3" />Guardar {filasConDatos.length} paquete(s)</>}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ── LoteDetalle ───────────────────────────────────────────────────────────────
 
 function LoteDetalle({
   loteId,
   cajaId,
   onBack,
+  onIniciarCobro,
 }: {
   loteId: number
   cajaId: number
   onBack: () => void
+  onIniciarCobro: (loteId: number, total: number, items: number) => void
 }) {
-  const { data: lote, isLoading } = useLoteMasivo(loteId)
-  const confirmar = useConfirmarLoteMasivo(loteId)
-  const anular    = useAnularLoteMasivo()
-  const eliminar  = useEliminarItemMasivo(loteId)
+  const { data: lote, isLoading, refetch: refetchLote } = useLoteMasivo(loteId)
+  const { data: clienteLote }     = useCliente(lote?.clienteId ?? 0)
+  const confirmar    = useConfirmarLoteMasivo(loteId)
+  const generarPdf   = useGenerarGuiasPdf(loteId)
+  const eliminarLote = useEliminarLoteMasivo()
+  const eliminar     = useEliminarItemMasivo(loteId)
+  const token        = useSessionStore(s => s.token)
 
   const [itemDialogOpen, setItemDialogOpen]   = useState(false)
   const [editingItem,    setEditingItem]       = useState<ItemMasivo | null>(null)
   const [csvOpen,        setCsvOpen]           = useState(false)
+  const [showTabla,      setShowTabla]         = useState(true)
+  const [descargando,    setDescargando]       = useState<number | null>(null)
 
-  const isBorrador = lote?.estado === 'borrador'
+  const isBorrador     = lote?.estado === 'borrador'
+  const isConfirmado   = lote?.estado === 'confirmado'
+  const isPagado       = isConfirmado && !!lote?.cobrado
+  const pendienteCobro = isConfirmado && lote && !lote.cobrado
+  const puedeEliminar  = lote?.estado === 'borrador' || lote?.estado === 'anulado'
+
+  const handleDescargarGuia = async (envioId: number) => {
+    if (!token) { toast.error('Sin sesión'); return }
+    setDescargando(envioId)
+    try {
+      await descargarGuiaEnvioPdf(envioId, token)
+    } catch {
+      toast.error('No se pudo descargar la guía')
+    } finally {
+      setDescargando(null)
+    }
+  }
+
+  const handleDescargarTodas = async () => {
+    if (!token) { toast.error('Sin sesión'); return }
+    if (!lote?.pdfGenerado) {
+      generarPdf.mutate(undefined, {
+        onSuccess: async () => {
+          try { await descargarGuiasPdf(loteId, token) }
+          catch { toast.error('No se pudo descargar el PDF') }
+        },
+        onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al generar PDF'),
+      })
+    } else {
+      try { await descargarGuiasPdf(loteId, token) }
+      catch { toast.error('No se pudo descargar el PDF') }
+    }
+  }
+
+  const clienteDefault: Partial<ClienteDefault> | undefined = clienteLote ? {
+    nombreCompleto:  clienteLote.nombreCompleto || clienteLote.nombre,
+    numeroDocumento: clienteLote.numeroDocumento,
+    telefono:        clienteLote.telefono ?? undefined,
+    ciudad:          clienteLote.ciudad   ?? undefined,
+    direccion:       clienteLote.direccion ?? undefined,
+  } : lote?.remitente ? {
+    nombreCompleto:  lote.remitente.nombre,
+    numeroDocumento: lote.remitente.documento ?? undefined,
+    telefono:        lote.remitente.telefono  ?? undefined,
+    ciudad:          lote.remitente.ciudad    ?? undefined,
+    direccion:       lote.remitente.direccion ?? undefined,
+  } : undefined
 
   const handleConfirmar = () => {
     confirmar.mutate(cajaId, {
       onSuccess: (r) => {
-        toast.success(`Lote confirmado · ${r.enviosCreados} guías generadas`)
-        onBack()
+        toast.success(`Lote confirmado · ${r.enviosCreados} guías generadas · Pendiente de cobro`)
       },
       onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al confirmar'),
     })
   }
 
-  const handleAnular = () => {
-    anular.mutate(loteId, {
-      onSuccess: () => { toast.success('Lote anulado'); onBack() },
+  const handleEliminarLote = () => {
+    eliminarLote.mutate(loteId, {
+      onSuccess: () => { toast.success('Lote eliminado'); onBack() },
       onError:   (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error'),
     })
   }
@@ -2262,6 +3000,8 @@ function LoteDetalle({
     )
   }
 
+  const remNombre = lote.remitente?.nombre ?? clienteLote?.nombreCompleto ?? '—'
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -2271,26 +3011,52 @@ function LoteDetalle({
         </Button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold truncate">{lote.remitente.nombre}</span>
-            <span className={`text-[10px] font-medium px-1.5 py-px rounded-full ${ESTADO_LOTE_COLOR[lote.estado]}`}>
-              {ESTADO_LOTE_LABEL[lote.estado]}
-            </span>
+            <span className="text-xs font-semibold truncate">{remNombre}</span>
+            {clienteLote?.tipoCliente && (
+              <span className="text-[10px] px-1.5 py-px rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">
+                {clienteLote.tipoCliente.nombre}
+              </span>
+            )}
+            {isPagado ? (
+              <span className="text-[10px] font-medium px-1.5 py-px rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                Pagado
+              </span>
+            ) : (
+              <span className={`text-[10px] font-medium px-1.5 py-px rounded-full ${ESTADO_LOTE_COLOR[lote.estado]}`}>
+                {ESTADO_LOTE_LABEL[lote.estado]}
+              </span>
+            )}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            {lote.servicio?.nombreservicios ?? ''} · {lote.totales.items} destinatario{lote.totales.items !== 1 ? 's' : ''} · {fmtCop(lote.totales.total)}
+            {lote.servicio?.nombreservicios ?? ''} · {lote.totales.items} paquete{lote.totales.items !== 1 ? 's' : ''} · {fmtCop(lote.totales.total)}
+            {clienteLote?.ciudad && <> · <span className="font-medium">{clienteLote.ciudad}</span></>}
           </p>
         </div>
-        {isBorrador && (
-          <div className="flex gap-1.5 shrink-0">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] px-2 border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-              disabled={anular.isPending}
-              onClick={handleAnular}
-            >
-              Anular
+        <div className="flex gap-1.5 shrink-0 items-center">
+          {isBorrador && (
+            <>
+              <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={() => { setShowTabla(false); setCsvOpen(true) }}>
+                <Upload className="size-3" />CSV
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1" onClick={() => { setShowTabla(false); setEditingItem(null); setItemDialogOpen(true) }}>
+                <Plus className="size-3" />Uno a uno
+              </Button>
+              <Button
+                size="sm"
+                variant={showTabla ? 'default' : 'outline'}
+                className="h-7 text-[11px] gap-1"
+                onClick={() => setShowTabla(p => !p)}
+              >
+                <Table2 className="size-3" />Tabla
+              </Button>
+            </>
+          )}
+          {puedeEliminar && (
+            <Button size="icon" variant="ghost" className="size-7 text-destructive hover:bg-destructive/10" disabled={eliminarLote.isPending} onClick={handleEliminarLote}>
+              {eliminarLote.isPending ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3.5" />}
             </Button>
+          )}
+          {isBorrador && (
             <Button
               size="sm"
               className="h-7 text-[11px] px-2"
@@ -2299,120 +3065,128 @@ function LoteDetalle({
             >
               {confirmar.isPending ? <Loader2 className="size-3 animate-spin" /> : 'Confirmar'}
             </Button>
-          </div>
-        )}
-      </div>
-
-      {/* Remitente info */}
-      <div className="px-3 py-2 border-b shrink-0 bg-muted/5">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Remitente compartido</p>
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
-          <span className="font-medium text-foreground">{lote.remitente.nombre}</span>
-          {lote.remitente.documento && <span>Doc: {lote.remitente.documento}</span>}
-          {lote.remitente.telefono  && <span>Tel: {lote.remitente.telefono}</span>}
-          {lote.remitente.ciudad    && <span>Ciudad: {lote.remitente.ciudad}</span>}
+          )}
+          {pendienteCobro && (
+            <Button
+              size="sm"
+              className="h-7 text-[11px] px-2 bg-green-600 hover:bg-green-700"
+              onClick={() => onIniciarCobro(loteId, lote.totales.total, lote.totales.items)}
+            >
+              Cobrar
+            </Button>
+          )}
+          {isConfirmado && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-[11px] gap-1 px-2"
+              disabled={generarPdf.isPending}
+              onClick={handleDescargarTodas}
+            >
+              {generarPdf.isPending
+                ? <Loader2 className="size-3 animate-spin" />
+                : <FileDown className="size-3" />}
+              Guías PDF
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Toolbar */}
-      {isBorrador && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
-          <Button size="sm" className="h-7 text-[11px] gap-1" onClick={() => { setEditingItem(null); setItemDialogOpen(true) }}>
-            <Plus className="size-3" />
-            Destinatario
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => setCsvOpen(true)}>
-            <Upload className="size-3" />
-            Importar CSV
-          </Button>
+      {/* Área principal */}
+      {showTabla && isBorrador ? (
+        <div className="flex-1 overflow-hidden">
+          <TablaRapidaMasiva
+            loteId={loteId}
+            savedItems={lote.items ?? []}
+            clienteDefault={clienteDefault}
+            onGuardado={() => refetchLote()}
+          />
         </div>
-      )}
-
-      {/* Items table */}
-      <div className="flex-1 overflow-auto">
-        {!lote.items || lote.items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-10 text-center px-6">
-            <p className="text-xs text-muted-foreground">Sin destinatarios aún</p>
-            {isBorrador && (
-              <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => { setEditingItem(null); setItemDialogOpen(true) }}>
-                <Plus className="size-3" />
-                Agregar primero
-              </Button>
-            )}
-          </div>
-        ) : (
-          <table className="w-full text-[11px]">
-            <thead className="sticky top-0 bg-muted/70 backdrop-blur-sm">
-              <tr>
-                <th className="px-3 py-1.5 text-left font-medium text-muted-foreground w-7">#</th>
-                <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Destinatario</th>
-                <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-14">Peso</th>
-                <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-20">Total</th>
-                {isBorrador && <th className="px-2 py-1.5 w-14" />}
-              </tr>
-            </thead>
-            <tbody>
-              {lote.items.map((item) => (
-                <tr key={item.id} className="border-b last:border-b-0 hover:bg-muted/20">
-                  <td className="px-3 py-2 text-muted-foreground tabular-nums">{item.fila}</td>
-                  <td className="px-2 py-2">
-                    <p className="font-medium truncate max-w-[140px]">{item.destinatario.nombre}</p>
-                    <p className="text-[10px] text-muted-foreground truncate max-w-[140px]">
-                      {[item.destinatario.ciudad, item.destinatario.pais].filter(Boolean).join(', ')}
-                    </p>
-                  </td>
-                  <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
-                    {item.calculo.pesoFisicoKg}kg
-                  </td>
-                  <td className="px-2 py-2 text-right tabular-nums font-semibold">
-                    {fmtCop(item.calculo.valorTotal)}
-                  </td>
-                  {isBorrador && (
+      ) : (
+        /* Vista compacta de ítems (confirmado / anulado, o cuando se abre "Uno a uno") */
+        <div className="flex-1 overflow-auto">
+          {!lote.items || lote.items.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-10 text-center px-6">
+              <p className="text-xs text-muted-foreground">Sin paquetes. Usa la tabla para ingresar en masa.</p>
+              {isBorrador && (
+                <Button size="sm" onClick={() => setShowTabla(true)}>
+                  <Table2 className="size-3 mr-1.5" />Abrir tabla
+                </Button>
+              )}
+            </div>
+          ) : (
+            <table className="w-full text-[11px]">
+              <thead className="sticky top-0 bg-muted/70 backdrop-blur-sm">
+                <tr>
+                  <th className="px-3 py-1.5 text-left font-medium text-muted-foreground w-7">#</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Destinatario</th>
+                  <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-14">Peso</th>
+                  <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-20">Total</th>
+                  {(isBorrador || isConfirmado) && <th className="px-2 py-1.5 w-14" />}
+                </tr>
+              </thead>
+              <tbody>
+                {lote.items.map((item) => (
+                  <tr key={item.id} className="border-b last:border-b-0 hover:bg-muted/20">
+                    <td className="px-3 py-2 text-muted-foreground tabular-nums">{item.fila}</td>
                     <td className="px-2 py-2">
-                      <div className="flex gap-1 justify-end">
+                      <p className="font-medium truncate max-w-[140px]">{item.destinatario.nombre}</p>
+                      <p className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                        {item.remitente
+                          ? <span className="italic">↑ {item.remitente.nombre}{item.remitente.ciudad ? ` · ${item.remitente.ciudad}` : ''}</span>
+                          : [item.destinatario.ciudad, item.destinatario.pais].filter(Boolean).join(', ')}
+                      </p>
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{item.calculo.pesoFisicoKg}kg</td>
+                    <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmtCop(item.calculo.valorTotal)}</td>
+                    {isBorrador && (
+                      <td className="px-2 py-2">
+                        <div className="flex gap-1 justify-end">
+                          <Button variant="ghost" size="icon" className="size-6" onClick={() => { setEditingItem(item); setItemDialogOpen(true) }}>
+                            <Pencil className="size-3" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="size-6 text-destructive hover:text-destructive" disabled={eliminar.isPending} onClick={() => handleEliminar(item.id)}>
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+                      </td>
+                    )}
+                    {isConfirmado && item.envioId !== null && (
+                      <td className="px-2 py-2">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="size-6"
-                          onClick={() => { setEditingItem(item); setItemDialogOpen(true) }}
+                          disabled={descargando === item.envioId}
+                          onClick={() => handleDescargarGuia(item.envioId!)}
+                          title="Descargar guía PDF"
                         >
-                          <Pencil className="size-3" />
+                          {descargando === item.envioId
+                            ? <Loader2 className="size-3 animate-spin" />
+                            : <FileDown className="size-3" />}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6 text-destructive hover:text-destructive"
-                          disabled={eliminar.isPending}
-                          onClick={() => handleEliminar(item.id)}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                      </td>
+                    )}
+                    {isConfirmado && item.envioId === null && <td className="px-2 py-2" />}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {/* Totales footer */}
-      {lote.items && lote.items.length > 0 && (
+      {lote.totales.items > 0 && (
         <div className="px-3 py-2 border-t shrink-0 bg-muted/10 flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">{lote.totales.items} destinatarios · {lote.totales.pesoKg}kg total</span>
+          <span className="text-[11px] text-muted-foreground">{lote.totales.items} paquetes · {lote.totales.pesoKg.toFixed(2)} kg</span>
           <span className="text-xs font-bold tabular-nums">{fmtCop(lote.totales.total)}</span>
         </div>
       )}
 
       {/* Dialogs */}
-      <ItemDialog
-        loteId={loteId}
-        item={editingItem}
-        open={itemDialogOpen}
-        onClose={() => setItemDialogOpen(false)}
-      />
-      <CsvDialog loteId={loteId} open={csvOpen} onClose={() => setCsvOpen(false)} />
+      <ItemDialog loteId={loteId} item={editingItem} open={itemDialogOpen} onClose={() => setItemDialogOpen(false)} />
+      <CsvDialog  loteId={loteId} open={csvOpen} onClose={() => setCsvOpen(false)} />
     </div>
   )
 }
@@ -2426,27 +3200,54 @@ function LoteMasivoRow({
   lote:     LoteMasivoResumen
   onSelect: (id: number) => void
 }) {
+  const eliminarLote  = useEliminarLoteMasivo()
+  const puedeEliminar = lote.estado === 'borrador' || lote.estado === 'anulado'
+
   return (
-    <button
-      type="button"
-      className="w-full flex items-start gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-muted/30 transition-colors text-left"
-      onClick={() => onSelect(lote.id)}
-    >
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold truncate max-w-[180px]">{lote.remitente}</span>
-          <span className={`text-[10px] font-medium px-1.5 py-px rounded-full ${ESTADO_LOTE_COLOR[lote.estado]}`}>
-            {ESTADO_LOTE_LABEL[lote.estado]}
-          </span>
+    <div className="flex items-center border-b last:border-b-0">
+      <button
+        type="button"
+        className="flex-1 min-w-0 flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+        onClick={() => onSelect(lote.id)}
+      >
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold truncate max-w-[180px]">{lote.remitente}</span>
+            {lote.cobrado && lote.estado === 'confirmado' ? (
+              <span className="text-[10px] font-medium px-1.5 py-px rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                Pagado
+              </span>
+            ) : (
+              <span className={`text-[10px] font-medium px-1.5 py-px rounded-full ${ESTADO_LOTE_COLOR[lote.estado]}`}>
+                {ESTADO_LOTE_LABEL[lote.estado]}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            <span>{lote.totalItems} destinatario{lote.totalItems !== 1 ? 's' : ''}</span>
+            <span className="font-semibold text-foreground tabular-nums">{fmtCop(lote.totalCop)}</span>
+            <span>{new Date(lote.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' })}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-          <span>{lote.totalItems} destinatario{lote.totalItems !== 1 ? 's' : ''}</span>
-          <span className="font-semibold text-foreground tabular-nums">{fmtCop(lote.totalCop)}</span>
-          <span>{new Date(lote.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' })}</span>
-        </div>
-      </div>
-      <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5" />
-    </button>
+        <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+      </button>
+      {puedeEliminar && (
+        <button
+          type="button"
+          className="px-3 py-3 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+          disabled={eliminarLote.isPending}
+          onClick={(e) => {
+            e.stopPropagation()
+            eliminarLote.mutate(lote.id, {
+              onSuccess: () => toast.success('Lote eliminado'),
+              onError:   (err: unknown) => toast.error(err instanceof Error ? err.message : 'Error'),
+            })
+          }}
+        >
+          {eliminarLote.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -2456,14 +3257,17 @@ function TabMasivos({
   sucursalId,
   cajaId,
   clienteId,
+  onCobrar,
 }: {
   sucursalId: number
   cajaId:     number
   clienteId:  number | null
+  onCobrar:   (loteId: number, total: number, items: number) => void
 }) {
   const { data: lotes, isLoading } = useLotesMasivos(sucursalId)
   const crearLote = useCrearLoteMasivo()
   const { data: servicios } = useServiciosPostales(sucursalId)
+  const { data: clienteData } = useCliente(clienteId ?? 0)
 
   const [activeLoteId, setActiveLoteId] = useState<number | null>(null)
   const [crearOpen,    setCrearOpen]    = useState(false)
@@ -2473,6 +3277,16 @@ function TabMasivos({
   const [remTel,       setRemTel]       = useState('')
   const [remCiudad,    setRemCiudad]    = useState('')
   const [obs,          setObs]          = useState('')
+
+  // Pre-llenar remitente con datos del cliente cuando abre el diálogo
+  useEffect(() => {
+    if (crearOpen && clienteData) {
+      if (!remNombre) setRemNombre(clienteData.nombreCompleto || clienteData.nombre)
+      if (!remDoc)    setRemDoc(clienteData.numeroDocumento)
+      if (!remTel)    setRemTel(clienteData.telefono ?? '')
+      if (!remCiudad) setRemCiudad(clienteData.ciudad ?? '')
+    }
+  }, [crearOpen, clienteData?.id])
 
   const serviciosFiltrados = servicios?.filter(
     (s: ServicioCatalogo) => s.tipo !== 'apartado_postal',
@@ -2517,6 +3331,7 @@ function TabMasivos({
         loteId={activeLoteId}
         cajaId={cajaId}
         onBack={() => setActiveLoteId(null)}
+        onIniciarCobro={onCobrar}
       />
     )
   }
@@ -2529,9 +3344,6 @@ function TabMasivos({
           <MailOpen className="size-3.5 text-primary" />
           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
             Envíos Masivos
-          </span>
-          <span className="text-[10px] font-medium px-1.5 py-px rounded-full bg-primary/10 text-primary border border-primary/20">
-            Preporteado
           </span>
         </div>
         <Button size="sm" className="h-7 text-[11px] gap-1" onClick={() => setCrearOpen(true)}>
@@ -3705,22 +4517,117 @@ function DireccionCard({ d, onSelect }: { d: DireccionFrecuente; onSelect: (d: D
   )
 }
 
-// ── Utilidades compartidas para visor de guías ───────────────────────────────
+// ── Visor de guía en pantalla completa (reemplaza window.open) ───────────────
 
-const VIEWER_FEATURES = 'width=960,height=860,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes'
+const ZOOM_STEP = 0.15
+const ZOOM_MIN  = 0.3
+const ZOOM_MAX  = 2.5
+const ZOOM_DEF  = 1.0
 
-function abrirGuia(guia: GuiaEnvio, preWin?: Window | null) {
-  localStorage.setItem(GUIA_VIEWER_KEY, JSON.stringify(guia))
-  const url = `${window.location.origin}/guia-viewer`
-  if (preWin) {
-    preWin.location.href = url
-  } else {
-    window.open(url, `guia-${Date.now()}`, VIEWER_FEATURES)
-  }
-}
+function GuiaViewerDialog({ guia, onClose }: { guia: GuiaEnvio | null; onClose: () => void }) {
+  const [zoom, setZoom] = useState(ZOOM_DEF)
 
-function abrirVentanaGuia() {
-  return window.open('about:blank', `guia-${Date.now()}`, VIEWER_FEATURES)
+  const clampZoom = (z: number) =>
+    Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parseFloat(z.toFixed(2))))
+  const zoomOut   = () => setZoom((z) => clampZoom(z - ZOOM_STEP))
+  const zoomIn    = () => setZoom((z) => clampZoom(z + ZOOM_STEP))
+  const zoomReset = () => setZoom(ZOOM_DEF)
+
+  const svgW = 816
+  const svgH = 1056
+
+  return (
+    <Dialog open={guia !== null} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent
+        className="max-w-none w-screen h-screen p-0 flex flex-col overflow-hidden rounded-none border-0"
+        style={{ maxWidth: '100vw', maxHeight: '100vh' }}
+      >
+        {/* Toolbar */}
+        <div className="no-print flex-none flex h-11 items-center gap-2 border-b bg-card px-4 shadow-sm z-10">
+          <span className="flex-1 truncate font-mono text-sm font-semibold">
+            {guia?.estado === 'BORRADOR'
+              ? <span className="text-destructive">BORRADOR</span>
+              : <>Guía <span className="text-primary">{guia?.numeroGuia}</span></>}
+          </span>
+
+          <div className="flex items-center gap-1 rounded-md border bg-background px-1">
+            <Button variant="ghost" size="icon" className="h-7 w-7" disabled={zoom <= ZOOM_MIN} onClick={zoomOut} title="Reducir">
+              <ZoomOut className="size-3.5" />
+            </Button>
+            <button
+              type="button"
+              className="w-14 rounded px-1 py-0.5 text-center text-xs tabular-nums hover:bg-accent"
+              onClick={zoomReset}
+              title="Restablecer zoom"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" disabled={zoom >= ZOOM_MAX} onClick={zoomIn} title="Ampliar">
+              <ZoomIn className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={zoomReset} title="Restablecer">
+              <RotateCcw className="size-3" />
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {guia?.estado !== 'BORRADOR' && (
+              <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={() => window.print()}>
+                <Printer className="size-3.5" />
+                Imprimir
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} title="Cerrar">
+              <X className="size-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Scroll area */}
+        <div className="flex-1 overflow-auto flex justify-center bg-zinc-200 dark:bg-zinc-800">
+          <div
+            style={{
+              width: Math.round(svgW * zoom),
+              height: Math.round(svgH * zoom),
+              position: 'relative',
+              flexShrink: 0,
+              margin: '24px 16px',
+            }}
+          >
+            <div
+              style={{
+                transform: `scale(${zoom})`,
+                transformOrigin: 'top left',
+                width: svgW,
+                position: 'absolute',
+                top: 0,
+                left: 0,
+              }}
+            >
+              {guia && <GuiaPostalSvg guia={guia} />}
+            </div>
+          </div>
+        </div>
+
+        {/* Print styles */}
+        <style>{`
+          @media print {
+            @page { size: 8.5in 11in portrait; margin: 0; }
+            * { visibility: hidden !important; }
+            .guia-svg-root,
+            .guia-svg-root * { visibility: visible !important; }
+            .guia-svg-root {
+              position: fixed !important;
+              top: 0 !important; left: 0 !important;
+              width: 816px !important; height: 1056px !important;
+              transform: none !important;
+              overflow: hidden !important; box-shadow: none !important;
+            }
+          }
+        `}</style>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function TabServiciosPostales({
@@ -3729,12 +4636,18 @@ function TabServiciosPostales({
   clienteId,
   ventaId,
   onCotizChange,
+  onEnvioAgregado,
+  onVerGuia,
+  onCobrarLote,
 }: {
   sucursalId: number
   cajaId: number
   clienteId: number | null
   ventaId: number | null
   onCotizChange?: (c: CotizPreview | null) => void
+  onEnvioAgregado?: () => void
+  onVerGuia?: (g: GuiaEnvio) => void
+  onCobrarLote: (loteId: number, total: number, items: number) => void
 }) {
   const [pais, setPais] = useState('CO')
   const [servicioId, setServicioId] = useState(0)
@@ -3879,7 +4792,7 @@ function TabServiciosPostales({
     setEsCorrespondencia(false)
   }
 
-  const ejecutarGenerar = async (preWin?: Window | null) => {
+  const ejecutarGenerar = async () => {
     const dirTexto = composeAddress(destinatario.dir)
     const body: CrearEnvioPayload = {
       servicioId,
@@ -3894,7 +4807,10 @@ function TabServiciosPostales({
         tipoDocumento: remitente.tipoDocumento || undefined,
         email: remitente.email.trim() || undefined,
         telefono: remitente.telefono.trim() || undefined,
+        direccion: composeAddress(remitente.dir) || undefined,
         ciudad: remitente.dir.ciudad.trim() || undefined,
+        departamento: remitente.dir.departamento.trim() || undefined,
+        codigoPostal: remitente.cp.trim() || undefined,
         pais: remitente.pais || 'CO',
       },
       destinatario: {
@@ -3917,7 +4833,7 @@ function TabServiciosPostales({
     if (!esCorrespondencia && largoCm) body.largoCm = Number(largoCm)
     if (valorDeclarado) body.valorDeclarado = Number(valorDeclarado)
     if (diceContener.trim()) body.contenido = diceContener.trim()
-    if (seguroAdicional) body.seguroPostal = true
+    if (seguroAdicional) body.seguroAdicional = true
     if (!esInternacional) body.tipoTrayecto = tipoTrayecto
     const obsPartes = [
       observaciones.trim(),
@@ -3934,7 +4850,7 @@ function TabServiciosPostales({
       ? await agregarEnvioCarrito.mutateAsync(body)
       : await crearEnvio.mutateAsync(body)
 
-    abrirGuia(result.guia, preWin)
+    onVerGuia?.(result.guia)
     setActiveTab('envios')
     setEnviosGenerados((prev) => [
       ...prev,
@@ -3953,10 +4869,17 @@ function TabServiciosPostales({
       },
     ])
     toast.success(`Guía ${result.envio.numeroGuia} ${ventaId ? 'añadida al carrito' : 'generada'}`)
+    if (result.seleccionEstampillas?.length) {
+      const lineas = result.seleccionEstampillas.map((s) => `${s.cantidad}×$${Number(s.denominacion).toLocaleString('es-CO')}`).join(' + ')
+      toast.info(`Estampillas preporteadas: ${lineas}`, { duration: 8000 })
+    }
     if ('alertas' in result && result.alertas?.length) {
       for (const a of result.alertas) toast.warning(a as string, { duration: 8000 })
     }
     resetForm()
+    if (ventaId) {
+      onEnvioAgregado?.()
+    }
   }
 
   const handleGuardar = () => {
@@ -3969,25 +4892,23 @@ function TabServiciosPostales({
 
   const handleConfirmarYGenerar = async () => {
     setConfirmOpen(false)
-    // Abrir ventana sincrónicamente (antes de cualquier await) para evitar popup blocker
-    const preWin = abrirVentanaGuia()
     try {
       if (ventaId && cajaOpt) {
         await agregarProd.mutateAsync({ productoId: cajaSeleccion, cantidad: cajaCantidad })
       }
-      await ejecutarGenerar(preWin)
-    } catch {
-      preWin?.close()
-      toast.error('No se pudo completar la operación')
+      await ejecutarGenerar()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'No se pudo completar la operación')
     }
   }
 
   const totalEnvios = enviosGenerados.reduce((s, e) => s + e.valorTotal, 0)
 
   const previewGuia = useMemo<GuiaEnvio | null>(() => {
-    if (!cotizacion || !remitente.nombre) return null
-    const _flete     = cotizacion.valorServicio
-    const _manejo    = cotizacion.valorCertificacion ?? 0
+    // Require only the fields the user can enter — cotización is optional (shows 0s when not loaded yet)
+    if (!remitente.nombre || !servicioId) return null
+    const _flete     = cotizacion?.valorServicio ?? 0
+    const _manejo    = cotizacion?.valorCertificacion ?? 0
     const _minimoSeg = selectedService?.minimoSeguroPostal ?? 0
     const _seguro    = seguroAdicional && Number(valorDeclarado) > 0
       ? Math.max(Math.round(Number(valorDeclarado) * 0.5 / 100), _minimoSeg)
@@ -4004,6 +4925,7 @@ function TabServiciosPostales({
         email:        remitente.email     || null,
         direccion:    composeAddress(remitente.dir) || null,
         ciudad:       remitente.dir.ciudad || null,
+        departamento: remitente.dir.departamento || null,
         codigoPostal: remitente.cp || null,
         pais:         'CO',
       },
@@ -4014,16 +4936,17 @@ function TabServiciosPostales({
         email:        destinatario.email     || null,
         direccion:    composeAddress(destinatario.dir) || null,
         ciudad:       destinatario.dir.ciudad || (esInternacional ? destinatario.pais : null),
+        departamento: destinatario.dir.departamento || null,
         codigoPostal: destinatario.cp || null,
         pais:         esInternacional ? destinatario.pais : 'CO',
       },
       peso: {
-        fisicoKg:     cotizacion.pesoFisicoKg,
-        tarificadoKg: cotizacion.pesoTarificadoKg,
-        altoCm:       altoCm  ? Number(altoCm)  : null,
-        anchoCm:      anchoCm ? Number(anchoCm) : null,
-        largoCm:      largoCm ? Number(largoCm) : null,
-        volumetricoKg: cotizacion.pesoVolumetricoKg ?? null,
+        fisicoKg:      cotizacion?.pesoFisicoKg     ?? pesoKg,
+        tarificadoKg:  cotizacion?.pesoTarificadoKg ?? pesoKg,
+        altoCm:        altoCm  ? Number(altoCm)  : null,
+        anchoCm:       anchoCm ? Number(anchoCm) : null,
+        largoCm:       largoCm ? Number(largoCm) : null,
+        volumetricoKg: cotizacion?.pesoVolumetricoKg ?? null,
       },
       valores: {
         servicio:  _flete,
@@ -4035,11 +4958,11 @@ function TabServiciosPostales({
       estado:               'BORRADOR',
       generadoEn:           new Date().toISOString(),
       ordenServicio:        null,
-      fechaEntregaEstimada: cotizacion.fechaEntregaEstimada ?? null,
+      fechaEntregaEstimada: cotizacion?.fechaEntregaEstimada ?? null,
       centroOperativo:      null,
     }
   }, [cotizacion, remitente, destinatario, selectedService, esInternacional,
-      seguroAdicional, valorDeclarado, altoCm, anchoCm, largoCm])
+      servicioId, pesoKg, seguroAdicional, valorDeclarado, altoCm, anchoCm, largoCm])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -4063,9 +4986,6 @@ function TabServiciosPostales({
           <TabsTrigger value="masivos" className="text-xs gap-1.5">
             <MailOpen className="size-3" />
             Masivos
-            <span className="text-[9px] font-medium px-1 py-px rounded bg-primary/15 text-primary leading-none">
-              Preporteado
-            </span>
           </TabsTrigger>
         </TabsList>
 
@@ -4439,23 +5359,16 @@ function TabServiciosPostales({
                   <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                     Medio de pago
                   </Label>
-                  <div className="grid grid-cols-2 gap-1">
-                    {MEDIOS_PAGO_ENVIO.map((m) => (
-                      <button
-                        key={m.value}
-                        type="button"
-                        onClick={() => setMedioPago(m.value)}
-                        className={cn(
-                          'rounded-md border px-2 py-1 text-xs font-medium text-left transition-colors',
-                          medioPago === m.value
-                            ? 'border-primary bg-primary/5 text-primary'
-                            : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground',
-                        )}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
+                  <Select value={medioPago} onValueChange={(v) => setMedioPago(v as MedioPagoEnvio)}>
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEDIOS_PAGO_ENVIO.map((m) => (
+                        <SelectItem key={m.value} value={m.value} className="text-xs">{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </ScrollArea>
@@ -4495,7 +5408,7 @@ function TabServiciosPostales({
                   variant="outline"
                   size="sm"
                   className="w-full text-xs gap-1.5"
-                  onClick={() => previewGuia && abrirGuia(previewGuia)}
+                  onClick={() => previewGuia && onVerGuia?.(previewGuia)}
                 >
                   <Eye className="size-3.5" />
                   Ver borrador de guía
@@ -4599,7 +5512,7 @@ function TabServiciosPostales({
                         <button
                           type="button"
                           className="text-[10px] text-muted-foreground underline-offset-2 hover:underline hover:text-primary"
-                          onClick={() => abrirGuia(e.guiaData)}
+                          onClick={() => onVerGuia?.(e.guiaData)}
                         >
                           Ver guía
                         </button>
@@ -4615,7 +5528,7 @@ function TabServiciosPostales({
 
         {/* ── Tab 3: Masivos ──────────────────────────────────────────────── */}
         <TabsContent value="masivos" className="flex flex-col flex-1 overflow-hidden m-0 border-t">
-          <TabMasivos sucursalId={sucursalId} cajaId={cajaId} clienteId={clienteId} />
+          <TabMasivos sucursalId={sucursalId} cajaId={cajaId} clienteId={clienteId} onCobrar={onCobrarLote} />
         </TabsContent>
       </Tabs>
 
@@ -4799,8 +5712,10 @@ function TabHistorial({ cajaId, userRol }: { cajaId: number; userRol: string }) 
   const { data: ventas, isLoading, refetch, isFetching } = useVentasTurno(cajaId)
   const [anularId, setAnularId] = useState<number | null>(null)
   const [motivo, setMotivo] = useState('')
-  const anular = useAnularVenta(anularId ?? 0, cajaId)
+  const [descargandoPdf, setDescargandoPdf] = useState<number | null>(null)
+  const anular   = useAnularVenta(anularId ?? 0, cajaId)
   const canAnular = ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA'].includes(userRol)
+  const token    = useSessionStore(s => s.token)
 
   const handleAnular = async () => {
     if (!anularId || !motivo.trim()) return
@@ -4811,6 +5726,18 @@ function TabHistorial({ cajaId, userRol }: { cajaId: number; userRol: string }) 
       setMotivo('')
     } catch {
       toast.error('No se pudo anular la venta')
+    }
+  }
+
+  const handleDescargarPdf = async (envioId: number) => {
+    if (!token) { toast.error('Sin sesión'); return }
+    setDescargandoPdf(envioId)
+    try {
+      await descargarGuiaEnvioPdf(envioId, token)
+    } catch {
+      toast.error('No se pudo descargar la guía PDF')
+    } finally {
+      setDescargandoPdf(null)
     }
   }
 
@@ -4850,6 +5777,11 @@ function TabHistorial({ cajaId, userRol }: { cajaId: number; userRol: string }) 
                     >
                       {v.tipo}
                     </Badge>
+                    {v.referenciaTipo === 'Envio' && v.referenciaId && (
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        ENV-{v.referenciaId}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
                     <span className="font-medium tabular-nums text-foreground">
@@ -4864,19 +5796,35 @@ function TabHistorial({ cajaId, userRol }: { cajaId: number; userRol: string }) 
                     </span>
                   </div>
                 </div>
-                {canAnular && v.tipo !== 'anulacion' && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
-                    onClick={() => {
-                      setAnularId(v.referenciaId ?? v.id)
-                      setMotivo('')
-                    }}
-                  >
-                    Anular
-                  </Button>
-                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {v.referenciaTipo === 'Envio' && v.referenciaId && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                      title="Descargar guía PDF"
+                      disabled={descargandoPdf === v.referenciaId}
+                      onClick={() => handleDescargarPdf(v.referenciaId!)}
+                    >
+                      {descargandoPdf === v.referenciaId
+                        ? <Loader2 className="size-3.5 animate-spin" />
+                        : <FileDown className="size-3.5" />}
+                    </Button>
+                  )}
+                  {canAnular && v.tipo !== 'anulacion' && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setAnularId(v.referenciaId ?? v.id)
+                        setMotivo('')
+                      }}
+                    >
+                      Anular
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -4924,13 +5872,15 @@ function TabResumenPago({
   cliente,
   ventaId,
   cajaId,
+  pendingLote,
   onExito,
 }: {
   carrito: Venta | null
   cliente: ClienteResumen | null
-  ventaId: number
+  ventaId: number | null
   cajaId: number
-  onExito: () => void
+  pendingLote?: { loteId: number; total: number } | null
+  onExito: (guias: GuiaEnvio[], cambio: number | null) => void
 }) {
   const { user } = useSessionStore()
   const canAnular = ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA'].includes(user?.rol ?? '')
@@ -4941,11 +5891,22 @@ function TabResumenPago({
   const [preporteadoMonto, setPreporteadoMonto] = useState('')
   const [anularOpen, setAnularOpen] = useState(false)
   const [motivoAnular, setMotivoAnular] = useState('')
-  const [guiasConfirmadas, setGuiasConfirmadas] = useState<GuiaEnvio[]>([])
-  const [cambioFinal, setCambioFinal] = useState<number | null>(null)
 
-  const confirmar = useConfirmarVenta(ventaId, cajaId)
-  const anular = useAnularVenta(ventaId, cajaId)
+  const confirmar = useConfirmarVenta(ventaId ?? 0, cajaId)
+  const anular    = useAnularVenta(ventaId ?? 0, cajaId)
+  const cobrar    = useCobrarLoteMasivo(pendingLote?.loteId ?? 0)
+  const { data: estampillasDisponibles } = useEstampillasDisponibles(
+    (medioPago === 'preporteado' || medioPago === 'mixto_preporteado') ? cajaId : null,
+  )
+  const { data: saldoData, refetch: refetchSaldo } = useSaldoAFavor(cliente?.id ?? null)
+  const saldoDisponible = saldoData?.saldoAFavor ?? cliente?.saldoAFavor ?? 0
+
+  // Reset saldo_a_favor si el cliente pierde elegibilidad o el saldo es insuficiente
+  useEffect(() => {
+    if (medioPago === 'saldo_a_favor' && (!cliente || saldoDisponible <= 0)) {
+      setMedioPago('efectivo')
+    }
+  }, [cliente, saldoDisponible, medioPago])
 
   const handleAnular = async () => {
     if (!motivoAnular.trim()) return
@@ -4953,7 +5914,7 @@ function TabResumenPago({
       await anular.mutateAsync({ motivo: motivoAnular.trim() })
       toast.success('Venta anulada')
       setAnularOpen(false)
-      onExito()
+      onExito([], null)
     } catch {
       toast.error('No se pudo anular la venta')
     }
@@ -4963,7 +5924,8 @@ function TabResumenPago({
   const showEfectivo = medioPago === 'efectivo' || isMixto
   const efectivo = Number(efectivoRecibido) || 0
   const preporteado = Number(preporteadoMonto) || 0
-  const total = carrito?.total ?? 0
+  const loteTotal = pendingLote?.total ?? 0
+  const total = (carrito?.total ?? 0) + loteTotal
   const enEc = isMixto ? Math.max(0, total - preporteado) : 0
   const cambio = showEfectivo ? Math.max(0, efectivo - (isMixto ? enEc : total)) : 0
   const faltante = showEfectivo ? Math.max(0, (isMixto ? enEc : total) - efectivo) : 0
@@ -4979,10 +5941,21 @@ function TabResumenPago({
     return Math.round(((d.subtotal + d.descuento) * t) / (100 + t))
   }
 
+  const isPreporteado = medioPago === 'preporteado'
+  const montoFilatelia =
+    carrito?.detalle
+      .filter((d) => d.tipoProducto === 'filatelia')
+      .reduce((s, d) => s + d.subtotal, 0) ?? 0
+  const tieneFilatelia = montoFilatelia > 0
+
   const handleConfirmar = async () => {
     const emailVal = email.trim()
     if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
       toast.error('El email ingresado no es válido')
+      return
+    }
+    if (isPreporteado && total <= 0) {
+      toast.error('El total de la venta no puede ser cero')
       return
     }
     if (isMixto && preporteado <= 0) {
@@ -5004,23 +5977,32 @@ function TabResumenPago({
       ? (efectivo > 0 ? efectivo : isMixto ? enEc : total)
       : undefined
     // Si el total es 0 y el pago es efectivo, no se puede procesar
-    if (showEfectivo && (!efectivoEnviar || efectivoEnviar <= 0)) {
+    if (showEfectivo && !isPreporteado && !isMixto && (!efectivoEnviar || efectivoEnviar <= 0)) {
       toast.error('El total de la venta no puede ser cero')
       return
     }
     try {
-      const result = await confirmar.mutateAsync({
-        medioPago,
-        ...(emailVal ? { emailFactura: emailVal } : {}),
-        ...(efectivoEnviar !== undefined ? { efectivoRecibido: efectivoEnviar } : {}),
-      })
-      toast.success('Pago confirmado')
-      if (result.guias && result.guias.length > 0) {
-        setGuiasConfirmadas(result.guias)
-        setCambioFinal(result.cambio)
-      } else {
-        onExito()
+      let guias: GuiaEnvio[] = []
+      let cambio: number | null = null
+      if (ventaId != null) {
+        const result = await confirmar.mutateAsync({
+          medioPago,
+          ...(emailVal ? { emailFactura: emailVal } : {}),
+          ...(efectivoEnviar !== undefined ? { efectivoRecibido: efectivoEnviar } : {}),
+          // preporteado puro: el total lo cubren las estampillas íntegramente
+          ...(isPreporteado ? { montoEstampillas: carrito?.total ?? 0 } : {}),
+          // mixto: estampillas + complemento en efectivo
+          ...(isMixto && preporteado > 0 ? { montoEstampillas: preporteado, montoEfectivo: enEc } : {}),
+        })
+        guias  = result.guias  ?? []
+        cambio = result.cambio ?? null
       }
+      if (pendingLote) {
+        await cobrar.mutateAsync({ cajaId, medioPago })
+      }
+      if (tieneFilatelia || medioPago === 'preporteado' || medioPago === 'mixto_preporteado') void refetchSaldo()
+      toast.success('Pago confirmado')
+      onExito(guias, cambio)
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'No se pudo confirmar el pago')
     }
@@ -5033,7 +6015,7 @@ function TabResumenPago({
     (carrito?.detalle.length ?? 0) > 0 ||
     (carrito?.enviosPendientes?.length ?? 0) > 0 ||
     (carrito?.apartadosPendientes?.length ?? 0) > 0
-  if (!carrito || !tieneItems) {
+  if ((!carrito || !tieneItems) && !pendingLote) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
         <ShoppingCart className="size-8 opacity-20" />
@@ -5042,70 +6024,10 @@ function TabResumenPago({
     )
   }
 
-  // Panel post-pago: muestra guías generadas para imprimir antes de iniciar nueva venta
-  if (guiasConfirmadas.length > 0) {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="px-4 py-3 border-b bg-emerald-50/60 dark:bg-emerald-950/20 shrink-0">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="size-5 text-emerald-600" />
-            <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-              Pago confirmado
-            </span>
-            {cambioFinal != null && cambioFinal > 0 && (
-              <span className="ml-auto text-xs text-emerald-600 font-semibold">
-                Cambio: {fmt(cambioFinal)}
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {guiasConfirmadas.length === 1
-              ? 'Guía lista para imprimir.'
-              : `${guiasConfirmadas.length} guías listas para imprimir.`}
-          </p>
-        </div>
-
-        <ScrollArea className="flex-1">
-          <div className="px-4 py-3 space-y-2">
-            {guiasConfirmadas.map((g) => (
-              <div
-                key={g.numeroGuia}
-                className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5"
-              >
-                <Truck className="size-4 text-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono font-semibold">{g.numeroGuia}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">
-                    {g.destinatario.nombre ?? '—'} · {g.destinatario.ciudad ?? g.destinatario.pais}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs gap-1.5 shrink-0"
-                  onClick={() => abrirGuia(g)}
-                >
-                  <Eye className="size-3.5" />
-                  Ver / Imprimir
-                </Button>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-
-        <div className="px-4 py-3 border-t shrink-0">
-          <Button className="w-full" onClick={onExito}>
-            Nueva venta
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="h-full overflow-y-auto">
       {/* Prefactura header */}
-      <div className="px-4 py-2.5 border-b bg-muted/20 shrink-0">
+      <div className="px-4 py-2.5 border-b bg-muted/20 sticky top-0 z-10">
         <div className="flex items-center gap-3 mb-1">
           {cliente ? (
             <>
@@ -5117,6 +6039,11 @@ function TabResumenPago({
               <span className="text-xs text-muted-foreground">
                 {cliente.tipoDocumento}: {cliente.numeroDocumento}
               </span>
+              {saldoDisponible > 0 && (
+                <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  Saldo a favor: {fmt(saldoDisponible)}
+                </span>
+              )}
             </>
           ) : (
             <span className="text-sm text-muted-foreground">Sin cliente asociado</span>
@@ -5140,7 +6067,7 @@ function TabResumenPago({
       </div>
 
       {/* Items table — columnas idénticas al sistema 4-72 legacy */}
-      <div className="flex-1 overflow-auto border-b">
+      <div className="overflow-x-auto border-b">
         <table className="w-full text-xs border-collapse min-w-[680px]">
           <thead>
             <tr className="border-b bg-muted/50 sticky top-0 z-10">
@@ -5306,7 +6233,7 @@ function TabResumenPago({
           { label: 'Total a pagar', value: fmt(carrito.total), primary: true },
         ]
         return (
-          <div className="grid grid-cols-6 divide-x border-b bg-muted/30 text-xs shrink-0">
+          <div className="grid grid-cols-6 divide-x border-b bg-muted/30 text-xs">
             {cols.map((col) => (
               <div key={col.label} className="px-2 py-2 text-center">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide leading-tight">
@@ -5325,7 +6252,7 @@ function TabResumenPago({
       })()}
 
       {/* Payment fields */}
-      <div className="px-4 py-3 space-y-3 shrink-0 bg-card">
+      <div className="px-4 py-3 space-y-3 bg-card">
         {/* Email */}
         <div className="space-y-0.5">
           <div className="relative">
@@ -5339,7 +6266,7 @@ function TabResumenPago({
             />
           </div>
           <p className="text-[10px] text-muted-foreground px-0.5">
-            Este campo es obligatorio. Solo se usará para facturación electrónica.
+            Opcional — solo se usará para facturación electrónica.
           </p>
         </div>
 
@@ -5348,42 +6275,121 @@ function TabResumenPago({
           <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
             Medio de pago
           </Label>
-          <div className="grid grid-cols-2 gap-1.5">
-            {MEDIOS_PAGO.map((m) => (
-              <label
-                key={m.value}
-                className={cn(
-                  'flex items-center gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition-colors',
-                  medioPago === m.value
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground',
-                )}
-              >
-                <input
-                  type="radio"
-                  name="medioPago"
-                  value={m.value}
-                  checked={medioPago === m.value}
-                  onChange={() => setMedioPago(m.value)}
-                  className="sr-only"
-                />
-                <span
-                  className={cn(
-                    'size-3 rounded-full border-2 shrink-0 transition-colors',
-                    medioPago === m.value
-                      ? 'border-primary bg-primary'
-                      : 'border-muted-foreground/40',
-                  )}
-                />
-                <span className="text-xs font-medium leading-none">{m.label}</span>
-              </label>
-            ))}
-          </div>
+          <Select value={medioPago} onValueChange={(v) => setMedioPago(v as MedioPagoVenta)}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MEDIOS_PAGO.map((m) => {
+                if (m.value === 'saldo_a_favor') {
+                  const disabled = !cliente || saldoDisponible <= 0 || saldoDisponible < total
+                  let label: string
+                  if (!cliente) label = 'Saldo a favor (sin cliente)'
+                  else if (saldoDisponible <= 0) label = 'Saldo a favor (sin saldo)'
+                  else if (saldoDisponible < total) label = `Saldo a favor — ${fmt(saldoDisponible)} (insuficiente)`
+                  else label = `Saldo a favor — ${fmt(saldoDisponible)}`
+                  return (
+                    <SelectItem key={m.value} value={m.value} disabled={disabled}>
+                      {label}
+                    </SelectItem>
+                  )
+                }
+                return <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              })}
+            </SelectContent>
+          </Select>
+
+          {/* Saldo a favor del cliente — informativo (se usa como preporteado) */}
+          {cliente && saldoDisponible > 0 && (
+            <div className="flex items-center justify-between rounded-md bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/60 px-2.5 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <Wallet className="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span className="text-xs text-emerald-700 dark:text-emerald-300">
+                  Saldo a favor (preporteado disponible)
+                </span>
+              </div>
+              <span className="text-base font-extrabold tabular-nums text-emerald-700 dark:text-emerald-300">
+                {fmt(saldoDisponible)}
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* Preporteado puro: el total lo cubren íntegramente las estampillas */}
+        {isPreporteado && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20 px-3 py-2.5 space-y-2">
+            <div className="flex items-center gap-2">
+              <Stamp className="size-3.5 text-violet-500 shrink-0" />
+              <span className="text-xs font-medium text-violet-700 dark:text-violet-400">
+                Pago completo con estampillas
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              El cliente entrega estampillas por valor exacto de{' '}
+              <span className="font-semibold tabular-nums text-violet-700 dark:text-violet-400">
+                {fmt(total)}
+              </span>
+              . El sistema validará que el total cuadre exactamente.
+            </p>
+            {cliente && saldoDisponible > 0 && (
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                {saldoDisponible >= total
+                  ? `Saldo a favor cubre este pago · restará ${fmt(saldoDisponible - total)}`
+                  : `Saldo a favor disponible: ${fmt(saldoDisponible)} (insuficiente para cubrir el total)`}
+              </p>
+            )}
+            {estampillasDisponibles && estampillasDisponibles.length > 0 && (
+              <div className="pt-1 space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Denominaciones disponibles</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {estampillasDisponibles.map((d, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
+                    >
+                      {fmt(Number(d.denominacion))}
+                      {d.serie ? ` · ${d.serie}` : ''}
+                      <span className="opacity-60">({d.stock})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mixto preporteado: split estampillas / efectivo */}
         {isMixto && (
           <div className="rounded-lg border px-3 py-2 space-y-2">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <Stamp className="size-3 text-violet-500 shrink-0" />
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Desglose mixto
+              </span>
+            </div>
+            {estampillasDisponibles && estampillasDisponibles.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {estampillasDisponibles.map((d, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
+                  >
+                    {fmt(Number(d.denominacion))}{d.serie ? ` · ${d.serie}` : ''}
+                    <span className="opacity-60">({d.stock})</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            {cliente && saldoDisponible > 0 && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors"
+                onClick={() => setPreporteadoMonto(String(Math.min(saldoDisponible, total - 1)))}
+              >
+                <Wallet className="size-3 shrink-0" />
+                Usar saldo: {fmt(saldoDisponible)}
+              </button>
+            )}
             <div className="flex items-end gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Estampillas preporteadas</Label>
@@ -5405,8 +6411,25 @@ function TabResumenPago({
             {preporteado > 0 && preporteado < total && (
               <p className="text-[10px] text-muted-foreground">
                 Preporteado {fmt(preporteado)} + efectivo {fmt(enEc)} = {fmt(total)}
+                {cliente && saldoDisponible > 0 && preporteado <= saldoDisponible && (
+                  <span className="ml-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                    · saldo restante: {fmt(saldoDisponible - preporteado)}
+                  </span>
+                )}
               </p>
             )}
+          </div>
+        )}
+
+        {/* Filatelia → aviso de saldo a generar */}
+        {tieneFilatelia && cliente && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2">
+            <Tag className="size-3.5 text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-[10px] text-amber-700 dark:text-amber-300">
+              Esta compra generará{' '}
+              <span className="font-semibold">{fmt(montoFilatelia)}</span> de saldo a favor para{' '}
+              {cliente.nombre}.
+            </p>
           </div>
         )}
 
@@ -5453,10 +6476,10 @@ function TabResumenPago({
           <Button
             className="flex-1"
             onClick={handleConfirmar}
-            disabled={confirmar.isPending}
+            disabled={confirmar.isPending || cobrar.isPending}
           >
-            {confirmar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
-            Confirmar pago — {fmt(carrito.total)}
+            {(confirmar.isPending || cobrar.isPending) && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            Confirmar pago — {fmt(total)}
           </Button>
           {canAnular && (
             <Button
@@ -5518,11 +6541,15 @@ function CarritoPanel({
   cajaId,
   onPagar,
   cotizPreview,
+  pendingLote,
+  onCancelPendingLote,
 }: {
   ventaId: number | null
   cajaId: number
   onPagar: () => void
   cotizPreview?: CotizPreview | null
+  pendingLote?: { loteId: number; total: number; items: number } | null
+  onCancelPendingLote?: () => void
 }) {
   const { data: carrito, isLoading } = useCarrito(ventaId ?? 0)
   const eliminar         = useEliminarProducto(ventaId ?? 0, cajaId)
@@ -5531,7 +6558,7 @@ function CarritoPanel({
   const detalle   = carrito?.detalle ?? []
   const envios    = carrito?.enviosPendientes ?? []
   const apartados = carrito?.apartadosPendientes ?? []
-  const tieneItems = detalle.length > 0 || envios.length > 0 || apartados.length > 0
+  const tieneItems = detalle.length > 0 || envios.length > 0 || apartados.length > 0 || !!pendingLote
 
   const handleEliminar = async (detalleId: number) => {
     try {
@@ -5654,6 +6681,29 @@ function CarritoPanel({
                 </button>
               </div>
             ))}
+            {pendingLote && (
+              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 bg-amber-50/40 dark:bg-amber-950/20">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium leading-tight line-clamp-1 text-amber-700 dark:text-amber-300">
+                    Lote masivo #{pendingLote.loteId}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {pendingLote.items} paquete{pendingLote.items !== 1 ? 's' : ''} · pendiente de cobro
+                  </p>
+                </div>
+                <span className="text-xs tabular-nums text-right w-7 text-muted-foreground">1</span>
+                <span className="text-xs font-semibold tabular-nums text-right w-16 text-amber-700 dark:text-amber-300">
+                  {fmt(pendingLote.total)}
+                </span>
+                <button
+                  type="button"
+                  onClick={onCancelPendingLote}
+                  className="flex justify-center w-4 text-muted-foreground/30 hover:text-destructive transition-colors"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
@@ -5718,50 +6768,54 @@ function CarritoPanel({
       )}
 
       <div className="border-t p-3 space-y-2 shrink-0">
-        {carrito && (
+        {(carrito || pendingLote) && (
           <div className="space-y-1 text-xs">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Subtotal</span>
-              <span className="tabular-nums">{fmt(carrito.subtotal)}</span>
-            </div>
-            {carrito.descuento > 0 && (
-              <div className="flex justify-between text-emerald-600">
-                <span>Descuento</span>
-                <span className="tabular-nums">−{fmt(carrito.descuento)}</span>
-              </div>
-            )}
-            {carrito.iva > 0 && (
-              <div className="flex justify-between text-amber-700 dark:text-amber-500">
-                <span>IVA</span>
-                <span className="tabular-nums">{fmt(carrito.iva)}</span>
-              </div>
-            )}
-            {(() => {
-              const sellosTot = carrito.detalle
-                .filter((d) => d.tipoProducto === 'estampilla')
-                .reduce((s, d) => s + d.subtotal, 0)
-              return sellosTot > 0 ? (
+            {carrito && (
+              <>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Estampillas</span>
-                  <span className="tabular-nums">{fmt(sellosTot)}</span>
+                  <span>Subtotal</span>
+                  <span className="tabular-nums">{fmt(carrito.subtotal)}</span>
                 </div>
-              ) : null
-            })()}
+                {carrito.descuento > 0 && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Descuento</span>
+                    <span className="tabular-nums">−{fmt(carrito.descuento)}</span>
+                  </div>
+                )}
+                {carrito.iva > 0 && (
+                  <div className="flex justify-between text-amber-700 dark:text-amber-500">
+                    <span>IVA</span>
+                    <span className="tabular-nums">{fmt(carrito.iva)}</span>
+                  </div>
+                )}
+                {(() => {
+                  const sellosTot = carrito.detalle
+                    .filter((d) => d.tipoProducto === 'estampilla')
+                    .reduce((s, d) => s + d.subtotal, 0)
+                  return sellosTot > 0 ? (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Estampillas</span>
+                      <span className="tabular-nums">{fmt(sellosTot)}</span>
+                    </div>
+                  ) : null
+                })()}
+              </>
+            )}
             <div className="flex justify-between font-bold text-sm pt-1 border-t">
               <span>TOTAL</span>
-              <span className="tabular-nums text-primary">{fmt(carrito.total)}</span>
+              <span className="tabular-nums text-primary">{fmt((carrito?.total ?? 0) + (pendingLote?.total ?? 0))}</span>
             </div>
           </div>
         )}
         <Button
           className="w-full h-10 text-sm font-semibold"
           onClick={onPagar}
-          disabled={!ventaId || !tieneItems}
+          disabled={!tieneItems}
         >
-          {tieneItems && carrito ? (
-            <>Ir a pagar — {fmt(carrito.total)}</>
+          {tieneItems ? (
+            <>Ir a pagar — {fmt((carrito?.total ?? 0) + (pendingLote?.total ?? 0))}</>
           ) : (
-            'Confirmar pago'
+            'Ir a pagar'
           )}
         </Button>
       </div>
@@ -5796,29 +6850,50 @@ function PagarDialog({
 }: PagarDialogProps) {
   const [medioPago, setMedioPago] = useState<MedioPagoVenta>('efectivo')
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
+  const [preporteadoMonto, setPreporteadoMonto] = useState('')
   const [email, setEmail] = useState(clienteEmail ?? '')
   const confirmar = useConfirmarVenta(ventaId, cajaId)
+  const { data: estampillasDisponibles } = useEstampillasDisponibles(
+    (medioPago === 'preporteado' || medioPago === 'mixto_preporteado') ? cajaId : null,
+  )
 
-  const showEfectivo = medioPago === 'efectivo' || medioPago === 'mixto_preporteado'
+  const isPreporteado = medioPago === 'preporteado'
+  const isMixto = medioPago === 'mixto_preporteado'
+  const showEfectivo = medioPago === 'efectivo' || isMixto
   const efectivo = Number(efectivoRecibido) || 0
-  const cambio = showEfectivo ? Math.max(0, efectivo - total) : 0
-  const faltante = showEfectivo ? Math.max(0, total - efectivo) : 0
+  const preporteado = Number(preporteadoMonto) || 0
+  const enEc = isMixto ? Math.max(0, total - preporteado) : 0
+  const cambio = showEfectivo ? Math.max(0, efectivo - (isMixto ? enEc : total)) : 0
+  const faltante = showEfectivo ? Math.max(0, (isMixto ? enEc : total) - efectivo) : 0
 
   const handleConfirmar = async () => {
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      toast.error('Ingresa un email válido para la factura')
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error('El email ingresado no es válido')
       return
     }
-    if (showEfectivo && efectivo > 0 && efectivo < total) {
+    if (isPreporteado && total <= 0) {
+      toast.error('El total de la venta no puede ser cero')
+      return
+    }
+    if (isMixto && preporteado <= 0) {
+      toast.error('Ingresa el monto en estampillas preporteadas')
+      return
+    }
+    if (isMixto && preporteado >= total) {
+      toast.error('El monto preporteado no puede cubrir el total completo — usa "Preporteado" directamente')
+      return
+    }
+    if (showEfectivo && efectivo > 0 && efectivo < (isMixto ? enEc : total)) {
       toast.error('El efectivo recibido no cubre el total')
       return
     }
     try {
       await confirmar.mutateAsync({
         medioPago,
-        emailFactura: email.trim(),
-        // Si no ingresó monto, se asume pago exacto (cambio = 0)
-        ...(showEfectivo ? { efectivoRecibido: efectivo > 0 ? efectivo : total } : {}),
+        ...(email.trim() ? { emailFactura: email.trim() } : {}),
+        ...(showEfectivo ? { efectivoRecibido: efectivo > 0 ? efectivo : isMixto ? enEc : total } : {}),
+        ...(isPreporteado ? { montoEstampillas: total } : {}),
+        ...(isMixto && preporteado > 0 ? { montoEstampillas: preporteado, montoEfectivo: enEc } : {}),
       })
       toast.success('Pago confirmado')
       onSuccess()
@@ -5832,6 +6907,7 @@ function PagarDialog({
     if (v) {
       setMedioPago('efectivo')
       setEfectivoRecibido('')
+      setPreporteadoMonto('')
       setEmail(clienteEmail ?? '')
     }
     onOpenChange(v)
@@ -5863,7 +6939,7 @@ function PagarDialog({
         {/* Email */}
         <div className="space-y-1.5">
           <Label className="text-xs">
-            Email para factura <span className="text-destructive">*</span>
+            Email para factura <span className="text-muted-foreground font-normal">(opcional)</span>
           </Label>
           <div className="relative">
             <MailOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
@@ -5882,44 +6958,107 @@ function PagarDialog({
           <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
             Medio de pago
           </Label>
-          <div className="grid grid-cols-2 gap-1.5">
-            {MEDIOS_PAGO.map((m) => (
-              <label
-                key={m.value}
-                className={cn(
-                  'flex items-center gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition-colors',
-                  medioPago === m.value
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-border text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground',
-                )}
-              >
-                <input
-                  type="radio"
-                  name="medioPagoDialog"
-                  value={m.value}
-                  checked={medioPago === m.value}
-                  onChange={() => setMedioPago(m.value)}
-                  className="sr-only"
-                />
-                <span
-                  className={cn(
-                    'size-3 rounded-full border-2 shrink-0 transition-colors',
-                    medioPago === m.value
-                      ? 'border-primary bg-primary'
-                      : 'border-muted-foreground/40',
-                  )}
-                />
-                <span className="text-xs font-medium leading-none">{m.label}</span>
-              </label>
-            ))}
-          </div>
+          <Select value={medioPago} onValueChange={(v) => setMedioPago(v as MedioPagoVenta)}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MEDIOS_PAGO.map((m) => (
+                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+
+        {/* Preporteado puro */}
+        {isPreporteado && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20 px-3 py-2.5 space-y-2">
+            <div className="flex items-start gap-2">
+              <Stamp className="size-3.5 text-violet-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-medium text-violet-700 dark:text-violet-400">
+                  Pago completo con estampillas
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  El cliente entrega estampillas por valor exacto de{' '}
+                  <span className="font-semibold tabular-nums">{fmt(total)}</span>.
+                </p>
+              </div>
+            </div>
+            {estampillasDisponibles && estampillasDisponibles.length > 0 && (
+              <div className="pt-0.5 space-y-1">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Denominaciones disponibles</p>
+                <div className="flex flex-wrap gap-1">
+                  {estampillasDisponibles.map((d, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
+                    >
+                      {fmt(Number(d.denominacion))}{d.serie ? ` · ${d.serie}` : ''}
+                      <span className="opacity-60">({d.stock})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Mixto preporteado */}
+        {isMixto && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Stamp className="size-3 text-violet-500 shrink-0" />
+              <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                Desglose mixto
+              </Label>
+            </div>
+            {estampillasDisponibles && estampillasDisponibles.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {estampillasDisponibles.map((d, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
+                  >
+                    {fmt(Number(d.denominacion))}{d.serie ? ` · ${d.serie}` : ''}
+                    <span className="opacity-60">({d.stock})</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Estampillas preporteadas</Label>
+                <Input
+                  type="number"
+                  className="h-8 text-sm w-36"
+                  placeholder="0"
+                  value={preporteadoMonto}
+                  onChange={(e) => setPreporteadoMonto(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">En efectivo (EC)</Label>
+                <div className="h-8 flex items-center px-3 rounded border bg-muted/40 text-sm tabular-nums font-semibold text-primary w-32">
+                  {fmt(enEc)}
+                </div>
+              </div>
+            </div>
+            {preporteado > 0 && preporteado < total && (
+              <p className="text-[10px] text-muted-foreground">
+                Preporteado {fmt(preporteado)} + efectivo {fmt(enEc)} = {fmt(total)}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Efectivo sub-fields */}
         {showEfectivo && (
           <div className="rounded-lg border p-3 space-y-2">
             <div className="space-y-1">
-              <Label className="text-xs">Efectivo recibido</Label>
+              <Label className="text-xs">
+                {isMixto ? 'Efectivo recibido (EC)' : 'Efectivo recibido'}
+              </Label>
               <Input
                 type="number"
                 className="h-8 text-sm"
@@ -5932,7 +7071,7 @@ function PagarDialog({
               <div className="grid grid-cols-2 gap-x-4 text-xs pt-1">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Total:</span>
-                  <span className="tabular-nums font-medium">{fmt(total)}</span>
+                  <span className="tabular-nums font-medium">{fmt(isMixto ? enEc : total)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className={cn(faltante > 0 ? 'text-destructive' : 'text-muted-foreground')}>
@@ -5956,13 +7095,99 @@ function PagarDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleConfirmar} disabled={confirmar.isPending || !email.trim()}>
+          <Button onClick={handleConfirmar} disabled={confirmar.isPending}>
             {confirmar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
             Confirmar pago
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ── LotePagoPanel ─────────────────────────────────────────────────────────────
+
+function LotePagoPanel({
+  loteId,
+  cajaId,
+  total,
+  items,
+  onSuccess,
+  onCancel,
+}: {
+  loteId:    number
+  cajaId:    number
+  total:     number
+  items:     number
+  onSuccess: () => void
+  onCancel:  () => void
+}) {
+  const cobrar = useCobrarLoteMasivo(loteId)
+  const [montoRecibido, setMontoRecibido] = useState('')
+
+  const efectivo = Number(montoRecibido) || 0
+  const cambio   = Math.max(0, efectivo - total)
+  const falta    = Math.max(0, total - efectivo)
+
+  const handleCobrar = () => {
+    cobrar.mutate({ cajaId, medioPago: 'efectivo' }, {
+      onSuccess: () => {
+        toast.success('Cobro registrado')
+        onSuccess()
+      },
+      onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al cobrar'),
+    })
+  }
+
+  return (
+    <div className="flex flex-col h-full border-l">
+      <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
+        <Banknote className="size-4 text-green-600" />
+        <span className="text-xs font-semibold flex-1">Cobrar lote masivo</span>
+        <button type="button" onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+          <X className="size-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 flex flex-col gap-4 p-4">
+        <div className="rounded-lg bg-muted/50 p-3 space-y-1 text-center">
+          <p className="text-[11px] text-muted-foreground">{items} paquete{items !== 1 ? 's' : ''}</p>
+          <p className="text-2xl font-bold tabular-nums">{fmtCop(total)}</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs">Monto recibido (efectivo)</Label>
+          <Input
+            className="h-9 text-sm tabular-nums"
+            type="number"
+            min={0}
+            placeholder={String(total)}
+            value={montoRecibido}
+            onChange={e => setMontoRecibido(e.target.value)}
+            autoFocus
+          />
+          {efectivo > 0 && (
+            <p className={`text-xs ${falta > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {falta > 0 ? `Falta: ${fmtCop(falta)}` : `Cambio: ${fmtCop(cambio)}`}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 py-3 border-t shrink-0 flex flex-col gap-2">
+        <Button
+          className="w-full bg-green-600 hover:bg-green-700"
+          disabled={cobrar.isPending || (efectivo > 0 && falta > 0)}
+          onClick={handleCobrar}
+        >
+          {cobrar.isPending ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+          Confirmar cobro · {fmtCop(total)}
+        </Button>
+        <Button variant="ghost" size="sm" className="w-full text-xs" onClick={onCancel}>
+          Cancelar
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -5984,7 +7209,6 @@ export default function CarritoVenta() {
   const navigate = useNavigate()
   const user = useSessionStore((s) => s.user)
   const cajaId = Number(cajaIdStr) || 0
-  const sucursalId = user?.sucursal_id ?? 0
 
   const { flags, flagsLoading } = useAcceso()
   const tabs = useMemo(
@@ -5996,6 +7220,7 @@ export default function CarritoVenta() {
   )
 
   const { data: caja } = useCaja(cajaId)
+  const sucursalId = caja?.sucursalId ?? user?.sucursal_id ?? 0
   const { data: statusPunto } = useStatusPunto(sucursalId)
 
   const cajaCard = statusPunto?.cajas.find((c) => c.cajaId === cajaId)
@@ -6013,6 +7238,10 @@ export default function CarritoVenta() {
     return first?.value ?? 'historial'
   })
   const [pagarOpen, setPagarOpen] = useState(false)
+  const [guiaViewer, setGuiaViewer] = useState<GuiaEnvio | null>(null)
+  const [guiasPostPago, setGuiasPostPago] = useState<GuiaEnvio[]>([])
+  const [cambioPostPago, setCambioPostPago] = useState<number | null>(null)
+  const [loteCobro, setLoteCobro] = useState<{ loteId: number; total: number; items: number } | null>(null)
   const prevTabRef = useRef<Tab>('productos')
 
   const handleTabClick = (value: Tab) => {
@@ -6059,9 +7288,22 @@ export default function CarritoVenta() {
     setCliente((prev) => (prev ? { ...prev, email, telefono } : prev))
   }
 
-  const handlePagoExitoso = () => {
+  const handlePagoExitoso = (guias: GuiaEnvio[] = [], cambio: number | null = null) => {
     setVentaId(null)
     setCliente(null)
+    setLoteCobro(null)
+    if (guias.length > 0) {
+      setGuiasPostPago(guias)
+      setCambioPostPago(cambio)
+    } else {
+      const first = tabs.find((t) => t.value !== 'historial' && t.value !== 'pagar')
+      setActiveTab(first?.value ?? 'historial')
+    }
+  }
+
+  const handleGuiasDismiss = () => {
+    setGuiasPostPago([])
+    setCambioPostPago(null)
     const first = tabs.find((t) => t.value !== 'historial' && t.value !== 'pagar')
     setActiveTab(first?.value ?? 'historial')
   }
@@ -6222,65 +7464,128 @@ export default function CarritoVenta() {
 
               {/* Tab content */}
               <div className="flex-1 overflow-hidden">
-                {activeTab === 'productos' && (
-                  <TabProductos sucursalId={sucursalId} ventaId={ventaId} cajaId={cajaId} />
-                )}
-                {activeTab === 'especiales' && (
-                  <TabProductosEspeciales
-                    sucursalId={sucursalId}
-                    ventaId={ventaId}
-                    cajaId={cajaId}
-                  />
-                )}
-                {activeTab === 'apartado' && (
-                  <TabApartado
-                    sucursalId={sucursalId}
-                    cajaId={cajaId}
-                    clienteId={cliente.id}
-                    ventaId={ventaId}
-                    onAgregarExitoso={() => handleTabClick('pagar')}
-                  />
-                )}
-                {activeTab === 'servicios' && (
-                  <TabServiciosPostales
-                    sucursalId={sucursalId}
-                    cajaId={cajaId}
-                    clienteId={cliente.id}
-                    ventaId={ventaId}
-                    onCotizChange={setCotizPreview}
-                  />
-                )}
-                {activeTab === 'historial' && (
-                  <TabHistorial cajaId={cajaId} userRol={user?.rol ?? ''} />
-                )}
-                {activeTab === 'pagar' && ventaId != null && (
-                  <TabResumenPago
-                    carrito={carrito ?? null}
-                    cliente={cliente}
-                    ventaId={ventaId}
-                    cajaId={cajaId}
-                    onExito={handlePagoExitoso}
-                  />
-                )}
-                {activeTab === 'pagar' && ventaId == null && (
-                  <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
-                    <ShoppingCart className="size-8 opacity-20" />
-                    <p className="text-xs">El carrito está vacío</p>
+                {guiasPostPago.length > 0 ? (
+                  <div className="flex flex-col h-full">
+                    <div className="px-4 py-3 border-b bg-emerald-50/60 dark:bg-emerald-950/20 shrink-0">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-5 text-emerald-600" />
+                        <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                          Pago confirmado
+                        </span>
+                        {cambioPostPago != null && cambioPostPago > 0 && (
+                          <span className="ml-auto text-xs text-emerald-600 font-semibold">
+                            Cambio: {fmt(cambioPostPago)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {guiasPostPago.length === 1
+                          ? 'Guía lista para imprimir.'
+                          : `${guiasPostPago.length} guías listas para imprimir.`}
+                      </p>
+                    </div>
+                    <ScrollArea className="flex-1">
+                      <div className="px-4 py-3 space-y-2">
+                        {guiasPostPago.map((g) => (
+                          <div
+                            key={g.numeroGuia}
+                            className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5"
+                          >
+                            <Truck className="size-4 text-primary shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-mono font-semibold">{g.numeroGuia}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">
+                                {g.destinatario.nombre ?? '—'} · {g.destinatario.ciudad ?? g.destinatario.pais}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1.5 shrink-0"
+                              onClick={() => setGuiaViewer(g)}
+                            >
+                              <Eye className="size-3.5" />
+                              Ver / Imprimir
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                    <div className="px-4 py-3 border-t shrink-0">
+                      <Button className="w-full" onClick={handleGuiasDismiss}>
+                        Nueva venta
+                      </Button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    {activeTab === 'productos' && (
+                      <TabProductos sucursalId={sucursalId} ventaId={ventaId} cajaId={cajaId} />
+                    )}
+                    {activeTab === 'especiales' && (
+                      <TabProductosEspeciales
+                        sucursalId={sucursalId}
+                        ventaId={ventaId}
+                        cajaId={cajaId}
+                      />
+                    )}
+                    {activeTab === 'apartado' && (
+                      <TabApartado
+                        sucursalId={sucursalId}
+                        cajaId={cajaId}
+                        clienteId={cliente.id}
+                        ventaId={ventaId}
+                        onAgregarExitoso={() => handleTabClick('pagar')}
+                      />
+                    )}
+                    {activeTab === 'servicios' && (
+                      <TabServiciosPostales
+                        sucursalId={sucursalId}
+                        cajaId={cajaId}
+                        clienteId={cliente.id}
+                        ventaId={ventaId}
+                        onCotizChange={setCotizPreview}
+                        onEnvioAgregado={() => handleTabClick('pagar')}
+                        onVerGuia={setGuiaViewer}
+                        onCobrarLote={(id, total, items) => setLoteCobro({ loteId: id, total, items })}
+                      />
+                    )}
+                    {activeTab === 'historial' && (
+                      <TabHistorial cajaId={cajaId} userRol={user?.rol ?? ''} />
+                    )}
+                    {activeTab === 'pagar' && (ventaId != null || loteCobro !== null) && (
+                      <TabResumenPago
+                        carrito={carrito ?? null}
+                        cliente={cliente}
+                        ventaId={ventaId}
+                        cajaId={cajaId}
+                        pendingLote={loteCobro ? { loteId: loteCobro.loteId, total: loteCobro.total } : null}
+                        onExito={handlePagoExitoso}
+                      />
+                    )}
+                    {activeTab === 'pagar' && ventaId == null && loteCobro === null && (
+                      <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
+                        <ShoppingCart className="size-8 opacity-20" />
+                        <p className="text-xs">El carrito está vacío</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </>
           )}
         </div>
 
-        {/* Right: cart — solo visible con cliente activo y carritoVisible */}
-        {cliente && carritoVisible && (
+        {/* Right: cart — visible cuando el cliente está activo y (carritoVisible o hay lote pendiente) */}
+        {cliente && (carritoVisible || loteCobro !== null) && (
           <div className="w-80 xl:w-96 flex flex-col overflow-hidden shrink-0 border-l">
             <CarritoPanel
               ventaId={ventaId}
               cajaId={cajaId}
               onPagar={() => handleTabClick('pagar')}
               cotizPreview={activeTab === 'servicios' ? cotizPreview : null}
+              pendingLote={loteCobro}
+              onCancelPendingLote={() => setLoteCobro(null)}
             />
           </div>
         )}
@@ -6300,6 +7605,9 @@ export default function CarritoVenta() {
           onSuccess={handlePagoExitoso}
         />
       )}
+
+      {/* Visor de guía en pantalla completa */}
+      <GuiaViewerDialog guia={guiaViewer} onClose={() => setGuiaViewer(null)} />
     </div>
   )
 }

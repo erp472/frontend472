@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "codigo": "EST-001",
+      "nombre": "Estampilla Nacional $300",
+      "tipo": "estampilla",
+      "precio": "300",
+      "activo": true
+    },
+    {
+      "id": 2,
+      "codigo": "SOB-001",
+      "nombre": "Sobre Nacional",
+      "tipo": "sobre",
+      "precio": "500",
+      "activo": true
+    },
+    {
+      "id": 3,
+      "codigo": "EMP-001",
+      "nombre": "Empaque Pequeño",
+      "tipo": "empaque",
+      "precio": "2000",
+      "activo": true
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "limit": 20
+}

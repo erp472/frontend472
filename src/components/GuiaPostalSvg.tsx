@@ -36,7 +36,10 @@ function fmtDateOnly(iso: string | null | undefined): string {
 
 function setTspan(svg: Element, id: string, value: string) {
   const el = svg.querySelector(`#${id}`)
-  if (el) el.textContent = value
+  if (!el) return
+  el.textContent = value
+  // Remove fixed per-character x positions so variable-length values don't overlap
+  el.removeAttribute('x')
 }
 
 function insertText(
@@ -91,6 +94,11 @@ export function GuiaPostalSvg({ guia, className }: Props) {
     const g10 = svg.querySelector('#g10') as Element | null
     const set = (id: string, v: string) => setTspan(svg, id, v)
 
+    // ── Tipo de servicio ──────────────────────────────────────────────────────
+    set('tspan54', guia.tipo === 'internacional'
+      ? 'CORREO CERTIFICADO INTERNACIONAL'
+      : 'CORREO CERTIFICADO NACIONAL')
+
     // ── Info bar ──────────────────────────────────────────────────────────────
     set('tspan80',  guia.centroOperativo ?? '—')
     set('tspan106', fmtDate(guia.generadoEn))
@@ -102,25 +110,30 @@ export function GuiaPostalSvg({ guia, className }: Props) {
     }
 
     // ── Guide number (large monospace in upper-right) ─────────────────────────
-    // Original split: first 10 chars on top line (tspan740), rest on lower line (tspan744)
+    // SVG template was designed for 13-char UPU codes (e.g. RA185194038CO).
+    // We split at position 10 regardless of actual length; when the number is
+    // ≤10 chars it fits entirely on the first line and the second line shows
+    // only the closing asterisk (standard barcode delimiters).
     const guide = guia.numeroGuia ?? ''
     set('tspan740',  `*${guide.slice(0, 10)}`)
-    set('tspan744',  `${guide.slice(10)}*`)
+    set('tspan744',  guide.length > 10 ? `${guide.slice(10)}*` : '*')
     set('tspan1238', guide)
 
     // ── Destinatario ──────────────────────────────────────────────────────────
-    set('tspan332', guia.destinatario.nombre   ?? '')
-    set('tspan348', guia.destinatario.direccion ?? '')
-    set('tspan364', guia.destinatario.documento ?? '')
-    set('tspan392', guia.destinatario.ciudad   ?? '')
-    set('tspan424', guia.destinatario.telefono ?? '')
+    set('tspan332', guia.destinatario.nombre      ?? '')
+    set('tspan348', guia.destinatario.direccion   ?? '')
+    set('tspan364', guia.destinatario.documento   ?? '')
+    set('tspan392', guia.destinatario.ciudad      ?? '')
+    set('tspan408', guia.destinatario.departamento ?? '')   // Depto
+    set('tspan424', guia.destinatario.telefono    ?? '')
     set('tspan440', guia.destinatario.codigoPostal ?? '')
 
     // ── Remitente ─────────────────────────────────────────────────────────────
-    set('tspan456', guia.remitente.nombre    ?? '')
-    set('tspan472', guia.remitente.direccion ?? '')
-    set('tspan488', guia.remitente.ciudad    ?? '')
-    set('tspan520', guia.remitente.telefono  ?? '')
+    set('tspan456', guia.remitente.nombre       ?? '')
+    set('tspan472', guia.remitente.direccion    ?? '')
+    set('tspan488', guia.remitente.ciudad       ?? '')
+    set('tspan504', guia.remitente.departamento ?? '')      // Depto
+    set('tspan520', guia.remitente.telefono     ?? '')
 
     // ── Valores ───────────────────────────────────────────────────────────────
     set('tspan576', grams(guia.peso.fisicoKg))
@@ -131,12 +144,20 @@ export function GuiaPostalSvg({ guia, className }: Props) {
     set('tspan656', guia.valores.manejo > 0 ? fmt(guia.valores.manejo) : '$0')
     set('tspan672', fmt(guia.valores.total))
 
-    // ── Código de barras (texto bajo el barcode) ──────────────────────────────
-    set('tspan1324', guia.codigoBarras)
+    // ── Código de barras ──────────────────────────────────────────────────────
+    // El barcode completo de 4-72 tiene formato: {origOp7}{destOp7}{guia13}
+    // Si el backend envía el string completo (≥14 dígitos antes de la guía),
+    // extraemos los códigos operativos; de lo contrario dejamos esos campos vacíos.
+    const cb = guia.codigoBarras ?? ''
+    const isFullBarcode = /^\d{14}/.test(cb)
+    const origOp = isFullBarcode ? cb.slice(0, 7) : ''
+    const destOp = isFullBarcode ? cb.slice(7, 14) : ''
+    set('tspan544',  origOp)   // Código Operativo remitente
+    set('tspan1306', destOp)   // Código Operativo destinatario
+    set('tspan1324', cb)
 
-    // ── Imagen del código de barras (reemplaza el PNG estático) ───────────────
-    if (guia.codigoBarras) {
-      const dataUrl = generateBarcodeDataUrl(guia.codigoBarras)
+    if (cb) {
+      const dataUrl = generateBarcodeDataUrl(cb)
       if (dataUrl) {
         const img = svg.querySelector('#image1276') as SVGImageElement | null
         img?.setAttribute('href', dataUrl)
@@ -182,7 +203,7 @@ export function GuiaPostalSvg({ guia, className }: Props) {
       <div
         ref={containerRef}
         className={`guia-svg-root${className ? ` ${className}` : ''}`}
-        style={{ width: 816 }}
+        style={{ width: 816, background: '#fff' }}
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: guiaSvg }}
       />

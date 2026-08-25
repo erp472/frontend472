@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import { apiFetch, ApiError } from '@/lib/api'
+import { env } from '@/lib/env'
 
 export type TipoProducto  = 'estampilla' | 'filatelia' | 'empaque' | 'material_oficina' | 'giro' | 'paquete' | 'otro'
 export type TipoTrayecto  = 'NACIONAL' | 'URBANO' | 'ESPECIAL'
 export type MedioPagoEnvio = 'efectivo' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'consignacion' | 'preporteado' | 'mixto_preporteado'
+
+export interface SeleccionEstampilla {
+  denominacion: string
+  cantidad:     number
+}
 
 export interface PersonaEnvio {
   nombre:        string
@@ -41,8 +47,8 @@ export interface CrearEnvioPayload {
   tipoTrayecto?:     TipoTrayecto
   clienteId?:        number
 }
-export type MedioPagoVenta = 'efectivo' | 'cheque' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'consignacion' | 'preporteado' | 'mixto_preporteado'
-export type EstadoVenta = 'activa' | 'anulada'
+export type MedioPagoVenta = 'efectivo' | 'cheque' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'consignacion' | 'preporteado' | 'mixto_preporteado' | 'saldo_a_favor'
+export type EstadoVenta = 'activa' | 'confirmada' | 'anulada'
 export type TamanoApartado = 'pequeno' | 'mediano' | 'grande'
 
 export interface ProductoCatalogo {
@@ -55,6 +61,7 @@ export interface ProductoCatalogo {
 export interface ClienteResumen {
   id: number; tipoDocumento: string; numeroDocumento: string
   nombre: string; apellido: string | null; email: string | null; telefono: string | null
+  saldoAFavor: number
 }
 
 export interface DetalleVenta {
@@ -92,6 +99,8 @@ export interface ApartadoPostal {
   fechaInicio: string | null; fechaFin: string | null
   valor: number | null; incluyeIva: boolean
   diasAlertaVencimiento: number
+  diasRestantes: number | null
+  alertaVencimiento: boolean
 }
 
 export interface ApartadoAdminItem extends ApartadoPostal {
@@ -127,6 +136,7 @@ export interface GuiaPersona {
   nombre: string | null; documento: string | null
   telefono: string | null; email: string | null
   direccion: string | null; ciudad: string | null
+  departamento?: string | null
   codigoPostal: string | null; pais: string
 }
 
@@ -154,11 +164,12 @@ export interface GuiaEnvio {
 }
 
 export interface CrearEnvioResult {
-  guia:        GuiaEnvio
-  envio:       Envio
-  movimiento:  { id: number; tipo: string; monto: string }
-  saldoActual: number
-  alertas:     string[]
+  guia:                 GuiaEnvio
+  envio:                Envio
+  movimiento:           { id: number; tipo: string; monto: string }
+  saldoActual:          number
+  alertas:              string[]
+  seleccionEstampillas: SeleccionEstampilla[]
 }
 
 export interface TarifaEspecial {
@@ -259,13 +270,20 @@ export function useBuscarCliente(tipo: string, numero: string) {
   })
 }
 
+export function useSaldoAFavor(clienteId: number | null) {
+  return useQuery({
+    queryKey: ['ventas', 'saldo-a-favor', clienteId],
+    queryFn:  () => apiFetch<{ saldoAFavor: number }>(`/ventas/clientes/${clienteId}/saldo-a-favor`),
+    enabled:  clienteId != null && clienteId > 0,
+  })
+}
+
 export function useCarrito(ventaId: number) {
   return useQuery({
-    queryKey:        VENTAS_KEYS.carrito(ventaId),
-    queryFn:         () => apiFetch<Venta>(`/ventas/${ventaId}/carrito`),
-    enabled:         ventaId > 0,
-    refetchInterval: (q) => (q.state.status === 'error' ? false : 5_000),
-    retry:           (count, error) => {
+    queryKey: VENTAS_KEYS.carrito(ventaId),
+    queryFn:  () => apiFetch<Venta>(`/ventas/${ventaId}/carrito`),
+    enabled:  ventaId > 0,
+    retry:    (count, error) => {
       if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return false
       return count < 2
     },
@@ -312,6 +330,18 @@ export function useApartadosDisponibles(sucursalId: number, tamano?: string) {
       }
       return raw
     },
+    enabled:  sucursalId > 0,
+  })
+}
+
+export type EstadoApartado = 'disponible' | 'reservado' | 'ocupado' | 'vencido' | 'mantenimiento'
+
+export function useApartadosPorSucursal(sucursalId: number, tamano?: string) {
+  const params = new URLSearchParams({ sucursalId: String(sucursalId) })
+  if (tamano) params.set('tamano', tamano)
+  return useQuery({
+    queryKey: ['ventas', 'apartados-todos', sucursalId, tamano],
+    queryFn:  () => apiFetch<ApartadoPostal[]>(`/ventas/apartados/todos?${params}`),
     enabled:  sucursalId > 0,
   })
 }
@@ -408,10 +438,18 @@ export function useEliminarEnvioDelCarrito(ventaId: number, cajaId: number) {
   })
 }
 
+export interface ConfirmarVentaPayload {
+  medioPago:        MedioPagoVenta
+  efectivoRecibido?: number
+  emailFactura?:     string
+  montoEstampillas?: number
+  montoEfectivo?:    number
+}
+
 export function useConfirmarVenta(ventaId: number, cajaId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { medioPago: MedioPagoVenta; efectivoRecibido?: number; emailFactura: string }) =>
+    mutationFn: (data: ConfirmarVentaPayload) =>
       apiFetch<ConfirmarVentaResult>(`/ventas/${ventaId}/confirmar?cajaId=${cajaId}`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -508,11 +546,12 @@ export function useCrearEnvio(cajaId: number) {
 }
 
 export interface AgregarEnvioResult {
-  guia:       GuiaEnvio
-  envio:      Envio
-  cotizacion: { pesoTarificadoKg: number; valorServicio: number }
-  numeroGuia: string
-  estado:     string
+  guia:                 GuiaEnvio
+  envio:                Envio
+  cotizacion:           { pesoTarificadoKg: number; valorServicio: number }
+  numeroGuia:           string
+  estado:               string
+  seleccionEstampillas: SeleccionEstampilla[]
 }
 
 export function useAgregarEnvioAlCarrito(ventaId: number, cajaId: number) {
@@ -697,4 +736,18 @@ export function useVentasDia(sucursalId: number) {
     staleTime:       30_000,
     refetchInterval: 60_000,
   })
+}
+
+export async function descargarGuiaEnvioPdf(envioId: number, token: string) {
+  const res = await fetch(`${env.VITE_API_URL}/ventas/envios/${envioId}/guia-pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error('No se pudo descargar la guía PDF')
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `guia-${envioId}.pdf`
+  a.click()
+  URL.revokeObjectURL(url)
 }

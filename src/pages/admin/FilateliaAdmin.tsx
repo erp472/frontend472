@@ -4,19 +4,17 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
 import {
-  Search, Plus, MoreHorizontal, Pencil, Trash2, PowerOff, Loader2, AlertCircle, Stamp,
+  Search, Plus, MoreHorizontal, Pencil, Trash2, PowerOff, Loader2, AlertCircle, BookOpen,
 } from 'lucide-react'
 import { Button }    from '@/components/ui/button'
 import { Input }     from '@/components/ui/input'
 import { Label }     from '@/components/ui/label'
 import { Badge }     from '@/components/ui/badge'
 import { Skeleton }  from '@/components/ui/skeleton'
+import { Textarea }  from '@/components/ui/textarea'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-
-const SERIES_ESTAMPILLA = ['Banco de la Moneda', 'Salto de Tequendama', 'Laupat'] as const
-type SerieEstampilla = (typeof SERIES_ESTAMPILLA)[number]
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -32,27 +30,38 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  useEstampillas, useCreateEstampilla, useUpdateEstampilla, useDeleteEstampilla,
+  useFilatelias, useCreateFilatelia, useUpdateFilatelia, useDeleteFilatelia,
 } from '@/queries/productos.queries'
 import { useSessionStore } from '@/stores/useSessionStore'
 import type { ProductoResponse } from '@/types/api'
 import { ApiError } from '@/lib/api'
 
 const ROWS = 15
-const PRECIO_MAX = 1_000_000
+const PRECIO_MAX = 10_000_000
+
+const SERIES_FILATELIA = [
+  'Carpeta de Marqués',
+  'Carpeta de Gabriel',
+  'Sobre de Primer Día',
+  'Carpeta de Primer Día',
+  'Colección Especial',
+] as const
+type SerieFilatelia = (typeof SERIES_FILATELIA)[number]
 
 const createSchema = z.object({
-  codigo: z.string().min(1, 'Requerido').max(50),
-  nombre: z.string().min(2, 'Mínimo 2 caracteres').max(200),
-  precio: z.preprocess(Number, z.number().positive('Mayor a 0').max(PRECIO_MAX, 'Máximo $1.000.000')),
-  serie:  z.enum(SERIES_ESTAMPILLA).optional(),
+  codigo:      z.string().min(1, 'Requerido').max(50),
+  nombre:      z.string().min(2, 'Mínimo 2 caracteres').max(200),
+  precio:      z.preprocess(Number, z.number().positive('Mayor a 0').max(PRECIO_MAX, 'Máximo $10.000.000')),
+  serie:       z.string().max(100).optional(),
+  descripcion: z.string().optional(),
 })
 
 const updateSchema = z.object({
-  nombre: z.string().min(2).max(200).optional(),
-  precio: z.preprocess(Number, z.number().positive().max(PRECIO_MAX, 'Máximo $1.000.000')).optional(),
-  serie:  z.enum(SERIES_ESTAMPILLA).optional(),
-  activo: z.boolean().optional(),
+  nombre:      z.string().min(2).max(200).optional(),
+  precio:      z.preprocess(Number, z.number().positive().max(PRECIO_MAX)).optional(),
+  serie:       z.string().max(100).optional(),
+  descripcion: z.string().optional(),
+  activo:      z.boolean().optional(),
 })
 
 type CreateForm = z.infer<typeof createSchema>
@@ -72,34 +81,34 @@ function TableSkeleton() {
   ))
 }
 
-function EstampillaForm({
-  estampilla, open, onClose,
-}: { estampilla: ProductoResponse | null; open: boolean; onClose: () => void }) {
-  const isEdit    = !!estampilla
-  const createMut = useCreateEstampilla()
-  const updateMut = useUpdateEstampilla()
+function FilateliaForm({
+  item, open, onClose,
+}: { item: ProductoResponse | null; open: boolean; onClose: () => void }) {
+  const isEdit    = !!item
+  const createMut = useCreateFilatelia()
+  const updateMut = useUpdateFilatelia()
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<CreateForm | UpdateForm>({
     resolver: zodResolver(isEdit ? updateSchema : createSchema),
   })
 
-  const serieValue = watch('serie') as SerieEstampilla | undefined
+  const serieValue = watch('serie') as string | undefined
 
   useEffect(() => {
     if (!open) return
     reset(isEdit
-      ? { nombre: estampilla.nombre, precio: estampilla.precio, serie: (estampilla.serie as SerieEstampilla) ?? undefined }
+      ? { nombre: item.nombre, precio: item.precio, serie: item.serie ?? undefined, descripcion: item.descripcion ?? undefined }
       : {})
-  }, [open, estampilla, isEdit, reset])
+  }, [open, item, isEdit, reset])
 
   async function onSubmit(data: CreateForm | UpdateForm) {
     try {
       if (isEdit) {
-        await updateMut.mutateAsync({ id: estampilla.id, data: data as UpdateForm })
-        toast.success('Estampilla actualizada')
+        await updateMut.mutateAsync({ id: item.id, data: data as UpdateForm })
+        toast.success('Ítem de filatelia actualizado')
       } else {
         await createMut.mutateAsync(data as CreateForm)
-        toast.success('Estampilla registrada')
+        toast.success('Ítem de filatelia registrado')
       }
       reset()
       onClose()
@@ -112,9 +121,9 @@ function EstampillaForm({
     <Sheet open={open} onOpenChange={(v) => { if (!v) { reset(); onClose() } }}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{isEdit ? 'Editar estampilla' : 'Nueva estampilla'}</SheetTitle>
+          <SheetTitle>{isEdit ? 'Editar ítem de filatelia' : 'Nuevo ítem de filatelia'}</SheetTitle>
           <SheetDescription>
-            {isEdit ? `Editando ${estampilla?.nombre}` : 'Agrega una estampilla al catálogo.'}
+            {isEdit ? `Editando ${item?.nombre}` : 'Agrega un ítem coleccionable al catálogo.'}
           </SheetDescription>
         </SheetHeader>
 
@@ -122,7 +131,7 @@ function EstampillaForm({
           {!isEdit && (
             <div className="space-y-1.5">
               <Label>Código *</Label>
-              <Input {...register('codigo' as keyof CreateForm)} placeholder="ES-001" />
+              <Input {...register('codigo' as keyof CreateForm)} placeholder="FIL-001" />
               {'codigo' in errors && errors.codigo && (
                 <p className="text-xs text-destructive">{errors.codigo.message}</p>
               )}
@@ -131,26 +140,42 @@ function EstampillaForm({
 
           <div className="space-y-1.5">
             <Label>Nombre *</Label>
-            <Input {...register('nombre')} placeholder="Estampilla conmemorativa…" />
+            <Input {...register('nombre')} placeholder="Carpeta de Marqués…" />
             {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
           </div>
 
           <div className="space-y-1.5">
             <Label>Precio (COP) *</Label>
-            <Input {...register('precio')} type="number" step="1" min="1" max={PRECIO_MAX} placeholder="500" />
+            <Input {...register('precio')} type="number" step="1" min="1" max={PRECIO_MAX} placeholder="35000" />
             {errors.precio && <p className="text-xs text-destructive">{errors.precio.message}</p>}
           </div>
 
           <div className="space-y-1.5">
-            <Label>Serie</Label>
-            <Select value={serieValue ?? ''} onValueChange={(v) => setValue('serie', v as SerieEstampilla)}>
+            <Label>Serie / Colección</Label>
+            <Select
+              value={serieValue ?? ''}
+              onValueChange={(v) => setValue('serie', v)}
+            >
               <SelectTrigger><SelectValue placeholder="Seleccionar serie…" /></SelectTrigger>
               <SelectContent>
-                {SERIES_ESTAMPILLA.map((s) => (
+                {SERIES_FILATELIA.map((s) => (
                   <SelectItem key={s} value={s}>{s}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              O escribe directamente el nombre de la serie:
+            </p>
+            <Input
+              placeholder="Serie personalizada…"
+              value={serieValue ?? ''}
+              onChange={(e) => setValue('serie', e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Descripción</Label>
+            <Textarea {...register('descripcion')} placeholder="Descripción del ítem coleccionable…" rows={3} />
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
@@ -166,12 +191,13 @@ function EstampillaForm({
   )
 }
 
-export default function EstampillasAdminPage() {
+export default function FilateliaAdminPage() {
   const rol      = useSessionStore((s) => s.user?.rol)
   const canWrite = rol === 'ADMIN_SISTEMA' || rol === 'ADMIN_NACIONAL'
 
   const [buscar,       setBuscar]       = useState('')
   const [filterActivo, setFilterActivo] = useState('_all')
+  const [filterSerie,  setFilterSerie]  = useState('_all')
   const [page,         setPage]         = useState(1)
   const [formOpen,     setFormOpen]     = useState(false)
   const [selected,     setSelected]     = useState<ProductoResponse | null>(null)
@@ -181,17 +207,18 @@ export default function EstampillasAdminPage() {
   const params = {
     buscar:  buscar || undefined,
     activo:  filterActivo === 'activo' ? true : filterActivo === 'inactivo' ? false : undefined,
+    serie:   filterSerie !== '_all' ? filterSerie : undefined,
     pagina:  page,
     limite:  ROWS,
   }
 
-  const { data, isLoading, isError } = useEstampillas(params)
-  const toggleMut = useUpdateEstampilla()
-  const deleteMut = useDeleteEstampilla()
+  const { data, isLoading, isError } = useFilatelias(params)
+  const toggleMut = useUpdateFilatelia()
+  const deleteMut = useDeleteFilatelia()
 
-  const estampillas = data?.datos ?? []
-  const meta        = data?.meta
-  const totalPages  = meta?.paginas ?? 1
+  const items    = data?.datos ?? []
+  const meta     = data?.meta
+  const totalPages = meta?.paginas ?? 1
 
   function openEdit(e: ProductoResponse) { setSelected(e); setFormOpen(true) }
   function openNew()  { setSelected(null); setFormOpen(true) }
@@ -201,7 +228,7 @@ export default function EstampillasAdminPage() {
     if (!toggleTarget) return
     try {
       await toggleMut.mutateAsync({ id: toggleTarget.id, data: { activo: !toggleTarget.activo } })
-      toast.success(toggleTarget.activo ? 'Estampilla desactivada' : 'Estampilla activada')
+      toast.success(toggleTarget.activo ? 'Ítem desactivado' : 'Ítem activado')
       setToggleTarget(null)
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Error inesperado')
@@ -212,7 +239,7 @@ export default function EstampillasAdminPage() {
     if (!deleteTarget) return
     try {
       await deleteMut.mutateAsync(deleteTarget.id)
-      toast.success('Estampilla eliminada')
+      toast.success('Ítem de filatelia eliminado')
       setDeleteTarget(null)
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'Error inesperado')
@@ -223,12 +250,12 @@ export default function EstampillasAdminPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Estampillas</h1>
-          <p className="text-sm text-muted-foreground">Catálogo de estampillas postales</p>
+          <h1 className="text-2xl font-semibold">Filatelia</h1>
+          <p className="text-sm text-muted-foreground">Catálogo de ítems coleccionables postales</p>
         </div>
         {canWrite && (
           <Button onClick={openNew}>
-            <Plus className="mr-1.5 size-4" />Nueva estampilla
+            <Plus className="mr-1.5 size-4" />Nuevo ítem
           </Button>
         )}
       </div>
@@ -243,6 +270,15 @@ export default function EstampillasAdminPage() {
             onChange={(e) => { setBuscar(e.target.value); setPage(1) }}
           />
         </div>
+        <Select value={filterSerie} onValueChange={(v) => { setFilterSerie(v); setPage(1) }}>
+          <SelectTrigger className="w-48"><SelectValue placeholder="Serie" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_all">Todas las series</SelectItem>
+            {SERIES_FILATELIA.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={filterActivo} onValueChange={(v) => { setFilterActivo(v); setPage(1) }}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Estado" /></SelectTrigger>
           <SelectContent>
@@ -251,8 +287,8 @@ export default function EstampillasAdminPage() {
             <SelectItem value="inactivo">Inactivos</SelectItem>
           </SelectContent>
         </Select>
-        {(buscar || filterActivo !== '_all') && (
-          <Button variant="ghost" size="sm" onClick={() => { setBuscar(''); setFilterActivo('_all'); setPage(1) }}>
+        {(buscar || filterActivo !== '_all' || filterSerie !== '_all') && (
+          <Button variant="ghost" size="sm" onClick={() => { setBuscar(''); setFilterActivo('_all'); setFilterSerie('_all'); setPage(1) }}>
             Limpiar
           </Button>
         )}
@@ -264,7 +300,7 @@ export default function EstampillasAdminPage() {
             <TableRow>
               <TableHead>Código</TableHead>
               <TableHead>Nombre</TableHead>
-              <TableHead>Serie</TableHead>
+              <TableHead>Serie / Colección</TableHead>
               <TableHead className="text-right">Precio</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="w-12" />
@@ -280,17 +316,17 @@ export default function EstampillasAdminPage() {
                   </div>
                 </TableCell>
               </TableRow>
-            ) : estampillas.length === 0 ? (
+            ) : items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
-                    <Stamp className="size-8 opacity-30" />
-                    <p className="text-sm">No hay estampillas en el catálogo.</p>
+                    <BookOpen className="size-8 opacity-30" />
+                    <p className="text-sm">No hay ítems de filatelia en el catálogo.</p>
                   </div>
                 </TableCell>
               </TableRow>
             ) : (
-              estampillas.map((e) => (
+              items.map((e) => (
                 <TableRow key={e.id} className="group">
                   <TableCell className="font-mono text-sm">{e.codigo}</TableCell>
                   <TableCell className="font-medium">{e.nombre}</TableCell>
@@ -349,12 +385,12 @@ export default function EstampillasAdminPage() {
         )}
       </div>
 
-      <EstampillaForm estampilla={selected} open={formOpen} onClose={closeForm} />
+      <FilateliaForm item={selected} open={formOpen} onClose={closeForm} />
 
       <Dialog open={!!toggleTarget} onOpenChange={(v) => !v && setToggleTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{toggleTarget?.activo ? 'Desactivar estampilla' : 'Activar estampilla'}</DialogTitle>
+            <DialogTitle>{toggleTarget?.activo ? 'Desactivar ítem' : 'Activar ítem'}</DialogTitle>
             <DialogDescription>
               {toggleTarget?.activo
                 ? `¿Desactivar "${toggleTarget?.nombre}" del catálogo?`
@@ -378,7 +414,7 @@ export default function EstampillasAdminPage() {
       <Dialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar estampilla</DialogTitle>
+            <DialogTitle>Eliminar ítem de filatelia</DialogTitle>
             <DialogDescription>
               Esta acción es irreversible. ¿Eliminar definitivamente "{deleteTarget?.nombre}"?
             </DialogDescription>

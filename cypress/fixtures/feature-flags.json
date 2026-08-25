@@ -1,0 +1,12 @@
+[
+  { "codigo": "modulo:ventas",         "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_productos",  "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_especiales", "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_apartado",   "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_servicios",  "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_historial",  "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "modulo_usuarios",       "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "modulo_cajas",          "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "modulo:clientes",       "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "modulo_servicios",      "entorno": "dev", "plataforma": "tauri" }
+]

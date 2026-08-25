@@ -305,6 +305,7 @@ export interface ProductoResponse {
   codigo:            string
   nombre:            string
   descripcion:       string | null
+  serie:             string | null
   tipo:              TipoProducto
   precio:            number
   precioSinTax:      number | null
@@ -364,19 +365,51 @@ export interface EstampillaQueryParams {
 }
 
 export interface CreateEstampillaInput {
-  codigo:          string
-  nombre:          string
-  precio:          number
-  cantidadMinima?: number | null
-  cantidadMaxima?: number | null
+  codigo: string
+  nombre: string
+  precio: number
+  serie?: string | null
 }
 
 export interface UpdateEstampillaInput {
-  nombre?:         string
-  precio?:         number
-  cantidadMinima?: number | null
-  cantidadMaxima?: number | null
-  activo?:         boolean
+  nombre?: string
+  precio?: number
+  serie?:  string | null
+  activo?: boolean
+}
+
+// ── Filatelia Admin ──────────────────────────────────────────────────────────
+
+export interface FilateliaQueryParams {
+  buscar?: string | undefined
+  activo?: boolean | undefined
+  serie?:  string | undefined
+  pagina?: number | undefined
+  limite?: number | undefined
+}
+
+export interface CreateFilateliaInput {
+  codigo:       string
+  nombre:       string
+  precio:       number
+  serie?:       string | null
+  descripcion?: string | null
+}
+
+export interface UpdateFilateliaInput {
+  nombre?:      string
+  precio?:      number
+  serie?:       string | null
+  descripcion?: string | null
+  activo?:      boolean
+}
+
+// ── Estampillas disponibles (preporteado) ────────────────────────────────────
+
+export interface EstampillaDisponible {
+  denominacion: string
+  stock:        number
+  serie:        string | null
 }
 
 // ── Productos Especiales Admin ────────────────────────────────────────────────

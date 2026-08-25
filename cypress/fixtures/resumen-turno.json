@@ -1,0 +1,9 @@
+{
+  "sesionCajaId": 1,
+  "sellos":       { "cantidad": 2, "total": 8000 },
+  "productos":    { "cantidad": 1, "total": 5000 },
+  "apartados":    { "cantidad": 0, "total": 0 },
+  "servicios":    { "cantidad": 3, "total": 31500 },
+  "anulaciones":  { "cantidad": 0, "total": 0 },
+  "totalGeneral": 44500
+}

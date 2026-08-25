@@ -4,8 +4,6 @@ import { Button } from '@/components/ui/button'
 import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
 import type { GuiaEnvio } from '@/queries/ventas.queries'
 
-export const GUIA_VIEWER_KEY = '__guia_viewer__'
-
 const ZOOM_STEP = 0.15
 const ZOOM_MIN  = 0.3
 const ZOOM_MAX  = 2.5
@@ -16,9 +14,17 @@ export default function GuiaViewer() {
   const [zoom, setZoom] = useState(ZOOM_DEF)
 
   useEffect(() => {
-    const raw = localStorage.getItem(GUIA_VIEWER_KEY)
+    // Primary: data passed via URL query param (works in Tauri isolated windows)
+    const params = new URLSearchParams(window.location.search)
+    const data = params.get('data')
+    if (data) {
+      try { setGuia(JSON.parse(decodeURIComponent(atob(data))) as GuiaEnvio) } catch { /* noop */ }
+      return
+    }
+    // Fallback: legacy localStorage channel (same-origin web only)
+    const raw = localStorage.getItem('__guia_viewer__')
     if (raw) {
-      localStorage.removeItem(GUIA_VIEWER_KEY)
+      localStorage.removeItem('__guia_viewer__')
       try { setGuia(JSON.parse(raw) as GuiaEnvio) } catch { /* noop */ }
     }
   }, [])
