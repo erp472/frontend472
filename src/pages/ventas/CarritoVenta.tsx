@@ -30,7 +30,6 @@ import {
   Truck,
   Upload,
   UserRound,
-  Wallet,
   X,
   ZoomIn,
   ZoomOut,
@@ -125,7 +124,6 @@ import {
   useServiciosPostales,
   useTarifasEspecial,
   useVentasTurno,
-  useSaldoAFavor,
   descargarGuiaEnvioPdf,
 } from '@/queries/ventas.queries'
 import { useEstampillasDisponibles } from '@/queries/productos.queries'
@@ -370,6 +368,7 @@ const TIPOS_PRODUCTO: { value: TipoProducto; label: string }[] = [
 
 const MEDIOS_PAGO: { value: MedioPagoVenta; label: string }[] = [
   { value: 'efectivo',          label: 'Efectivo' },
+  { value: 'estampilla',        label: 'Estampillas físicas' },
   { value: 'preporteado',       label: 'Preporteado' },
   { value: 'mixto_preporteado', label: 'Mixto (prepor. + efectivo)' },
 ]
@@ -3965,7 +3964,7 @@ function AddressModal({
 
   const handleGuardarDireccion = async () => {
     if (!nombre.trim()) return
-    const dir = selDirIdx !== null ? addresses[selDirIdx].dir : (hasAddressData(draftDir) ? draftDir : null)
+    const dir = hasAddressData(draftDir) || draftDir.ciudad.trim() ? draftDir : null
     const telefono = selPhIdx !== null ? phones[selPhIdx]?.numero : phones[0]?.numero
     const emailRaw = email.trim()
     const emailVal = emailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : undefined
@@ -4037,7 +4036,7 @@ function AddressModal({
   }
 
   const handleOk = () => {
-    const dir = selDirIdx !== null ? addresses[selDirIdx].dir : draftDir
+    const dir = draftDir
     const telefono = selPhIdx !== null ? phones[selPhIdx].numero : (phones[0]?.numero ?? '')
     onSave({
       nombre,
@@ -4185,7 +4184,7 @@ function AddressModal({
                   >
                     <button
                       type="button"
-                      onClick={() => setSelDirIdx(i)}
+                      onClick={() => { setSelDirIdx(i); setDraftDir({ ...a.dir }) }}
                       className="mt-0.5 shrink-0"
                     >
                       <span
@@ -4199,7 +4198,7 @@ function AddressModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSelDirIdx(i)}
+                      onClick={() => { setSelDirIdx(i); setDraftDir({ ...a.dir }) }}
                       className="text-left min-w-0"
                     >
                       <p
@@ -4715,6 +4714,7 @@ function TabServiciosPostales({
             nombre: clienteData.nombreCompleto,
             empresa: '',
             documento: clienteData.numeroDocumento,
+            tipoDocumento: clienteData.tipoDocumento ?? 'CC',
             email: clienteData.email ?? '',
             telefono: clienteData.telefono ?? '',
             pais: 'CO',
@@ -5892,21 +5892,23 @@ function TabResumenPago({
   const [anularOpen, setAnularOpen] = useState(false)
   const [motivoAnular, setMotivoAnular] = useState('')
 
+  // Estampillas físicas: lista de {codigo, valor} que el cliente entrega
+  const [stampsList, setStampsList]   = useState<{ codigo: string; valor: number }[]>([])
+  const [stampCodigo, setStampCodigo] = useState('')
+  const [stampValor, setStampValor]   = useState('')
+
   const confirmar = useConfirmarVenta(ventaId ?? 0, cajaId)
   const anular    = useAnularVenta(ventaId ?? 0, cajaId)
   const cobrar    = useCobrarLoteMasivo(pendingLote?.loteId ?? 0)
   const { data: estampillasDisponibles } = useEstampillasDisponibles(
     (medioPago === 'preporteado' || medioPago === 'mixto_preporteado') ? cajaId : null,
   )
-  const { data: saldoData, refetch: refetchSaldo } = useSaldoAFavor(cliente?.id ?? null)
-  const saldoDisponible = saldoData?.saldoAFavor ?? cliente?.saldoAFavor ?? 0
-
-  // Reset saldo_a_favor si el cliente pierde elegibilidad o el saldo es insuficiente
+  // Limpiar lista de estampillas al cambiar medio de pago
   useEffect(() => {
-    if (medioPago === 'saldo_a_favor' && (!cliente || saldoDisponible <= 0)) {
-      setMedioPago('efectivo')
-    }
-  }, [cliente, saldoDisponible, medioPago])
+    setStampsList([])
+    setStampCodigo('')
+    setStampValor('')
+  }, [medioPago])
 
   const handleAnular = async () => {
     if (!motivoAnular.trim()) return
@@ -5920,15 +5922,23 @@ function TabResumenPago({
     }
   }
 
-  const isMixto = medioPago === 'mixto_preporteado'
-  const showEfectivo = medioPago === 'efectivo' || isMixto
-  const efectivo = Number(efectivoRecibido) || 0
-  const preporteado = Number(preporteadoMonto) || 0
-  const loteTotal = pendingLote?.total ?? 0
-  const total = (carrito?.total ?? 0) + loteTotal
-  const enEc = isMixto ? Math.max(0, total - preporteado) : 0
-  const cambio = showEfectivo ? Math.max(0, efectivo - (isMixto ? enEc : total)) : 0
-  const faltante = showEfectivo ? Math.max(0, (isMixto ? enEc : total) - efectivo) : 0
+  const isEstampilla  = medioPago === 'estampilla'
+  const isMixto       = medioPago === 'mixto_preporteado'
+  const loteTotal     = pendingLote?.total ?? 0
+  const total         = (carrito?.total ?? 0) + loteTotal
+  const preporteado   = Number(preporteadoMonto) || 0
+  const enEc          = isMixto ? Math.max(0, total - preporteado) : 0
+
+  // Estampillas: total físico ingresado y cuánto queda por cubrir en efectivo
+  const stampsTotal     = stampsList.reduce((s, e) => s + e.valor, 0)
+  const stampsCashPend  = Math.max(0, total - stampsTotal)   // efectivo requerido
+  const stampsExceso    = stampsTotal > total                  // el cliente entregó de más
+
+  const showEfectivo = medioPago === 'efectivo' || isMixto || (isEstampilla && stampsList.length > 0 && stampsCashPend > 0)
+  const efectivo     = Number(efectivoRecibido) || 0
+  const cashTarget   = isEstampilla ? stampsCashPend : isMixto ? enEc : total
+  const cambio       = showEfectivo ? Math.max(0, efectivo - cashTarget) : 0
+  const faltante     = showEfectivo ? Math.max(0, cashTarget - efectivo) : 0
 
   const sellosTotal =
     carrito?.detalle
@@ -5942,11 +5952,6 @@ function TabResumenPago({
   }
 
   const isPreporteado = medioPago === 'preporteado'
-  const montoFilatelia =
-    carrito?.detalle
-      .filter((d) => d.tipoProducto === 'filatelia')
-      .reduce((s, d) => s + d.subtotal, 0) ?? 0
-  const tieneFilatelia = montoFilatelia > 0
 
   const handleConfirmar = async () => {
     const emailVal = email.trim()
@@ -5968,16 +5973,31 @@ function TabResumenPago({
       )
       return
     }
-    if (showEfectivo && efectivo > 0 && efectivo < (isMixto ? enEc : total)) {
+    // Validaciones estampillas físicas
+    if (isEstampilla) {
+      if (stampsList.length === 0) {
+        toast.error('Agrega al menos una estampilla')
+        return
+      }
+      if (stampsExceso) {
+        toast.error(`El total de las estampillas (${fmt(stampsTotal)}) supera el valor de la venta`)
+        return
+      }
+      if (stampsCashPend > 0 && efectivo > 0 && efectivo < stampsCashPend) {
+        toast.error('El efectivo recibido no cubre el saldo pendiente')
+        return
+      }
+    }
+    if (!isEstampilla && showEfectivo && efectivo > 0 && efectivo < cashTarget) {
       toast.error('El efectivo recibido no cubre el valor a pagar')
       return
     }
-    // Para efectivo sin monto ingresado, enviar el total exacto como efectivoRecibido
+    // Para efectivo sin monto ingresado, enviar el valor exacto como efectivoRecibido
     const efectivoEnviar = showEfectivo
-      ? (efectivo > 0 ? efectivo : isMixto ? enEc : total)
+      ? (efectivo > 0 ? efectivo : cashTarget)
       : undefined
     // Si el total es 0 y el pago es efectivo, no se puede procesar
-    if (showEfectivo && !isPreporteado && !isMixto && (!efectivoEnviar || efectivoEnviar <= 0)) {
+    if (showEfectivo && !isPreporteado && !isMixto && !isEstampilla && (!efectivoEnviar || efectivoEnviar <= 0)) {
       toast.error('El total de la venta no puede ser cero')
       return
     }
@@ -5991,8 +6011,13 @@ function TabResumenPago({
           ...(efectivoEnviar !== undefined ? { efectivoRecibido: efectivoEnviar } : {}),
           // preporteado puro: el total lo cubren las estampillas íntegramente
           ...(isPreporteado ? { montoEstampillas: carrito?.total ?? 0 } : {}),
-          // mixto: estampillas + complemento en efectivo
+          // mixto preporteado: estampillas + complemento en efectivo
           ...(isMixto && preporteado > 0 ? { montoEstampillas: preporteado, montoEfectivo: enEc } : {}),
+          // estampillas físicas: lista de códigos y el efectivo de complemento si aplica
+          ...(isEstampilla ? {
+            estampillasUtilizadas: stampsList,
+            ...(stampsCashPend > 0 ? { montoEfectivo: stampsCashPend } : {}),
+          } : {}),
         })
         guias  = result.guias  ?? []
         cambio = result.cambio ?? null
@@ -6000,7 +6025,6 @@ function TabResumenPago({
       if (pendingLote) {
         await cobrar.mutateAsync({ cajaId, medioPago })
       }
-      if (tieneFilatelia || medioPago === 'preporteado' || medioPago === 'mixto_preporteado') void refetchSaldo()
       toast.success('Pago confirmado')
       onExito(guias, cambio)
     } catch (e) {
@@ -6039,11 +6063,6 @@ function TabResumenPago({
               <span className="text-xs text-muted-foreground">
                 {cliente.tipoDocumento}: {cliente.numeroDocumento}
               </span>
-              {saldoDisponible > 0 && (
-                <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                  Saldo a favor: {fmt(saldoDisponible)}
-                </span>
-              )}
             </>
           ) : (
             <span className="text-sm text-muted-foreground">Sin cliente asociado</span>
@@ -6280,39 +6299,11 @@ function TabResumenPago({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MEDIOS_PAGO.map((m) => {
-                if (m.value === 'saldo_a_favor') {
-                  const disabled = !cliente || saldoDisponible <= 0 || saldoDisponible < total
-                  let label: string
-                  if (!cliente) label = 'Saldo a favor (sin cliente)'
-                  else if (saldoDisponible <= 0) label = 'Saldo a favor (sin saldo)'
-                  else if (saldoDisponible < total) label = `Saldo a favor — ${fmt(saldoDisponible)} (insuficiente)`
-                  else label = `Saldo a favor — ${fmt(saldoDisponible)}`
-                  return (
-                    <SelectItem key={m.value} value={m.value} disabled={disabled}>
-                      {label}
-                    </SelectItem>
-                  )
-                }
-                return <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-              })}
+              {MEDIOS_PAGO.map((m) => (
+                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
-
-          {/* Saldo a favor del cliente — informativo (se usa como preporteado) */}
-          {cliente && saldoDisponible > 0 && (
-            <div className="flex items-center justify-between rounded-md bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/60 px-2.5 py-1.5">
-              <div className="flex items-center gap-1.5">
-                <Wallet className="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span className="text-xs text-emerald-700 dark:text-emerald-300">
-                  Saldo a favor (preporteado disponible)
-                </span>
-              </div>
-              <span className="text-base font-extrabold tabular-nums text-emerald-700 dark:text-emerald-300">
-                {fmt(saldoDisponible)}
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Preporteado puro: el total lo cubren íntegramente las estampillas */}
@@ -6331,13 +6322,6 @@ function TabResumenPago({
               </span>
               . El sistema validará que el total cuadre exactamente.
             </p>
-            {cliente && saldoDisponible > 0 && (
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
-                {saldoDisponible >= total
-                  ? `Saldo a favor cubre este pago · restará ${fmt(saldoDisponible - total)}`
-                  : `Saldo a favor disponible: ${fmt(saldoDisponible)} (insuficiente para cubrir el total)`}
-              </p>
-            )}
             {estampillasDisponibles && estampillasDisponibles.length > 0 && (
               <div className="pt-1 space-y-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Denominaciones disponibles</p>
@@ -6380,16 +6364,6 @@ function TabResumenPago({
                 ))}
               </div>
             )}
-            {cliente && saldoDisponible > 0 && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors"
-                onClick={() => setPreporteadoMonto(String(Math.min(saldoDisponible, total - 1)))}
-              >
-                <Wallet className="size-3 shrink-0" />
-                Usar saldo: {fmt(saldoDisponible)}
-              </button>
-            )}
             <div className="flex items-end gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Estampillas preporteadas</Label>
@@ -6411,25 +6385,110 @@ function TabResumenPago({
             {preporteado > 0 && preporteado < total && (
               <p className="text-[10px] text-muted-foreground">
                 Preporteado {fmt(preporteado)} + efectivo {fmt(enEc)} = {fmt(total)}
-                {cliente && saldoDisponible > 0 && preporteado <= saldoDisponible && (
-                  <span className="ml-2 text-emerald-600 dark:text-emerald-400 font-medium">
-                    · saldo restante: {fmt(saldoDisponible - preporteado)}
-                  </span>
-                )}
               </p>
             )}
           </div>
         )}
 
-        {/* Filatelia → aviso de saldo a generar */}
-        {tieneFilatelia && cliente && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2">
-            <Tag className="size-3.5 text-amber-500 mt-0.5 shrink-0" />
-            <p className="text-[10px] text-amber-700 dark:text-amber-300">
-              Esta compra generará{' '}
-              <span className="font-semibold">{fmt(montoFilatelia)}</span> de saldo a favor para{' '}
-              {cliente.nombre}.
-            </p>
+        {/* Estampillas físicas — captura de códigos */}
+        {isEstampilla && (
+          <div className="rounded-lg border border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20 px-3 py-2.5 space-y-2.5">
+            <div className="flex items-center gap-2">
+              <Stamp className="size-3.5 text-violet-500 shrink-0" />
+              <span className="text-xs font-medium text-violet-700 dark:text-violet-400">
+                Estampillas físicas recibidas
+              </span>
+            </div>
+
+            {/* Lista de estampillas ya ingresadas */}
+            {stampsList.length > 0 && (
+              <div className="space-y-1">
+                {stampsList.map((s, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-md bg-background border px-2 py-1"
+                  >
+                    <span className="font-mono text-xs text-muted-foreground flex-none w-5 tabular-nums">{i + 1}.</span>
+                    <span className="font-mono text-xs flex-1 truncate">{s.codigo}</span>
+                    <span className="text-xs font-semibold tabular-nums text-violet-700 dark:text-violet-400 w-20 text-right">
+                      {fmt(s.valor)}
+                    </span>
+                    <button
+                      type="button"
+                      className="ml-1 text-muted-foreground hover:text-destructive transition-colors"
+                      onClick={() => setStampsList(prev => prev.filter((_, j) => j !== i))}
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Fila de ingreso de nueva estampilla */}
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const cod = stampCodigo.trim()
+                const val = Math.round(Number(stampValor))
+                if (!cod) { toast.error('Ingresa el código de la estampilla'); return }
+                if (!val || val <= 0) { toast.error('El valor debe ser mayor a cero'); return }
+                setStampsList(prev => [...prev, { codigo: cod, valor: val }])
+                setStampCodigo('')
+                setStampValor('')
+              }}
+            >
+              <Input
+                placeholder="Código / Serie"
+                className="h-8 text-xs font-mono flex-1"
+                value={stampCodigo}
+                onChange={(e) => setStampCodigo(e.target.value)}
+                autoComplete="off"
+              />
+              <Input
+                type="number"
+                placeholder="Valor"
+                className="h-8 text-xs w-28 tabular-nums"
+                value={stampValor}
+                onChange={(e) => setStampValor(e.target.value)}
+                min={1}
+              />
+              <Button type="submit" size="sm" className="h-8 px-3" variant="outline">
+                <Plus className="size-3.5" />
+              </Button>
+            </form>
+
+            {/* Resumen y estado */}
+            {stampsList.length > 0 && (
+              <div className="rounded-md border px-2.5 py-1.5 space-y-0.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Estampillas</span>
+                  <span className={cn('font-semibold tabular-nums', stampsExceso && 'text-destructive')}>
+                    {fmt(stampsTotal)}
+                  </span>
+                </div>
+                {!stampsExceso && stampsCashPend > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pendiente efectivo</span>
+                    <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                      {fmt(stampsCashPend)}
+                    </span>
+                  </div>
+                )}
+                {stampsTotal === total && (
+                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                    <Check className="size-3" />
+                    <span>Cubierto completamente con estampillas</span>
+                  </div>
+                )}
+                {stampsExceso && (
+                  <p className="text-destructive font-medium">
+                    Exceso {fmt(stampsTotal - total)} — retira estampillas
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -6438,7 +6497,7 @@ function TabResumenPago({
           <div className="flex items-center gap-4 rounded-lg border px-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs">
-                {isMixto ? 'Efectivo recibido (EC)' : 'Efectivo recibido'}
+                {isMixto ? 'Efectivo recibido (EC)' : isEstampilla ? `Efectivo recibido — saldo ${fmt(stampsCashPend)}` : 'Efectivo recibido'}
               </Label>
               <Input
                 type="number"

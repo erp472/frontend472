@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ZoomIn, ZoomOut, Printer, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
+import { GuiaPostal } from '@/components/GuiaPostal'
 import type { GuiaEnvio } from '@/queries/ventas.queries'
 
 const ZOOM_STEP = 0.15
@@ -44,6 +44,7 @@ export default function GuiaViewer() {
     )
   }
 
+  // GuiaPostal usa 816×1056 (portrait letter) internamente
   const svgW = 816
   const svgH = 1056
 
@@ -143,30 +144,11 @@ export default function GuiaViewer() {
               left: 0,
             }}
           >
-            <GuiaPostalSvg guia={guia} />
+            <GuiaPostal guia={guia} />
           </div>
         </div>
       </div>
 
-      {/* ── Print styles ──────────────────────────────────────────────────────── */}
-      <style>{`
-        @media print {
-          @page { size: 8.5in 11in portrait; margin: 0; }
-          * { visibility: hidden !important; }
-          .guia-svg-root,
-          .guia-svg-root * { visibility: visible !important; }
-          .guia-svg-root {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 816px !important;
-            height: 1056px !important;
-            transform: none !important;
-            overflow: hidden !important;
-            box-shadow: none !important;
-          }
-        }
-      `}</style>
     </div>
   )
 }

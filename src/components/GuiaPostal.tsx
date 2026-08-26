@@ -138,6 +138,7 @@ export function GuiaPostal({ guia, className }: Props) {
             position: fixed !important;
             top: 0 !important; left: 0 !important;
             width: 816px !important; height: 1056px !important;
+            transform: none !important;
             overflow: hidden !important; box-shadow: none !important;
           }
         }

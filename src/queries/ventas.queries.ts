@@ -47,7 +47,7 @@ export interface CrearEnvioPayload {
   tipoTrayecto?:     TipoTrayecto
   clienteId?:        number
 }
-export type MedioPagoVenta = 'efectivo' | 'cheque' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'consignacion' | 'preporteado' | 'mixto_preporteado' | 'saldo_a_favor'
+export type MedioPagoVenta = 'efectivo' | 'cheque' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia' | 'consignacion' | 'preporteado' | 'mixto_preporteado' | 'estampilla'
 export type EstadoVenta = 'activa' | 'confirmada' | 'anulada'
 export type TamanoApartado = 'pequeno' | 'mediano' | 'grande'
 
@@ -61,7 +61,6 @@ export interface ProductoCatalogo {
 export interface ClienteResumen {
   id: number; tipoDocumento: string; numeroDocumento: string
   nombre: string; apellido: string | null; email: string | null; telefono: string | null
-  saldoAFavor: number
 }
 
 export interface DetalleVenta {
@@ -158,6 +157,7 @@ export interface GuiaEnvio {
   }
   estado:     string
   generadoEn: string
+  contenido?:            string | null
   ordenServicio?:        number | null
   fechaEntregaEstimada?: string | null
   centroOperativo?:      string | null
@@ -270,13 +270,6 @@ export function useBuscarCliente(tipo: string, numero: string) {
   })
 }
 
-export function useSaldoAFavor(clienteId: number | null) {
-  return useQuery({
-    queryKey: ['ventas', 'saldo-a-favor', clienteId],
-    queryFn:  () => apiFetch<{ saldoAFavor: number }>(`/ventas/clientes/${clienteId}/saldo-a-favor`),
-    enabled:  clienteId != null && clienteId > 0,
-  })
-}
 
 export function useCarrito(ventaId: number) {
   return useQuery({

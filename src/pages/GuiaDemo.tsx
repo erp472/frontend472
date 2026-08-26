@@ -1,9 +1,10 @@
 /**
- * GuiaDemo — Preview rápido de GuiaPostalSvg con datos mock.
+ * GuiaDemo — Preview de guías postales con datos mock.
  * Accesible en /guia-demo. Solo para desarrollo.
  */
 
 import { useState } from 'react'
+import { GuiaPostal } from '@/components/GuiaPostal'
 import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
 import type { GuiaEnvio } from '@/queries/ventas.queries'
 
@@ -101,14 +102,17 @@ const ZOOM_MIN  = 0.25
 const ZOOM_MAX  = 2.0
 const ZOOM_DEF  = 0.75
 
+type Vista = 'html' | 'svg'
+
 export default function GuiaDemo() {
   const [selected, setSelected] = useState<keyof typeof MOCKS>('nacional')
   const [zoom, setZoom]         = useState(ZOOM_DEF)
+  const [vista, setVista]       = useState<Vista>('html')
 
-  const guia   = MOCKS[selected]
-  const svgW   = 816
-  const svgH   = 1056
-  const clamp  = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parseFloat(z.toFixed(2))))
+  const guia  = MOCKS[selected]
+  const W     = vista === 'html' ? 816 : 765
+  const H     = vista === 'html' ? 1056 : 342
+  const clamp = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parseFloat(z.toFixed(2))))
 
   return (
     <div className="flex flex-col h-screen bg-zinc-200 overflow-hidden">
@@ -116,7 +120,24 @@ export default function GuiaDemo() {
       <div className="flex-none flex h-11 items-center gap-3 border-b bg-card px-4 shadow-sm z-10">
         <span className="font-semibold text-sm">GuiaDemo</span>
 
-        {/* Selector de mock */}
+        {/* Vista: HTML vs SVG template */}
+        <div className="flex gap-1 border rounded-md p-0.5 bg-muted">
+          {(['html', 'svg'] as Vista[]).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setVista(v)}
+              className={[
+                'px-3 py-1 rounded text-xs font-medium transition-colors',
+                vista === v ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground',
+              ].join(' ')}
+            >
+              {v === 'html' ? 'HTML (producción)' : 'SVG template'}
+            </button>
+          ))}
+        </div>
+
+        {/* Selector de datos mock */}
         <div className="flex gap-1 border rounded-md p-0.5 bg-muted">
           {(Object.keys(MOCKS) as (keyof typeof MOCKS)[]).map(k => (
             <button
@@ -155,8 +176,8 @@ export default function GuiaDemo() {
       <div className="flex-1 overflow-auto flex justify-center py-6">
         <div
           style={{
-            width:    Math.round(svgW * zoom),
-            height:   Math.round(svgH * zoom),
+            width:    Math.round(W * zoom),
+            height:   Math.round(H * zoom),
             position: 'relative',
             flexShrink: 0,
           }}
@@ -165,30 +186,18 @@ export default function GuiaDemo() {
             style={{
               transform:       `scale(${zoom})`,
               transformOrigin: 'top left',
-              width:           svgW,
+              width:           W,
               position:        'absolute',
               top: 0,
               left: 0,
             }}
           >
-            <GuiaPostalSvg guia={guia} />
+            {vista === 'html'
+              ? <GuiaPostal guia={guia} />
+              : <GuiaPostalSvg guia={guia} />}
           </div>
         </div>
       </div>
-
-      {/* Print styles */}
-      <style>{`
-        @media print {
-          @page { size: 8.5in 11in portrait; margin: 0; }
-          * { visibility: hidden !important; }
-          .guia-svg-root, .guia-svg-root * { visibility: visible !important; }
-          .guia-svg-root {
-            position: fixed !important; top: 0 !important; left: 0 !important;
-            width: 816px !important; height: 1056px !important;
-            transform: none !important;
-          }
-        }
-      `}</style>
     </div>
   )
 }
