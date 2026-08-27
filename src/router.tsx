@@ -28,6 +28,7 @@ const ProductosEspecialesPage = lazy(() => import('@/pages/admin/ProductosEspeci
 const ServiciosPage           = lazy(() => import('@/pages/admin/Servicios'))
 const ApartadosPage           = lazy(() => import('@/pages/admin/ApartadosAdmin'))
 const AsignacionCajerosPage = lazy(() => import('@/pages/admin/AsignacionCajerosPage'))
+const CajasConfigPage    = lazy(() => import('@/pages/admin/CajasConfig'))
 const AuditPage          = lazy(() => import('@/pages/admin/Audit'))
 const PuntoVentasAdminPage = lazy(() => import('@/pages/admin/PuntoVentasAdmin'))
 const PuntoCajasPage           = lazy(() => import('@/pages/cajas/PuntoCajas'))
@@ -473,6 +474,7 @@ export const router = createBrowserRouter(
                     },
                     { path: '/admin/feature-flags',       element: lazySuspense(FeatureFlagsPage) },
                     { path: '/admin/asignacion-cajeros',  element: lazySuspense(AsignacionCajerosPage) },
+                    { path: '/admin/cajas-config',        element: lazySuspense(CajasConfigPage) },
                   ],
                 },
 

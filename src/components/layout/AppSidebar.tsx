@@ -26,6 +26,7 @@ import {
   TrendingUp,
   Stamp,
   BookOpen,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -96,7 +97,8 @@ const navMain: NavGroup[] = [
       { title: 'Comercios',       url: '/admin/comercios',    icon: Building,    roles: ['ADMIN_SISTEMA'],                                                     flag: 'modulo_comercios'  },
       { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_regionales' },
       { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_sucursales' },
-      { title: 'Cajas auxiliares', url: '/admin/puntos-venta', icon: ReceiptText, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_cajas'      },
+      { title: 'Cajas auxiliares', url: '/admin/puntos-venta', icon: ReceiptText,        roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_cajas'      },
+      { title: 'Bases de caja',   url: '/admin/cajas-config', icon: SlidersHorizontal, roles: ['ADMIN_SISTEMA'] },
       { title: 'Consolidado',     url: '/cajas/consolidado',  icon: TrendingUp,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA'],                          flag: 'modulo:tesoreria'  },
       { title: 'Equipos',         url: '/admin/devices',      icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_equipos'    },
     ],

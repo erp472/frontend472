@@ -367,10 +367,8 @@ const TIPOS_PRODUCTO: { value: TipoProducto; label: string }[] = [
 ]
 
 const MEDIOS_PAGO: { value: MedioPagoVenta; label: string }[] = [
-  { value: 'efectivo',          label: 'Efectivo' },
-  { value: 'estampilla',        label: 'Estampillas físicas' },
-  { value: 'preporteado',       label: 'Preporteado' },
-  { value: 'mixto_preporteado', label: 'Mixto (prepor. + efectivo)' },
+  { value: 'efectivo',   label: 'Efectivo' },
+  { value: 'estampilla', label: 'Preporteado / Estampillas' },
 ]
 
 type MedioPagoEnvio = Exclude<MedioPagoVenta, 'cheque'>
@@ -5888,7 +5886,6 @@ function TabResumenPago({
   const [medioPago, setMedioPago] = useState<MedioPagoVenta>('efectivo')
   const [email, setEmail] = useState(cliente?.email ?? '')
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
-  const [preporteadoMonto, setPreporteadoMonto] = useState('')
   const [anularOpen, setAnularOpen] = useState(false)
   const [motivoAnular, setMotivoAnular] = useState('')
 
@@ -5900,9 +5897,6 @@ function TabResumenPago({
   const confirmar = useConfirmarVenta(ventaId ?? 0, cajaId)
   const anular    = useAnularVenta(ventaId ?? 0, cajaId)
   const cobrar    = useCobrarLoteMasivo(pendingLote?.loteId ?? 0)
-  const { data: estampillasDisponibles } = useEstampillasDisponibles(
-    (medioPago === 'preporteado' || medioPago === 'mixto_preporteado') ? cajaId : null,
-  )
   // Limpiar lista de estampillas al cambiar medio de pago
   useEffect(() => {
     setStampsList([])
@@ -5923,20 +5917,17 @@ function TabResumenPago({
   }
 
   const isEstampilla  = medioPago === 'estampilla'
-  const isMixto       = medioPago === 'mixto_preporteado'
   const loteTotal     = pendingLote?.total ?? 0
   const total         = (carrito?.total ?? 0) + loteTotal
-  const preporteado   = Number(preporteadoMonto) || 0
-  const enEc          = isMixto ? Math.max(0, total - preporteado) : 0
 
   // Estampillas: total físico ingresado y cuánto queda por cubrir en efectivo
   const stampsTotal     = stampsList.reduce((s, e) => s + e.valor, 0)
   const stampsCashPend  = Math.max(0, total - stampsTotal)   // efectivo requerido
   const stampsExceso    = stampsTotal > total                  // el cliente entregó de más
 
-  const showEfectivo = medioPago === 'efectivo' || isMixto || (isEstampilla && stampsList.length > 0 && stampsCashPend > 0)
+  const showEfectivo = medioPago === 'efectivo' || (isEstampilla && stampsList.length > 0 && stampsCashPend > 0)
   const efectivo     = Number(efectivoRecibido) || 0
-  const cashTarget   = isEstampilla ? stampsCashPend : isMixto ? enEc : total
+  const cashTarget   = isEstampilla ? stampsCashPend : total
   const cambio       = showEfectivo ? Math.max(0, efectivo - cashTarget) : 0
   const faltante     = showEfectivo ? Math.max(0, cashTarget - efectivo) : 0
 
@@ -5951,29 +5942,13 @@ function TabResumenPago({
     return Math.round(((d.subtotal + d.descuento) * t) / (100 + t))
   }
 
-  const isPreporteado = medioPago === 'preporteado'
-
   const handleConfirmar = async () => {
     const emailVal = email.trim()
     if (emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
       toast.error('El email ingresado no es válido')
       return
     }
-    if (isPreporteado && total <= 0) {
-      toast.error('El total de la venta no puede ser cero')
-      return
-    }
-    if (isMixto && preporteado <= 0) {
-      toast.error('Ingresa el monto en estampillas preporteadas')
-      return
-    }
-    if (isMixto && preporteado >= total) {
-      toast.error(
-        'El monto preporteado no puede cubrir el total completo — usa "Preporteado" directamente',
-      )
-      return
-    }
-    // Validaciones estampillas físicas
+    // Validaciones estampillas / preporteado
     if (isEstampilla) {
       if (stampsList.length === 0) {
         toast.error('Agrega al menos una estampilla')
@@ -5996,8 +5971,7 @@ function TabResumenPago({
     const efectivoEnviar = showEfectivo
       ? (efectivo > 0 ? efectivo : cashTarget)
       : undefined
-    // Si el total es 0 y el pago es efectivo, no se puede procesar
-    if (showEfectivo && !isPreporteado && !isMixto && !isEstampilla && (!efectivoEnviar || efectivoEnviar <= 0)) {
+    if (!isEstampilla && showEfectivo && (!efectivoEnviar || efectivoEnviar <= 0)) {
       toast.error('El total de la venta no puede ser cero')
       return
     }
@@ -6005,19 +5979,23 @@ function TabResumenPago({
       let guias: GuiaEnvio[] = []
       let cambio: number | null = null
       if (ventaId != null) {
+        // Para estampillas: el medioPago real depende de si cubren el total o no
+        const apiMedioPago: MedioPagoVenta = isEstampilla
+          ? (stampsCashPend === 0 ? 'preporteado' : 'mixto_preporteado')
+          : medioPago
         const result = await confirmar.mutateAsync({
-          medioPago,
+          medioPago: apiMedioPago,
           ...(emailVal ? { emailFactura: emailVal } : {}),
-          ...(efectivoEnviar !== undefined ? { efectivoRecibido: efectivoEnviar } : {}),
-          // preporteado puro: el total lo cubren las estampillas íntegramente
-          ...(isPreporteado ? { montoEstampillas: carrito?.total ?? 0 } : {}),
-          // mixto preporteado: estampillas + complemento en efectivo
-          ...(isMixto && preporteado > 0 ? { montoEstampillas: preporteado, montoEfectivo: enEc } : {}),
-          // estampillas físicas: lista de códigos y el efectivo de complemento si aplica
           ...(isEstampilla ? {
             estampillasUtilizadas: stampsList,
-            ...(stampsCashPend > 0 ? { montoEfectivo: stampsCashPend } : {}),
-          } : {}),
+            montoEstampillas: stampsTotal,
+            ...(stampsCashPend > 0 ? {
+              montoEfectivo: stampsCashPend,
+              efectivoRecibido: efectivo > 0 ? efectivo : stampsCashPend,
+            } : {}),
+          } : {
+            ...(efectivoEnviar !== undefined ? { efectivoRecibido: efectivoEnviar } : {}),
+          }),
         })
         guias  = result.guias  ?? []
         cambio = result.cambio ?? null
@@ -6248,7 +6226,7 @@ function TabResumenPago({
           { label: 'En Pago', value: enPago > 0 ? fmt(enPago) : '—' },
           { label: 'Porteado', value: porteadoTotal > 0 ? fmt(porteadoTotal) : '—' },
           { label: 'IVA', value: carrito.iva > 0 ? fmt(carrito.iva) : '—' },
-          { label: 'Preporteado', value: isMixto && preporteado > 0 ? fmt(preporteado) : preporteadoEnvios > 0 ? fmt(preporteadoEnvios) : '—' },
+          { label: 'Preporteado', value: isEstampilla && stampsTotal > 0 ? fmt(stampsTotal) : preporteadoEnvios > 0 ? fmt(preporteadoEnvios) : '—' },
           { label: 'Total a pagar', value: fmt(carrito.total), primary: true },
         ]
         return (
@@ -6306,91 +6284,7 @@ function TabResumenPago({
           </Select>
         </div>
 
-        {/* Preporteado puro: el total lo cubren íntegramente las estampillas */}
-        {isPreporteado && (
-          <div className="rounded-lg border border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20 px-3 py-2.5 space-y-2">
-            <div className="flex items-center gap-2">
-              <Stamp className="size-3.5 text-violet-500 shrink-0" />
-              <span className="text-xs font-medium text-violet-700 dark:text-violet-400">
-                Pago completo con estampillas
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              El cliente entrega estampillas por valor exacto de{' '}
-              <span className="font-semibold tabular-nums text-violet-700 dark:text-violet-400">
-                {fmt(total)}
-              </span>
-              . El sistema validará que el total cuadre exactamente.
-            </p>
-            {estampillasDisponibles && estampillasDisponibles.length > 0 && (
-              <div className="pt-1 space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Denominaciones disponibles</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {estampillasDisponibles.map((d, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
-                    >
-                      {fmt(Number(d.denominacion))}
-                      {d.serie ? ` · ${d.serie}` : ''}
-                      <span className="opacity-60">({d.stock})</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Mixto preporteado: split estampillas / efectivo */}
-        {isMixto && (
-          <div className="rounded-lg border px-3 py-2 space-y-2">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <Stamp className="size-3 text-violet-500 shrink-0" />
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                Desglose mixto
-              </span>
-            </div>
-            {estampillasDisponibles && estampillasDisponibles.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {estampillasDisponibles.map((d, i) => (
-                  <span
-                    key={i}
-                    className="inline-flex items-center gap-1 rounded-full bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
-                  >
-                    {fmt(Number(d.denominacion))}{d.serie ? ` · ${d.serie}` : ''}
-                    <span className="opacity-60">({d.stock})</span>
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="flex items-end gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Estampillas preporteadas</Label>
-                <Input
-                  type="number"
-                  className="h-8 text-sm w-36"
-                  placeholder="0"
-                  value={preporteadoMonto}
-                  onChange={(e) => setPreporteadoMonto(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">En efectivo (EC)</Label>
-                <div className="h-8 flex items-center px-3 rounded border bg-muted/40 text-sm tabular-nums font-semibold text-primary w-32">
-                  {fmt(enEc)}
-                </div>
-              </div>
-            </div>
-            {preporteado > 0 && preporteado < total && (
-              <p className="text-[10px] text-muted-foreground">
-                Preporteado {fmt(preporteado)} + efectivo {fmt(enEc)} = {fmt(total)}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Estampillas físicas — captura de códigos */}
+        {/* Estampillas físicas / Preporteado — captura de códigos */}
         {isEstampilla && (
           <div className="rounded-lg border border-violet-200 bg-violet-50/40 dark:border-violet-800 dark:bg-violet-950/20 px-3 py-2.5 space-y-2.5">
             <div className="flex items-center gap-2">
@@ -6497,7 +6391,7 @@ function TabResumenPago({
           <div className="flex items-center gap-4 rounded-lg border px-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs">
-                {isMixto ? 'Efectivo recibido (EC)' : isEstampilla ? `Efectivo recibido — saldo ${fmt(stampsCashPend)}` : 'Efectivo recibido'}
+                {isEstampilla ? `Efectivo recibido — saldo pendiente ${fmt(stampsCashPend)}` : 'Efectivo recibido'}
               </Label>
               <Input
                 type="number"
