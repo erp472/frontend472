@@ -640,8 +640,13 @@ function CajaAlertaCard({
         ) : (
           <div className="divide-y">
             {historial.map((s) => {
-              const dif =
-                s.montoCierre != null ? Number(s.montoCierre) - Number(s.montoApertura) : null
+              const sesionAlertas = (alertasData ?? []).find((a: SesionConAlertas) => a.id === s.id)
+              const primDif = sesionAlertas?.diferencias?.[0]
+              const dif: number | null = primDif
+                ? (primDif.tipo === 'sobrante' ? Number(primDif.monto) : -Number(primDif.monto))
+                : s.montoCierre != null
+                  ? 0
+                  : null
               const esForzada = s.estado === 'forzada'
               return (
                 <div

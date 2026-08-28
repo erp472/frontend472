@@ -125,6 +125,7 @@ import {
   useTarifasEspecial,
   useVentasTurno,
   descargarGuiaEnvioPdf,
+  abrirReciboPdf,
 } from '@/queries/ventas.queries'
 import { useEstampillasDisponibles } from '@/queries/productos.queries'
 import {
@@ -7194,6 +7195,7 @@ export default function CarritoVenta() {
   const [guiaViewer, setGuiaViewer] = useState<GuiaEnvio | null>(null)
   const [guiasPostPago, setGuiasPostPago] = useState<GuiaEnvio[]>([])
   const [cambioPostPago, setCambioPostPago] = useState<number | null>(null)
+  const [ultimaVentaId, setUltimaVentaId] = useState<number | null>(null)
   const [loteCobro, setLoteCobro] = useState<{ loteId: number; total: number; items: number } | null>(null)
   const prevTabRef = useRef<Tab>('productos')
 
@@ -7242,21 +7244,18 @@ export default function CarritoVenta() {
   }
 
   const handlePagoExitoso = (guias: GuiaEnvio[] = [], cambio: number | null = null) => {
+    setUltimaVentaId(ventaId)
     setVentaId(null)
     setCliente(null)
     setLoteCobro(null)
-    if (guias.length > 0) {
-      setGuiasPostPago(guias)
-      setCambioPostPago(cambio)
-    } else {
-      const first = tabs.find((t) => t.value !== 'historial' && t.value !== 'pagar')
-      setActiveTab(first?.value ?? 'historial')
-    }
+    setGuiasPostPago(guias)
+    setCambioPostPago(cambio)
   }
 
   const handleGuiasDismiss = () => {
     setGuiasPostPago([])
     setCambioPostPago(null)
+    setUltimaVentaId(null)
     const first = tabs.find((t) => t.value !== 'historial' && t.value !== 'pagar')
     setActiveTab(first?.value ?? 'historial')
   }
@@ -7417,7 +7416,7 @@ export default function CarritoVenta() {
 
               {/* Tab content */}
               <div className="flex-1 overflow-hidden">
-                {guiasPostPago.length > 0 ? (
+                {ultimaVentaId != null ? (
                   <div className="flex flex-col h-full">
                     <div className="px-4 py-3 border-b bg-emerald-50/60 dark:bg-emerald-950/20 shrink-0">
                       <div className="flex items-center gap-2">
@@ -7431,14 +7430,34 @@ export default function CarritoVenta() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {guiasPostPago.length === 1
-                          ? 'Guía lista para imprimir.'
-                          : `${guiasPostPago.length} guías listas para imprimir.`}
-                      </p>
+                      {guiasPostPago.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {guiasPostPago.length === 1
+                            ? 'Guía lista para imprimir.'
+                            : `${guiasPostPago.length} guías listas para imprimir.`}
+                        </p>
+                      )}
                     </div>
                     <ScrollArea className="flex-1">
                       <div className="px-4 py-3 space-y-2">
+                        {/* Botón de recibo */}
+                        <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5">
+                          <Printer className="size-4 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold">Recibo de venta</p>
+                            <p className="text-[10px] text-muted-foreground">No. {String(ultimaVentaId).padStart(6, '0')}</p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1.5 shrink-0"
+                            onClick={() => abrirReciboPdf(ultimaVentaId)}
+                          >
+                            <Printer className="size-3.5" />
+                            Imprimir
+                          </Button>
+                        </div>
+                        {/* Guías postales */}
                         {guiasPostPago.map((g) => (
                           <div
                             key={g.numeroGuia}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ZoomIn, ZoomOut, Printer, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { GuiaPostal } from '@/components/GuiaPostal'
+import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
 import type { GuiaEnvio } from '@/queries/ventas.queries'
 
 const ZOOM_STEP = 0.15
@@ -44,8 +44,8 @@ export default function GuiaViewer() {
     )
   }
 
-  // GuiaPostal usa 816×1056 (portrait letter) internamente
-  const svgW = 816
+  // GuiaPostalSvg usa 765px de ancho (SVG landscape)
+  const svgW = 765
   const svgH = 1056
 
   return (
@@ -144,7 +144,7 @@ export default function GuiaViewer() {
               left: 0,
             }}
           >
-            <GuiaPostal guia={guia} />
+            <GuiaPostalSvg guia={guia} />
           </div>
         </div>
       </div>

@@ -84,3 +84,24 @@ export async function apiFetch<T>(
 
   return data as T
 }
+
+export async function apiFetchBlob(path: string): Promise<Blob> {
+  const url = `${env.VITE_API_URL}${path}`
+  assertHttps(url)
+
+  const token = _getToken?.()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetchWithBackoff(url, { headers }, 0)
+
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '{}')
+    const body = secureJsonParse(raw, undefined, { protoAction: 'remove' })
+    const msg  = (body as { message?: string })?.message ?? `HTTP ${res.status}`
+    if (res.status === 401 && token) _on401?.()
+    throw new ApiError(res.status, msg, body)
+  }
+
+  return res.blob()
+}

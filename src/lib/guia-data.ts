@@ -194,7 +194,7 @@ export function buildGuiaData(guia: GuiaEnvio): GuiaData {
     valorTotal:     fmt(guia.valores.total),
 
     // Observaciones y contenido
-    observaciones: '',
+    observaciones: guia.observaciones ?? '',
     diceContener:  guia.contenido ?? '',
 
     // Código de barras

@@ -27,6 +27,7 @@ import {
   Stamp,
   BookOpen,
   SlidersHorizontal,
+  Archive,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -126,8 +127,9 @@ const navMain: NavGroup[] = [
         flag:         'modulo:caja',
         roles:        ['SUPERVISOR_REGIONAL', 'TESORERIA'],
         children: [
-          { title: 'Panel principal',   url: '/cajas',        icon: LayoutDashboard, permiso: 'caja:consultar' },
-          { title: 'Alertas de cierre', url: '/cajas/cierre', icon: Bell,            permiso: 'caja:consultar' },
+          { title: 'Panel principal',   url: '/cajas',          icon: LayoutDashboard, permiso: 'caja:consultar' },
+          { title: 'Alertas de cierre', url: '/cajas/cierre',  icon: Bell,            permiso: 'caja:consultar' },
+          { title: 'Sacas',             url: '/cajas/sacas/0', icon: Archive,          permiso: 'caja:consultar' },
         ],
       },
       {

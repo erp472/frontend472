@@ -63,7 +63,8 @@ const CAMPOS: Partial<Record<keyof GuiaData, string>> = {
   valorTotal:     'tspan672',
 
   // Observaciones y contenido
-  diceContener: 'tspan_diceContener',
+  observaciones: 'tspan704',
+  diceContener:  'tspan_diceContener',
 
   // Código de barras (texto)
   codigoOperativo:     'tspan544',

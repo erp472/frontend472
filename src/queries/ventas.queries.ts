@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
-import { apiFetch, ApiError } from '@/lib/api'
+import { apiFetch, apiFetchBlob, ApiError } from '@/lib/api'
 import { env } from '@/lib/env'
 
 export type TipoProducto  = 'estampilla' | 'filatelia' | 'empaque' | 'material_oficina' | 'giro' | 'paquete' | 'otro'
@@ -158,6 +158,7 @@ export interface GuiaEnvio {
   estado:     string
   generadoEn: string
   contenido?:            string | null
+  observaciones?:        string | null
   ordenServicio?:        number | null
   fechaEntregaEstimada?: string | null
   centroOperativo?:      string | null
@@ -229,6 +230,7 @@ export const VENTAS_KEYS = {
   cotizacion:      (params: object) => ['ventas', 'cotizacion', params] as const,
   tarifasEspecial: (productoId: number) => ['ventas', 'tarifas-especial', productoId] as const,
   dia:             (sucursalId: number) => ['ventas', 'dia', sucursalId] as const,
+  saldoAFavor:     (clienteId: number) => ['ventas', 'saldo-a-favor', clienteId] as const,
 }
 
 export function useTarifasEspecial(productoId: number) {
@@ -731,6 +733,24 @@ export function useVentasDia(sucursalId: number) {
   })
 }
 
+export function useSaldoAFavor(clienteId: number) {
+  return useQuery({
+    queryKey: VENTAS_KEYS.saldoAFavor(clienteId),
+    queryFn:  () => apiFetch<{ saldo: number }>(`/ventas/clientes/${clienteId}/saldo-a-favor`),
+    enabled:  clienteId > 0,
+    staleTime: 30_000,
+  })
+}
+
+export function useConversionMoneda() {
+  return useMutation({
+    mutationFn: ({ valorCop, trmDia }: { valorCop: number; trmDia: number }) =>
+      apiFetch<{ valorCop: number; valorUsd: number; trmDia: number }>(
+        `/ventas/conversion-moneda?valorCop=${valorCop}&trmDia=${trmDia}`,
+      ),
+  })
+}
+
 export async function descargarGuiaEnvioPdf(envioId: number, token: string) {
   const res = await fetch(`${env.VITE_API_URL}/ventas/envios/${envioId}/guia-pdf`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -743,4 +763,14 @@ export async function descargarGuiaEnvioPdf(envioId: number, token: string) {
   a.download = `guia-${envioId}.pdf`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+export async function abrirReciboPdf(ventaId: number, efectivoRecibido?: number) {
+  const qs   = efectivoRecibido != null ? `?efectivo=${efectivoRecibido}` : ''
+  const blob = await apiFetchBlob(`/ventas/${ventaId}/recibo-pdf${qs}`)
+  const url  = URL.createObjectURL(blob)
+  const win  = window.open(url, '_blank')
+  // Liberar el object URL después de que el browser lo cargue
+  win?.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
+  if (!win) URL.revokeObjectURL(url)
 }
