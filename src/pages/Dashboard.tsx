@@ -132,6 +132,7 @@ const fmt = (v: string | null | undefined) => v ? COP.format(Number(v)) : '$0'
 function dotCls(card: CardAuxiliar) {
   if (card.estado === 'sin_sesion') return 'bg-zinc-400'
   if (card.estado === 'cerrada')    return 'bg-zinc-300'
+  if (card.estado === 'abierta' && card.tipo === 'pos' && card.cajeroId === null) return 'bg-amber-400'
   if (card.alertas.includes('limite_efectivo_caja')) return 'bg-red-500 animate-pulse'
   if (card.alertas.includes('reposicion_caja'))      return 'bg-amber-500 animate-pulse'
   return 'bg-emerald-500'
@@ -155,7 +156,7 @@ function Supervisor({ user }: { user: User }) {
   const totalStockCritico = stockSucursal.reduce((n, s) => n + s.critico, 0)
 
   const cajas        = data?.cajas ?? []
-  const abiertas     = cajas.filter(c => c.estado === 'abierta').length
+  const abiertas     = cajas.filter(c => c.estado === 'abierta' && !(c.tipo === 'pos' && c.cajeroId === null)).length
   const totalAlertas = cajas.reduce((n, c) => n + c.alertas.length, 0)
   const panel        = data?.panel
 
@@ -209,6 +210,9 @@ function Supervisor({ user }: { user: User }) {
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
                 {cajas.filter(c => c.estado === 'sin_sesion').length} disponible{cajas.filter(c => c.estado === 'sin_sesion').length !== 1 ? 's' : ''}
+                {cajas.filter(c => c.tipo === 'pos' && c.estado === 'abierta' && c.cajeroId === null).length > 0 && (
+                  <> · {cajas.filter(c => c.tipo === 'pos' && c.estado === 'abierta' && c.cajeroId === null).length} sin cajero</>
+                )}
               </p>
             </CardContent>
           </Card>

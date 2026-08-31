@@ -107,6 +107,7 @@ import {
   useAgregarProducto,
   useAnularVenta,
   useApartadosDisponibles,
+  useApartadosPorSucursal,
   useCarrito,
   useCatalogoProductos,
   useConfirmarVenta,
@@ -1221,8 +1222,8 @@ function TabProductos({
       await agregar.mutateAsync({ productoId: seleccionado.id, cantidad })
       toast.success(`${seleccionado.nombre} ×${cantidad} agregado`)
       setSeleccionado(null)
-    } catch {
-      toast.error('No se pudo agregar el producto')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo agregar el producto')
     }
   }
 
@@ -1723,10 +1724,10 @@ function EspecialProductoModal({
   // Resetea cantidad al mínimo cada vez que se abre con un producto distinto
   // biome-ignore lint/correctness/useExhaustiveDependencies: intencional — solo reejecutar cuando cambia el producto seleccionado
   useEffect(() => {
-    if (open && p) setCantidad(p.cantidadMinima ?? 1)
+    if (open && p) setCantidad(Math.max(1, p.cantidadMinima ?? 1))
   }, [open, p?.id])
 
-  const minCant = p?.cantidadMinima ?? 1
+  const minCant = Math.max(1, p?.cantidadMinima ?? 1)
   const tarifaActiva = tarifas && p ? tarifaParaCantidad(tarifas, cantidad) : null
   const precioUnitario = tarifaActiva?.precio ?? p?.precio ?? 0
   const total = precioUnitario * cantidad
@@ -1742,8 +1743,8 @@ function EspecialProductoModal({
       await agregar.mutateAsync({ productoId: p.id, cantidad })
       toast.success(`${p.nombre} ×${cantidad.toLocaleString('es-CO')} agregado`)
       onClose()
-    } catch {
-      toast.error('No se pudo agregar el servicio')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo agregar el servicio')
     }
   }
 
@@ -4650,6 +4651,12 @@ function TabServiciosPostales({
   const [pais, setPais] = useState('CO')
   const [servicioId, setServicioId] = useState(0)
   const [apartadoP, setApartadoP] = useState('')
+  const { data: casillasData } = useApartadosPorSucursal(sucursalId)
+  const casillasSet = useMemo(
+    () => new Set((casillasData ?? []).map((a) => a.numero)),
+    [casillasData],
+  )
+  const apartadoValido = apartadoP.length > 0 && casillasSet.has(apartadoP)
   const [remitente, setRemitente] = useState<PersonaDir>(personaDirVacia())
   const [destinatario, setDestinatario] = useState<PersonaDir>(personaDirVacia())
   const [esCorrespondencia, setEsCorrespondencia] = useState(false)
@@ -4837,7 +4844,7 @@ function TabServiciosPostales({
     const obsPartes = [
       observaciones.trim(),
       consecutivo.trim() ? `Consecutivo: ${consecutivo.trim()}` : '',
-      apartadoP.length === 6 ? `Apartado: ${apartadoP}` : '',
+      apartadoValido ? `Apartado: ${apartadoP}` : '',
     ].filter(Boolean)
     if (obsPartes.length) body.observaciones = obsPartes.join(' | ')
 
@@ -5104,19 +5111,25 @@ function TabServiciosPostales({
                   </Label>
                   <div className="flex items-center gap-2">
                     <Input
-                      className="h-7 text-xs font-mono tracking-[0.3em] w-28 text-center"
-                      placeholder="000000"
-                      maxLength={6}
+                      className="h-7 w-40 text-xs font-mono px-2"
+                      placeholder="Nº casilla…"
                       value={apartadoP}
-                      onChange={(e) => setApartadoP(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(e) => setApartadoP(e.target.value.trim())}
                     />
-                    {apartadoP.length > 0 && apartadoP.length < 6 && (
-                      <span className="text-[10px] text-destructive">
-                        {6 - apartadoP.length} dígito(s) faltantes
-                      </span>
+                    {apartadoP && !apartadoValido && (
+                      <span className="text-[10px] text-destructive">No encontrado</span>
                     )}
-                    {apartadoP.length === 6 && (
+                    {apartadoValido && (
                       <span className="text-[10px] text-green-600 font-medium">✓ válido</span>
+                    )}
+                    {apartadoP && (
+                      <button
+                        type="button"
+                        onClick={() => setApartadoP('')}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     )}
                   </div>
                 </div>

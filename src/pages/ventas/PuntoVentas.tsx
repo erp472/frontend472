@@ -36,7 +36,6 @@ import { cn } from '@/lib/utils'
 import {
   type CambioCustodiaResult,
   type CardAuxiliar,
-  useAbrirCajaDirecta,
   useCambioCustodia,
   useCerrarAuxiliar,
   useConfirmarCustodia,
@@ -911,61 +910,35 @@ function CajeroDashboard({
   )
 }
 
-// ── AbrirTurnoDashboard (caja cerrada o sin sesión — cajero puede reabrir) ────
+// ── EsperandoApertura (el supervisor debe abrir la sesión del cajero) ────────
 
-function AbrirTurnoDashboard({ card }: { card: CardAuxiliar }) {
-  const abrir = useAbrirCajaDirecta(card.cajaId)
-
-  const [baseInput, setBaseInput] = useState('')
-
-  const handleAbrir = async () => {
-    const base = Number(baseInput.replace(/\./g, '').replace(/,/g, ''))
-    if (!base || base <= 0) {
-      toast.error('Ingresa un monto de apertura válido')
-      return
-    }
-    try {
-      await abrir.mutateAsync({ baseAsignada: base.toFixed(2) })
-      toast.success('Turno abierto')
-    } catch {
-      toast.error('No se pudo abrir el turno')
-    }
-  }
-
+function EsperandoApertura({
+  card,
+  onRefresh,
+  isFetching,
+}: {
+  card: CardAuxiliar | null
+  onRefresh: () => void
+  isFetching: boolean
+}) {
   return (
-    <div className="flex flex-col items-center justify-center flex-1 gap-6 p-8 text-center">
+    <div className="flex flex-col items-center justify-center flex-1 gap-5 p-8 text-center">
       <div className="rounded-full bg-muted p-4">
-        <Banknote className="size-8 text-muted-foreground" />
+        <Loader2 className="size-8 text-muted-foreground animate-spin" />
       </div>
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold">{card.nombre}</h2>
-        <p className="text-sm text-muted-foreground">
-          {card.estado === 'cerrada'
-            ? 'Turno cerrado — abre uno nuevo para continuar.'
-            : 'Caja disponible — ingresa el monto de apertura.'}
+      <div className="space-y-1.5">
+        <h2 className="text-base font-semibold">
+          {card ? card.nombre : 'Sin caja asignada'}
+        </h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          La sesión debe ser abierta por un supervisor.
+          Esta pantalla se actualiza automáticamente.
         </p>
       </div>
-      <div className="w-full max-w-xs space-y-3">
-        <div className="space-y-1.5 text-left">
-          <Label className="text-xs">Monto de apertura (sin puntos)</Label>
-          <Input
-            type="text"
-            inputMode="numeric"
-            placeholder="Ej: 350000"
-            value={baseInput}
-            onChange={(e) => setBaseInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAbrir()}
-            className="h-10 text-center text-base tabular-nums"
-          />
-        </div>
-        <Button
-          className="w-full h-10 gap-2"
-          onClick={handleAbrir}
-          disabled={abrir.isPending || !baseInput}
-        >
-          {abrir.isPending ? 'Abriendo…' : 'Abrir turno'}
-        </Button>
-      </div>
+      <Button variant="outline" size="sm" onClick={onRefresh} disabled={isFetching} className="gap-2">
+        <RefreshCw className={cn('size-3.5', isFetching && 'animate-spin')} />
+        Verificar ahora
+      </Button>
     </div>
   )
 }
@@ -1034,8 +1007,8 @@ export default function PuntoVentas() {
     )
   }
 
-  // Para CAJERO con caja cerrada: mostrar pantalla de apertura
-  if (esCajero && cajaParaAbrir) {
+  // Para CAJERO sin sesión abierta: esperar que el supervisor la abra
+  if (esCajero && cajasAbiertas.length === 0) {
     return (
       <div className="flex flex-col h-full overflow-hidden">
         <header className="flex items-center justify-between gap-4 px-5 py-3 border-b bg-card shrink-0">
@@ -1056,7 +1029,7 @@ export default function PuntoVentas() {
             <RefreshCw className={cn('size-3.5', isFetching && 'animate-spin')} />
           </Button>
         </header>
-        <AbrirTurnoDashboard card={cajaParaAbrir} />
+        <EsperandoApertura card={cajaParaAbrir} onRefresh={refetch} isFetching={isFetching} />
       </div>
     )
   }

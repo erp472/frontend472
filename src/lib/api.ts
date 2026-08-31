@@ -2,6 +2,17 @@ import secureJsonParse from 'secure-json-parse'
 import { z } from 'zod'
 import { env, assertHttps } from '@/lib/env'
 
+function extractErrorMessage(body: unknown, status: number): string {
+  const rawMsg = (body as { message?: unknown })?.message
+  if (typeof rawMsg === 'string') return rawMsg
+  if (typeof rawMsg === 'object' && rawMsg !== null) {
+    const fe = (rawMsg as { fieldErrors?: Record<string, string[]> }).fieldErrors ?? {}
+    const msgs = Object.values(fe).flat()
+    if (msgs.length) return msgs.join(', ')
+  }
+  return `HTTP ${status}`
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly body?: unknown
@@ -61,8 +72,7 @@ export async function apiFetch<T>(
   if (!res.ok) {
     const raw = await res.text().catch(() => '{}')
     const body = secureJsonParse(raw, undefined, { protoAction: 'remove' })
-    const msg =
-      (body as { message?: string })?.message ?? `HTTP ${res.status}`
+    const msg = extractErrorMessage(body, res.status)
     if (res.status === 401 && token) {
       _on401?.()
     }
@@ -98,7 +108,7 @@ export async function apiFetchBlob(path: string): Promise<Blob> {
   if (!res.ok) {
     const raw = await res.text().catch(() => '{}')
     const body = secureJsonParse(raw, undefined, { protoAction: 'remove' })
-    const msg  = (body as { message?: string })?.message ?? `HTTP ${res.status}`
+    const msg = extractErrorMessage(body, res.status)
     if (res.status === 401 && token) _on401?.()
     throw new ApiError(res.status, msg, body)
   }

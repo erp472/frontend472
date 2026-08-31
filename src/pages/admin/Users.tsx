@@ -359,7 +359,8 @@ export default function UsersPage() {
   }
 
   const { data, isLoading, isError } = useUsers(queryParams)
-  const deleteMutation = useDeleteUser()
+  const deleteMutation  = useDeleteUser()
+  const updateMutation2 = useUpdateUser()
 
   const usuarios  = data?.datos ?? []
   const meta      = data?.meta
@@ -382,7 +383,11 @@ export default function UsersPage() {
 
   async function confirmDelete() {
     if (!deleteUser) return
-    await deleteMutation.mutateAsync(deleteUser.id)
+    if (deleteUser.activo) {
+      await deleteMutation.mutateAsync(deleteUser.id)
+    } else {
+      await updateMutation2.mutateAsync({ id: deleteUser.id, data: { activo: true } })
+    }
     setDeleteUser(null)
   }
 
@@ -605,9 +610,9 @@ export default function UsersPage() {
             <Button
               variant={deleteUser?.activo ? 'destructive' : 'default'}
               onClick={confirmDelete}
-              disabled={deleteMutation.isPending}
+              disabled={deleteMutation.isPending || updateMutation2.isPending}
             >
-              {deleteMutation.isPending && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              {(deleteMutation.isPending || updateMutation2.isPending) && <Loader2 className="mr-1.5 size-4 animate-spin" />}
               {deleteUser?.activo ? 'Desactivar' : 'Reactivar'}
             </Button>
           </DialogFooter>

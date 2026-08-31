@@ -41,12 +41,15 @@ interface CajaAsignacionSesion {
 }
 
 interface CajaAsignacion {
-  id:           number
-  codigo:       string
-  nombre:       string
-  tipo:         'general' | 'pos' | 'menor' | 'pagos'
-  activo:       boolean
-  sesionActiva: CajaAsignacionSesion | null
+  id:                 number
+  codigo:             string
+  nombre:             string
+  tipo:               'general' | 'pos' | 'menor' | 'pagos'
+  activo:             boolean
+  cajeroFijoId:       number | null
+  cajeroFijoNombre:   string | null
+  cajeroFijoEmail:    string | null
+  sesionActiva:       CajaAsignacionSesion | null
 }
 
 interface AsignacionSucursal {
@@ -77,10 +80,26 @@ function useSetCajeroAsignado() {
         method: 'PATCH',
         body:   JSON.stringify({ cajeroId }),
       }),
-    onSuccess: (_, { sesionId }) => {
+    onSuccess: (_, { cajeroId }) => {
       qc.invalidateQueries({ queryKey: ['cajas', 'asignacion'] })
       qc.invalidateQueries({ queryKey: ['cajas'] })
-      toast.success(`Cajero ${sesionId ? 'asignado' : 'retirado'} correctamente`)
+      toast.success(cajeroId ? 'Cajero asignado a la sesión' : 'Cajero retirado de la sesión')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+}
+
+function useSetCajeroFijo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ cajaId, cajeroId }: { cajaId: number; cajeroId: number | null }) =>
+      apiFetch<unknown>(`/cajas/auxiliares/${cajaId}/cajero-fijo`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ cajeroId }),
+      }),
+    onSuccess: (_, { cajeroId }) => {
+      qc.invalidateQueries({ queryKey: ['cajas', 'asignacion'] })
+      toast.success(cajeroId ? 'Cajero fijo asignado' : 'Cajero fijo removido')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -105,30 +124,42 @@ const tipoLabel: Record<string, string> = {
 // ── Subcomponentes ────────────────────────────────────────────────────────────
 
 function CajaCard({
-  caja, sucursalId, cajerosDeSucursal,
+  caja, cajerosDeSucursal,
 }: {
-  caja:               CajaAsignacion
-  sucursalId:         number
-  cajerosDeSucursal:  { id: number; nombre: string; email: string }[]
+  caja:              CajaAsignacion
+  cajerosDeSucursal: { id: number; nombre: string; email: string }[]
 }) {
-  const setAsig = useSetCajeroAsignado()
-  const [open, setOpen] = useState(false)
+  const setAsig  = useSetCajeroAsignado()
+  const setFijo  = useSetCajeroFijo()
+  const [openSesion, setOpenSesion] = useState(false)
+  const [openFijo,   setOpenFijo]   = useState(false)
 
-  const sesion = caja.sesionActiva
+  const sesion    = caja.sesionActiva
+  const esPOS     = caja.tipo === 'pos'
 
-  function handleRetiro() {
+  function handleRetiroSesion() {
     if (!sesion) return
-    if (!confirm(`¿Retirar cajero de "${caja.nombre}"?`)) return
+    if (!confirm(`¿Retirar cajero de la sesión de "${caja.nombre}"?`)) return
     setAsig.mutate({ sesionId: sesion.sesionId, cajeroId: null })
   }
 
-  function handleAsignar(cajeroId: number) {
+  function handleAsignarSesion(cajeroId: number) {
     if (!sesion) return
-    setAsig.mutate({ sesionId: sesion.sesionId, cajeroId }, { onSuccess: () => setOpen(false) })
+    setAsig.mutate({ sesionId: sesion.sesionId, cajeroId }, { onSuccess: () => setOpenSesion(false) })
+  }
+
+  function handleAsignarFijo(cajeroId: number) {
+    setFijo.mutate({ cajaId: caja.id, cajeroId }, { onSuccess: () => setOpenFijo(false) })
+  }
+
+  function handleRetirarFijo() {
+    if (!confirm(`¿Remover cajero fijo de "${caja.nombre}"?`)) return
+    setFijo.mutate({ cajaId: caja.id, cajeroId: null })
   }
 
   return (
     <div className="rounded-lg border p-3 space-y-2">
+      {/* Cabecera */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Monitor className="size-4 shrink-0 text-muted-foreground" />
@@ -140,6 +171,38 @@ function CajaCard({
         </span>
       </div>
 
+      {/* Cajero fijo (solo POS) */}
+      {esPOS && (
+        <div className="rounded-md bg-muted/40 px-2.5 py-1.5 space-y-1">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Cajero asignado</p>
+          {caja.cajeroFijoId ? (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <UserRound className="size-3.5 shrink-0 text-primary" />
+                <span className="text-xs font-medium truncate">{caja.cajeroFijoNombre}</span>
+                <span className="text-[10px] text-muted-foreground truncate">{caja.cajeroFijoEmail}</span>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button size="icon" variant="ghost" className="size-5 text-muted-foreground" title="Cambiar" onClick={() => setOpenFijo(true)} disabled={setFijo.isPending}>
+                  <Plus className="size-3" />
+                </Button>
+                <Button size="icon" variant="ghost" className="size-5 text-destructive hover:text-destructive" title="Remover" onClick={handleRetirarFijo} disabled={setFijo.isPending}>
+                  <X className="size-3" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground italic">Sin cajero asignado</span>
+              <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => setOpenFijo(true)}>
+                <Plus className="size-3 mr-1" />Asignar
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sesión activa */}
       {!sesion ? (
         <p className="text-xs text-muted-foreground italic">Sin sesión activa</p>
       ) : (
@@ -158,31 +221,31 @@ function CajaCard({
                 size="icon"
                 variant="ghost"
                 className="size-6 shrink-0 text-destructive hover:text-destructive"
-                onClick={handleRetiro}
+                onClick={handleRetiroSesion}
                 disabled={setAsig.isPending}
               >
                 <X className="size-3" />
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground italic">Sin cajero asignado</span>
-              {caja.tipo === 'pos' && (
-                <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => setOpen(true)}>
+            esPOS && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground italic">Sin cajero en sesión</span>
+                <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={() => setOpenSesion(true)}>
                   <Plus className="size-3 mr-1" />
-                  Asignar
+                  Asignar a sesión
                 </Button>
-              )}
-            </div>
+              </div>
+            )
           )}
         </div>
       )}
 
-      {/* Picker de cajero */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      {/* Picker — cajero fijo */}
+      <Dialog open={openFijo} onOpenChange={setOpenFijo}>
         <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
-            <DialogTitle>Asignar cajero a {caja.nombre}</DialogTitle>
+            <DialogTitle>Cajero fijo para {caja.nombre}</DialogTitle>
           </DialogHeader>
           <Command>
             <CommandInput placeholder="Buscar cajero…" />
@@ -193,7 +256,7 @@ function CajaCard({
                   <CommandItem
                     key={c.id}
                     value={`${c.nombre} ${c.email}`}
-                    onSelect={() => handleAsignar(c.id)}
+                    onSelect={() => handleAsignarFijo(c.id)}
                     className="cursor-pointer"
                   >
                     <UserRound className="size-4 mr-2" />
@@ -207,7 +270,41 @@ function CajaCard({
             </CommandList>
           </Command>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setOpenFijo(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Picker — cajero de sesión activa */}
+      <Dialog open={openSesion} onOpenChange={setOpenSesion}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>Asignar cajero a sesión de {caja.nombre}</DialogTitle>
+          </DialogHeader>
+          <Command>
+            <CommandInput placeholder="Buscar cajero…" />
+            <CommandList>
+              <CommandEmpty>Sin cajeros en esta sucursal</CommandEmpty>
+              <CommandGroup>
+                {cajerosDeSucursal.map(c => (
+                  <CommandItem
+                    key={c.id}
+                    value={`${c.nombre} ${c.email}`}
+                    onSelect={() => handleAsignarSesion(c.id)}
+                    className="cursor-pointer"
+                  >
+                    <UserRound className="size-4 mr-2" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm">{c.nombre}</div>
+                      <div className="text-xs text-muted-foreground">{c.email}</div>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenSesion(false)}>Cancelar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -352,7 +449,6 @@ function SucursalPanel({ sucursalId, sucursalNombre }: { sucursalId: number; suc
                 <CajaCard
                   key={caja.id}
                   caja={caja}
-                  sucursalId={sucursalId}
                   cajerosDeSucursal={cajerosDeSucursal}
                 />
               ))}

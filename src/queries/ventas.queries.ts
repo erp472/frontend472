@@ -453,6 +453,7 @@ export function useConfirmarVenta(ventaId: number, cajaId: number) {
       qc.invalidateQueries({ queryKey: VENTAS_KEYS.carrito(ventaId) })
       qc.invalidateQueries({ queryKey: ['ventas', 'turno', cajaId] })
       qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) })
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
     },
   })
 }
@@ -469,6 +470,7 @@ export function useAnularVenta(ventaId: number, cajaId: number) {
       qc.invalidateQueries({ queryKey: VENTAS_KEYS.carrito(ventaId) })
       qc.invalidateQueries({ queryKey: ['ventas', 'turno', cajaId] })
       qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) })
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
     },
   })
 }
@@ -484,6 +486,7 @@ export function useContratarApartado(cajaId: number) {
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['ventas', 'apartados', result.apartado.sucursalId] })
       qc.invalidateQueries({ queryKey: VENTAS_KEYS.resumen(cajaId) })
+      qc.invalidateQueries({ queryKey: ['cajas', 'status'] })
     },
   })
 }

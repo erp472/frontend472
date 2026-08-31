@@ -49,9 +49,15 @@ function estadoBadge(estado: CardAuxiliar['estado']) {
   return <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-600">Abierta</Badge>
 }
 
+function isSinCajero(card: CardAuxiliar) {
+  return card.estado === 'abierta' && card.tipo === 'pos' && card.cajeroId === null
+}
+
 function cardBg(card: CardAuxiliar) {
   if (card.estado === 'sin_sesion') return 'border-dashed border-border bg-muted/20 hover:bg-muted/40'
   if (card.estado === 'cerrada')    return 'border-border bg-muted/30 hover:bg-muted/50'
+  if (isSinCajero(card))
+    return 'border-amber-300 bg-amber-50/60 hover:bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20'
   if (card.alertas.includes('limite_efectivo_caja'))
     return 'border-red-300 bg-red-50/60 hover:bg-red-50 dark:border-red-800 dark:bg-red-950/20'
   if (card.alertas.includes('reposicion_caja'))
@@ -62,6 +68,7 @@ function cardBg(card: CardAuxiliar) {
 function dotCls(card: CardAuxiliar) {
   if (card.estado === 'sin_sesion') return 'bg-zinc-400'
   if (card.estado === 'cerrada')    return 'bg-zinc-300'
+  if (isSinCajero(card))           return 'bg-amber-400'
   if (card.alertas.includes('limite_efectivo_caja')) return 'bg-red-500 animate-pulse'
   if (card.alertas.includes('reposicion_caja'))      return 'bg-amber-500 animate-pulse'
   return 'bg-emerald-500'
@@ -383,6 +390,7 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
   const abierta   = card.estado === 'abierta'
   const sinSesion = card.estado === 'sin_sesion'
   const cerrada   = card.estado === 'cerrada'
+  const sinCajero = isSinCajero(card)
   const servicios = SERVICIOS[card.tipo] ?? []
 
   return (
@@ -406,7 +414,10 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <Badge variant="secondary" className="text-[9px] px-1.5 py-0">{tipoLabel(card.tipo)}</Badge>
-          {estadoBadge(card.estado)}
+          {sinCajero
+            ? <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700">Sin cajero</Badge>
+            : estadoBadge(card.estado)
+          }
         </div>
       </div>
 
@@ -472,7 +483,7 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
           'text-[10px] font-medium text-primary',
           'opacity-0 group-hover:opacity-100 transition-opacity',
         )}>
-          {sinSesion ? '→ Abrir caja' : abierta ? '→ Opciones' : '→ Ver cierre'}
+          {sinSesion ? '→ Abrir caja' : sinCajero ? '→ Asignar cajero' : abierta ? '→ Opciones' : '→ Ver cierre'}
         </p>
         {(abierta || cerrada) && card.sesionId && (
           <span
@@ -483,10 +494,10 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
             className={cn(
               'text-[10px] font-medium underline underline-offset-2 cursor-pointer',
               'opacity-0 group-hover:opacity-100 transition-opacity',
-              abierta ? 'text-primary' : 'text-muted-foreground',
+              abierta && !sinCajero ? 'text-primary' : 'text-muted-foreground',
             )}
           >
-            {abierta ? 'Ir a caja →' : 'Ver cierre →'}
+            {sinCajero ? 'Ver sesión →' : abierta ? 'Ir a caja →' : 'Ver cierre →'}
           </span>
         )}
       </div>
@@ -768,6 +779,7 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
   const sinSesion = card.estado === 'sin_sesion'
   const abierta   = card.estado === 'abierta'
   const cerrada   = card.estado === 'cerrada'
+  const sinCajero = isSinCajero(card)
   const catServ   = SERVICIOS[card.tipo] ?? []
 
   function submitConfig() {
@@ -806,9 +818,10 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
               <DialogTitle className="text-base leading-tight">{card.nombre}</DialogTitle>
               <DialogDescription className="text-[11px] mt-0.5">
                 {card.codigo} · {tipoLabel(card.tipo)}
-                {abierta   && <span className="ml-2 text-emerald-600 font-medium">· Operando</span>}
-                {cerrada   && <span className="ml-2 text-muted-foreground">· Cerrada</span>}
-                {sinSesion && <span className="ml-2 text-muted-foreground">· Disponible</span>}
+                {abierta && !sinCajero && <span className="ml-2 text-emerald-600 font-medium">· Operando</span>}
+                {sinCajero             && <span className="ml-2 text-amber-600 font-medium">· Sin cajero asignado</span>}
+                {cerrada               && <span className="ml-2 text-muted-foreground">· Cerrada</span>}
+                {sinSesion             && <span className="ml-2 text-muted-foreground">· Disponible</span>}
               </DialogDescription>
             </div>
           </div>
