@@ -19,7 +19,7 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from '@/components/ui/tabs'
 import { useSessionStore }           from '@/stores/useSessionStore'
-import { useStatusPunto, useMovimientos, useBalancePagos, type CardAuxiliar } from '@/queries/cajas.queries'
+import { useStatusPunto, useMovimientos, useBalancePagos, esCajaOperativa, type CardAuxiliar } from '@/queries/cajas.queries'
 import { useSucursales }             from '@/queries/sucursales.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -429,7 +429,7 @@ function VentasSection() {
   const { data: status, isLoading: loadingPunto } = useStatusPunto(sucursalId)
 
   const cajasPos = status?.cajas.filter(
-    c => c.tipo === 'pos' && c.sesionId != null,
+    c => esCajaOperativa(c.tipo) && c.sesionId != null,
   ) ?? []
 
   const caja = cajasPos.find(c => c.cajaId === selectedCajaId) ?? cajasPos[0] ?? null

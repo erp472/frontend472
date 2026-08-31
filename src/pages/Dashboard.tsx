@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { type User, useSessionStore } from '@/stores/useSessionStore'
-import { useStatusPunto, useDiferenciasPendientes, useAlertasCierreAutomatico, type CardAuxiliar, type DiferenciaPendiente } from '@/queries/cajas.queries'
+import { useStatusPunto, useDiferenciasPendientes, useAlertasCierreAutomatico, esCajaOperativa, type CardAuxiliar, type DiferenciaPendiente, type TipoAlerta } from '@/queries/cajas.queries'
 import { useResumenesPunto, useAlertasApartados, useAnulacionesPendientes, useVentasDia } from '@/queries/ventas.queries'
 import { useAlertasStock, useOrdenesPendientes } from '@/queries/inventario.queries'
 
@@ -132,13 +132,47 @@ const fmt = (v: string | null | undefined) => v ? COP.format(Number(v)) : '$0'
 function dotCls(card: CardAuxiliar) {
   if (card.estado === 'sin_sesion') return 'bg-zinc-400'
   if (card.estado === 'cerrada')    return 'bg-zinc-300'
-  if (card.estado === 'abierta' && card.tipo === 'pos' && card.cajeroId === null) return 'bg-amber-400'
+  if (card.estado === 'abierta' && esCajaOperativa(card.tipo) && card.cajeroId === null) return 'bg-amber-400'
   if (card.alertas.includes('limite_efectivo_caja')) return 'bg-red-500 animate-pulse'
   if (card.alertas.includes('reposicion_caja'))      return 'bg-amber-500 animate-pulse'
   return 'bg-emerald-500'
 }
 
 const TIPO_LABEL: Record<string, string> = { pos: 'POS', general: 'Caja Fuerte', menor: 'Menor', pagos: 'Pagos' }
+
+function CajaRow({ caja: c, primera, interno }: { caja: CardAuxiliar; primera: boolean; interno?: boolean }) {
+  return (
+    <div className={cn('flex items-center gap-3 px-4 py-3 text-sm', !primera && 'border-t')}>
+      <span className={cn('size-2 rounded-full shrink-0', dotCls(c))} />
+      <span className="font-medium flex-1 truncate">{c.nombre}</span>
+      <span className="text-[11px] text-muted-foreground">{TIPO_LABEL[c.tipo] ?? c.tipo}</span>
+      {c.estado === 'abierta' && (
+        <span className="tabular-nums font-semibold text-right w-28 text-foreground">{fmt(c.saldoActual)}</span>
+      )}
+      {c.estado === 'abierta' && (c.ingresosSesion !== '0' || c.egresosSesion !== '0') && (
+        <span className="flex items-center gap-2 text-[11px] text-muted-foreground w-36 justify-end">
+          <span className="flex items-center gap-0.5 text-emerald-600">
+            <TrendingUp className="size-3" />{fmt(c.ingresosSesion)}
+          </span>
+          <span className="flex items-center gap-0.5 text-red-500">
+            <TrendingDown className="size-3" />{fmt(c.egresosSesion)}
+          </span>
+        </span>
+      )}
+      {c.estado === 'sin_sesion' && (
+        <Badge variant="outline" className="text-[10px] shrink-0">
+          {interno ? 'Sin sesión' : 'Disponible'}
+        </Badge>
+      )}
+      {c.estado === 'cerrada' && (
+        <Badge variant="secondary" className="text-[10px] shrink-0">Cerrada</Badge>
+      )}
+      {c.alertas.length > 0 && (
+        <AlertTriangle className="size-3.5 text-red-500 shrink-0" />
+      )}
+    </div>
+  )
+}
 
 // ── Dashboard Supervisor ──────────────────────────────────────────────────────
 
@@ -156,11 +190,18 @@ function Supervisor({ user }: { user: User }) {
   const totalStockCritico = stockSucursal.reduce((n, s) => n + s.critico, 0)
 
   const cajas        = data?.cajas ?? []
-  const abiertas     = cajas.filter(c => c.estado === 'abierta' && !(c.tipo === 'pos' && c.cajeroId === null)).length
+  // Solo cuentan las cajas que atienden público. La Caja Fuerte y la Menor son
+  // bolsillos de la caja principal: no abren turno, así que se reportan aparte.
+  const cajaFuerte   = cajas.find(c => c.tipo === 'general')
+  const cajasVenta   = cajas.filter(c => esCajaOperativa(c.tipo))
+  const fondos       = cajas.filter(c => !esCajaOperativa(c.tipo))
+  const abiertas     = cajasVenta.filter(c => c.estado === 'abierta' && c.cajeroId !== null).length
+  const disponibles  = cajasVenta.filter(c => c.estado === 'sin_sesion').length
+  const sinCajero    = cajasVenta.filter(c => c.estado === 'abierta' && c.cajeroId === null).length
   const totalAlertas = cajas.reduce((n, c) => n + c.alertas.length, 0)
   const panel        = data?.panel
 
-  const posIds        = cajas.filter(c => c.tipo === 'pos').map(c => c.cajaId)
+  const posIds        = cajasVenta.map(c => c.cajaId)
   const resumenes     = useResumenesPunto(posIds)
   const totalAnulaciones = resumenes.reduce((s, r) => s + (r.data?.anulaciones.cantidad ?? 0), 0)
   const montoAnulaciones = resumenes.reduce((s, r) => s + (r.data?.anulaciones.total ?? 0), 0)
@@ -204,16 +245,22 @@ function Supervisor({ user }: { user: User }) {
           </Card>
           <Card className={abiertas > 0 ? 'border-emerald-300' : 'border-border'}>
             <CardContent className="pt-4 pb-4 px-4">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Cajas operando</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Cajas en atención</p>
               <p className={cn('text-xl font-bold leading-none', abiertas > 0 ? 'text-emerald-600' : 'text-muted-foreground')}>
-                {abiertas} <span className="text-sm font-normal text-muted-foreground">/ {cajas.length}</span>
+                {abiertas} <span className="text-sm font-normal text-muted-foreground">/ {cajasVenta.length}</span>
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
-                {cajas.filter(c => c.estado === 'sin_sesion').length} disponible{cajas.filter(c => c.estado === 'sin_sesion').length !== 1 ? 's' : ''}
-                {cajas.filter(c => c.tipo === 'pos' && c.estado === 'abierta' && c.cajeroId === null).length > 0 && (
-                  <> · {cajas.filter(c => c.tipo === 'pos' && c.estado === 'abierta' && c.cajeroId === null).length} sin cajero</>
-                )}
+                {disponibles} disponible{disponibles !== 1 ? 's' : ''}
+                {sinCajero > 0 && <> · {sinCajero} sin cajero</>}
               </p>
+              {cajaFuerte && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Caja Fuerte:{' '}
+                  <span className={cn('font-medium', cajaFuerte.estado === 'abierta' ? 'text-emerald-600' : 'text-foreground')}>
+                    {cajaFuerte.estado === 'abierta' ? 'abierta' : 'cerrada'}
+                  </span>
+                </p>
+              )}
             </CardContent>
           </Card>
           <Card className={totalAlertas > 0 ? 'border-red-300' : 'border-border'}>
@@ -231,46 +278,30 @@ function Supervisor({ user }: { user: User }) {
       )}
 
       {/* Estado de cajas */}
-      {!isLoading && cajas.length > 0 && (
+      {!isLoading && cajasVenta.length > 0 && (
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Estado de cajas</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Cajas de venta y servicios</p>
           <div className="rounded-xl border overflow-hidden">
-            {cajas.map((c, i) => (
-              <div
-                key={c.cajaId}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-3 text-sm',
-                  i > 0 && 'border-t',
-                )}
-              >
-                <span className={cn('size-2 rounded-full shrink-0', dotCls(c))} />
-                <span className="font-medium flex-1 truncate">{c.nombre}</span>
-                <span className="text-[11px] text-muted-foreground">{TIPO_LABEL[c.tipo] ?? c.tipo}</span>
-                {c.estado === 'abierta' && (
-                  <span className="tabular-nums font-semibold text-right w-28 text-foreground">{fmt(c.saldoActual)}</span>
-                )}
-                {c.estado === 'abierta' && (c.ingresosSesion !== '0' || c.egresosSesion !== '0') && (
-                  <span className="flex items-center gap-2 text-[11px] text-muted-foreground w-36 justify-end">
-                    <span className="flex items-center gap-0.5 text-emerald-600">
-                      <TrendingUp className="size-3" />{fmt(c.ingresosSesion)}
-                    </span>
-                    <span className="flex items-center gap-0.5 text-red-500">
-                      <TrendingDown className="size-3" />{fmt(c.egresosSesion)}
-                    </span>
-                  </span>
-                )}
-                {c.estado === 'sin_sesion' && (
-                  <Badge variant="outline" className="text-[10px] shrink-0">Disponible</Badge>
-                )}
-                {c.estado === 'cerrada' && (
-                  <Badge variant="secondary" className="text-[10px] shrink-0">Cerrada</Badge>
-                )}
-                {c.alertas.length > 0 && (
-                  <AlertTriangle className="size-3.5 text-red-500 shrink-0" />
-                )}
-              </div>
+            {cajasVenta.map((c, i) => (
+              <CajaRow key={c.cajaId} caja={c} primera={i === 0} />
             ))}
           </div>
+        </div>
+      )}
+
+      {!isLoading && fondos.length > 0 && (
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            Fondos de la caja principal
+          </p>
+          <div className="rounded-xl border border-dashed overflow-hidden">
+            {fondos.map((c, i) => (
+              <CajaRow key={c.cajaId} caja={c} primera={i === 0} interno />
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            La Caja Fuerte y la Caja Menor no atienden ventas: son custodia del punto.
+          </p>
         </div>
       )}
 
@@ -515,20 +546,43 @@ function Supervisor({ user }: { user: User }) {
   )
 }
 
+const ALERTA_CAJA_LABEL: Record<TipoAlerta, string> = {
+  limite_efectivo_caja: 'Tope de efectivo',
+  reposicion_caja:      'Requiere reposición',
+}
+
 function Cajero({ user }: { user: User }) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const sucursalId = user.sucursal_id ?? 0
 
   const { data: ventas = [], isLoading: loadingVentas } = useVentasDia(sucursalId)
   const { data: stockAlertas = [] }                     = useAlertasStock()
+  const { data: status }                                = useStatusPunto(sucursalId)
+
+  // El backend ya recorta las tarjetas a las cajas con sesión abierta a nombre del cajero
+  const miCaja = status?.cajas.find(c => esCajaOperativa(c.tipo)) ?? null
 
   const stockSucursal = stockAlertas.filter(s => s.sucursalId === sucursalId)
   const totalBajo     = stockSucursal.reduce((n, s) => n + s.bajo,    0)
   const totalCritico  = stockSucursal.reduce((n, s) => n + s.critico, 0)
+  const totalStock    = totalBajo + totalCritico
 
-  const totalVentas    = ventas.reduce((sum, v) => sum + v.total, 0)
-  const cantidadVentas = ventas.length
-  const totalAlertas   = totalBajo + totalCritico
+  // Solo las ventas de su propia sesión: es la cifra por la que responde en el arqueo.
+  // /ventas/sucursal/:id/dia devuelve las de toda la sucursal, incluidas las de otros cajeros.
+  const misVentas    = miCaja?.sesionId
+    ? ventas.filter(v => v.sesionCajaId === miCaja.sesionId)
+    : []
+  const totalVentas  = misVentas.reduce((sum, v) => sum + v.total, 0)
+
+  // Solo el efectivo entra al cajón; tarjeta y transferencia no se cuentan en el arqueo
+  const porMedio = miCaja?.saldoPorMedioPago
+  const efectivo = Number(porMedio?.efectivo ?? 0)
+  const otros    = porMedio
+    ? Object.entries(porMedio).reduce((n, [medio, v]) => medio === 'efectivo' ? n : n + Number(v), 0)
+    : 0
+
+  const alertasCaja  = miCaja?.alertas ?? []
+  const totalAlertas = alertasCaja.length + totalStock
 
   return (
     <div className="p-6 max-w-lg space-y-5">
@@ -552,29 +606,63 @@ function Cajero({ user }: { user: User }) {
         </Button>
       </div>
 
-      {/* Resumen del día */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className={cantidadVentas > 0 ? 'border-emerald-300' : 'border-border'}>
-          <CardContent className="pt-4 pb-4 px-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Ventas hoy</p>
-            <p className={cn('text-2xl font-bold tabular-nums', cantidadVentas > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>
-              {cantidadVentas}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1">{fmt(String(totalVentas))}</p>
-          </CardContent>
-        </Card>
-        <Card className={totalAlertas > 0 ? 'border-orange-300' : 'border-border'}>
-          <CardContent className="pt-4 pb-4 px-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Stock bajo</p>
-            <p className={cn('text-2xl font-bold tabular-nums', totalCritico > 0 ? 'text-red-600' : totalBajo > 0 ? 'text-orange-500' : 'text-muted-foreground')}>
-              {totalAlertas}
-            </p>
-            <p className="text-[11px] text-muted-foreground mt-1">
-              {totalCritico > 0 ? `${totalCritico} sin stock` : totalBajo > 0 ? 'bajo mínimo' : 'Niveles normales'}
+      {!miCaja && (
+        <Card className="border-dashed">
+          <CardContent className="py-5 px-4 text-center space-y-1">
+            <p className="text-sm font-medium">No tienes una caja abierta</p>
+            <p className="text-xs text-muted-foreground">
+              Tu supervisor debe abrir tu caja para que puedas vender y ver el arqueo del turno.
             </p>
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* Arqueo del turno */}
+      {miCaja && (
+        <div className="grid grid-cols-2 gap-3">
+          <Card className="border-emerald-300">
+            <CardContent className="pt-4 pb-4 px-4">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Efectivo en caja</p>
+              <p className="text-2xl font-bold tabular-nums text-emerald-700">{fmt(miCaja.saldoActual)}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Abierta · {miCaja.codigo}</p>
+            </CardContent>
+          </Card>
+
+          <Card className={misVentas.length > 0 ? 'border-emerald-300' : 'border-border'}>
+            <CardContent className="pt-4 pb-4 px-4">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Mis ventas hoy</p>
+              <p className={cn('text-2xl font-bold tabular-nums', misVentas.length > 0 ? 'text-emerald-700' : 'text-muted-foreground')}>
+                {misVentas.length}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">{fmt(String(totalVentas))}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4 pb-4 px-4">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">En el cajón</p>
+              <p className="text-lg font-bold tabular-nums">{fmt(String(efectivo))}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {otros > 0 ? `${fmt(String(otros))} en otros medios` : 'Todo en efectivo'}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className={alertasCaja.length > 0 ? 'border-orange-300' : 'border-border'}>
+            <CardContent className="pt-4 pb-4 px-4">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Alertas de caja</p>
+              <p className={cn('text-2xl font-bold tabular-nums', alertasCaja.length > 0 ? 'text-orange-500' : 'text-muted-foreground')}>
+                {alertasCaja.length}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {alertasCaja.length > 0
+                  ? alertasCaja.map(a => ALERTA_CAJA_LABEL[a]).join(' · ')
+                  : 'Sin novedades'}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Accesos rápidos */}
       <div className="grid grid-cols-2 gap-3">
@@ -599,17 +687,17 @@ function Cajero({ user }: { user: User }) {
               {/* Feed de ventas */}
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Ventas confirmadas ({cantidadVentas})
+                  Mis ventas confirmadas ({misVentas.length})
                 </p>
                 {loadingVentas ? (
                   <div className="space-y-2">
                     {[0, 1, 2].map(i => <Skeleton key={i} className="h-16 rounded-xl" />)}
                   </div>
-                ) : ventas.length === 0 ? (
+                ) : misVentas.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">Sin ventas registradas hoy</p>
                 ) : (
                   <div className="space-y-2">
-                    {ventas.map(v => (
+                    {misVentas.map(v => (
                       <Card key={v.id} className="border-emerald-200/60">
                         <CardContent className="px-3 py-2.5">
                           <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -637,7 +725,7 @@ function Cajero({ user }: { user: User }) {
               </div>
 
               {/* Alertas de inventario */}
-              {totalAlertas > 0 && (
+              {totalStock > 0 && (
                 <>
                   <Separator />
                   <div>

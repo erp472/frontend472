@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import { apiFetch, apiFetchBlob, ApiError } from '@/lib/api'
-import { env } from '@/lib/env'
 
 export type TipoProducto  = 'estampilla' | 'filatelia' | 'empaque' | 'material_oficina' | 'giro' | 'paquete' | 'otro'
 export type TipoTrayecto  = 'NACIONAL' | 'URBANO' | 'ESPECIAL'
@@ -140,6 +139,8 @@ export interface GuiaPersona {
 }
 
 export interface GuiaEnvio {
+  /** Ausente en el borrador, que aún no existe como envío en el backend. */
+  envioId?:     number
   numeroGuia:   string
   codigoBarras: string
   tipo:         'nacional' | 'internacional'
@@ -157,11 +158,13 @@ export interface GuiaEnvio {
   }
   estado:     string
   generadoEn: string
-  contenido?:            string | null
-  observaciones?:        string | null
-  ordenServicio?:        number | null
-  fechaEntregaEstimada?: string | null
-  centroOperativo?:      string | null
+  codigoServicio?:        string | null
+  contenido?:             string | null
+  observaciones?:         string | null
+  ordenServicio?:         number | null
+  fechaEntregaEstimada?:  string | null
+  centroOperativo?:       string | null
+  centroOperativoCodigo?: string | null
 }
 
 export interface CrearEnvioResult {
@@ -230,6 +233,7 @@ export const VENTAS_KEYS = {
   cotizacion:      (params: object) => ['ventas', 'cotizacion', params] as const,
   tarifasEspecial: (productoId: number) => ['ventas', 'tarifas-especial', productoId] as const,
   dia:             (sucursalId: number) => ['ventas', 'dia', sucursalId] as const,
+  puntoAdmision:   (sucursalId: number) => ['ventas', 'punto-admision', sucursalId] as const,
   saldoAFavor:     (clienteId: number) => ['ventas', 'saldo-a-favor', clienteId] as const,
 }
 
@@ -347,6 +351,17 @@ export function usePaisesDestino(servicioId: number) {
     queryFn:  () => apiFetch<string[]>(`/ventas/servicios-postales/${servicioId}/paises-destino`),
     enabled:  servicioId > 0,
     staleTime: 10 * 60_000,
+  })
+}
+
+export interface PuntoAdmision { codigo: string; nombre: string }
+
+export function usePuntoAdmision(sucursalId: number) {
+  return useQuery({
+    queryKey: VENTAS_KEYS.puntoAdmision(sucursalId),
+    queryFn:  () => apiFetch<PuntoAdmision>(`/ventas/sucursal/${sucursalId}/punto-admision`),
+    enabled:  sucursalId > 0,
+    staleTime: Infinity,
   })
 }
 
@@ -754,18 +769,23 @@ export function useConversionMoneda() {
   })
 }
 
-export async function descargarGuiaEnvioPdf(envioId: number, token: string) {
-  const res = await fetch(`${env.VITE_API_URL}/ventas/envios/${envioId}/guia-pdf`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) throw new Error('No se pudo descargar la guía PDF')
-  const blob = await res.blob()
+export async function descargarGuiaEnvioPdf(envioId: number, numeroGuia?: string) {
+  const blob = await apiFetchBlob(`/ventas/envios/${envioId}/guia-pdf`)
   const url  = URL.createObjectURL(blob)
   const a    = document.createElement('a')
   a.href     = url
-  a.download = `guia-${envioId}.pdf`
+  a.download = `guia-${numeroGuia ?? envioId}.pdf`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+/** Abre el PDF oficial del backend en una pestaña, listo para imprimir. */
+export async function abrirGuiaEnvioPdf(envioId: number) {
+  const blob = await apiFetchBlob(`/ventas/envios/${envioId}/guia-pdf`)
+  const url  = URL.createObjectURL(blob)
+  const win  = window.open(url, '_blank')
+  win?.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
+  if (!win) URL.revokeObjectURL(url)
 }
 
 export async function abrirReciboPdf(ventaId: number, efectivoRecibido?: number) {

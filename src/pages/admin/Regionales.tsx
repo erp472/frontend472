@@ -3,8 +3,9 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
+import { Link } from 'react-router-dom'
 import {
-  Search, Plus, MoreHorizontal, Pencil, PowerOff, Loader2, AlertCircle, MapPin,
+  Search, Plus, MoreHorizontal, Pencil, PowerOff, Loader2, AlertCircle, MapPin, Settings2,
 } from 'lucide-react'
 import { Button }    from '@/components/ui/button'
 import { Input }     from '@/components/ui/input'
@@ -285,7 +286,9 @@ export default function RegionalesPage() {
               regionales.map((r) => (
                 <TableRow key={r.id} className="group">
                   <TableCell className="font-mono text-sm">{r.codigo}</TableCell>
-                  <TableCell className="font-medium">{r.nombre}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link to={`/admin/regionales/${r.id}`} className="hover:underline">{r.nombre}</Link>
+                  </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {r.comercio ? r.comercio.nombre : '—'}
                   </TableCell>
@@ -303,6 +306,11 @@ export default function RegionalesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link to={`/admin/regionales/${r.id}`}>
+                              <Settings2 className="mr-2 size-3.5" />Gestionar sucursales y usuarios
+                            </Link>
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEdit(r)}>
                             <Pencil className="mr-2 size-3.5" />Editar
                           </DropdownMenuItem>

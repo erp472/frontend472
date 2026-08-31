@@ -107,7 +107,6 @@ import {
   useAgregarProducto,
   useAnularVenta,
   useApartadosDisponibles,
-  useApartadosPorSucursal,
   useCarrito,
   useCatalogoProductos,
   useConfirmarVenta,
@@ -120,12 +119,14 @@ import {
   useEliminarProducto,
   useGuardarDireccionFrecuente,
   useIniciarVenta,
+  usePuntoAdmision,
   useResumenTurno,
   useDireccionesPorDocumento,
   useServiciosPostales,
   useTarifasEspecial,
   useVentasTurno,
   descargarGuiaEnvioPdf,
+  abrirGuiaEnvioPdf,
   abrirReciboPdf,
 } from '@/queries/ventas.queries'
 import { useEstampillasDisponibles } from '@/queries/productos.queries'
@@ -1873,13 +1874,31 @@ function EspecialProductoModal({
                 <div
                   className={cn(
                     'h-9 flex items-center px-3 rounded-md border text-sm font-bold tabular-nums',
-                    total > 0 ? 'bg-primary/5 text-primary' : 'bg-muted/30 text-muted-foreground',
+                    total >= 2_000_000
+                      ? 'bg-amber-50/60 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700'
+                      : total > 0
+                        ? 'bg-primary/5 text-primary'
+                        : 'bg-muted/30 text-muted-foreground',
                   )}
                 >
                   {total > 0 ? fmt(total) : sinPrecio ? 'Gratis' : '—'}
                 </div>
               </div>
             </div>
+
+            {/* Advertencia para totales altos */}
+            {total >= 2_000_000 && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                Servicio de alto valor — verifique autorización antes de agregar.
+              </p>
+            )}
+
+            {/* Guía cuando no hay tarifa activa pero sí existen tramos */}
+            {precioUnitario === 0 && !sinPrecio && tarifas && tarifas.length > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                Seleccione un tramo de la tabla para activar el precio.
+              </p>
+            )}
           </div>
         )}
 
@@ -1986,8 +2005,16 @@ function TabProductosEspeciales({
                   <span className="size-1.5 rounded-full bg-border shrink-0" />
                 )}
                 <span className="flex-1 text-xs font-medium leading-snug truncate">{p.nombre}</span>
-                <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0">
-                  {p.codigo}
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {p.precio > 0 && (
+                    <span className={cn(
+                      'text-[10px] tabular-nums font-semibold',
+                      p.precio >= 2_000_000 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+                    )}>
+                      {fmt(p.precio)}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-mono text-muted-foreground/60">{p.codigo}</span>
                 </span>
               </button>
             ))
@@ -4524,7 +4551,23 @@ const ZOOM_MAX  = 2.5
 const ZOOM_DEF  = 1.0
 
 function GuiaViewerDialog({ guia, onClose }: { guia: GuiaEnvio | null; onClose: () => void }) {
-  const [zoom, setZoom] = useState(ZOOM_DEF)
+  const [zoom, setZoom]             = useState(ZOOM_DEF)
+  const [pdfCargando, setPdfCargando] = useState(false)
+
+  // El PDF lo emite el backend: es el documento oficial y evita que lo impreso
+  // dependa de las fuentes y el motor de render de cada equipo.
+  const descargarPdf = async (modo: 'descargar' | 'imprimir') => {
+    if (guia?.envioId == null) return
+    setPdfCargando(true)
+    try {
+      if (modo === 'imprimir') await abrirGuiaEnvioPdf(guia.envioId)
+      else                     await descargarGuiaEnvioPdf(guia.envioId, guia.numeroGuia)
+    } catch {
+      toast.error('No se pudo obtener la guía en PDF')
+    } finally {
+      setPdfCargando(false)
+    }
+  }
 
   const clampZoom = (z: number) =>
     Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parseFloat(z.toFixed(2))))
@@ -4570,11 +4613,28 @@ function GuiaViewerDialog({ guia, onClose }: { guia: GuiaEnvio | null; onClose: 
           </div>
 
           <div className="flex items-center gap-2">
-            {guia?.estado !== 'BORRADOR' && (
-              <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={() => window.print()}>
-                <Printer className="size-3.5" />
-                Imprimir
-              </Button>
+            {guia?.estado !== 'BORRADOR' && guia?.envioId != null && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  disabled={pdfCargando}
+                  onClick={() => descargarPdf('descargar')}
+                >
+                  <FileDown className="size-3.5" />
+                  Descargar PDF
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs"
+                  disabled={pdfCargando}
+                  onClick={() => descargarPdf('imprimir')}
+                >
+                  <Printer className="size-3.5" />
+                  Imprimir
+                </Button>
+              </>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} title="Cerrar">
               <X className="size-4" />
@@ -4651,12 +4711,6 @@ function TabServiciosPostales({
   const [pais, setPais] = useState('CO')
   const [servicioId, setServicioId] = useState(0)
   const [apartadoP, setApartadoP] = useState('')
-  const { data: casillasData } = useApartadosPorSucursal(sucursalId)
-  const casillasSet = useMemo(
-    () => new Set((casillasData ?? []).map((a) => a.numero)),
-    [casillasData],
-  )
-  const apartadoValido = apartadoP.length > 0 && casillasSet.has(apartadoP)
   const [remitente, setRemitente] = useState<PersonaDir>(personaDirVacia())
   const [destinatario, setDestinatario] = useState<PersonaDir>(personaDirVacia())
   const [esCorrespondencia, setEsCorrespondencia] = useState(false)
@@ -4690,6 +4744,9 @@ function TabServiciosPostales({
   )
   const selectedService = serviciosFiltrados?.find((s: ServicioCatalogo) => s.id === servicioId)
   const esInternacional = pais !== 'CO'
+
+  // El borrador imprime el punto de admisión igual que la guía final.
+  const { data: sucursal } = usePuntoAdmision(sucursalId)
 
   const cotizParams = useMemo(
     () => ({
@@ -4844,7 +4901,7 @@ function TabServiciosPostales({
     const obsPartes = [
       observaciones.trim(),
       consecutivo.trim() ? `Consecutivo: ${consecutivo.trim()}` : '',
-      apartadoValido ? `Apartado: ${apartadoP}` : '',
+      apartadoP.trim() ? `Apartado: ${apartadoP.trim()}` : '',
     ].filter(Boolean)
     if (obsPartes.length) body.observaciones = obsPartes.join(' | ')
 
@@ -4963,12 +5020,21 @@ function TabServiciosPostales({
       },
       estado:               'BORRADOR',
       generadoEn:           new Date().toISOString(),
+      codigoServicio:       selectedService?.codigo ?? null,
+      contenido:            diceContener.trim() || null,
+      observaciones:        [
+                              observaciones.trim(),
+                              consecutivo.trim() ? `Consecutivo: ${consecutivo.trim()}` : '',
+                              apartadoP.trim() ? `Apartado: ${apartadoP.trim()}` : '',
+                            ].filter(Boolean).join(' | ') || null,
       ordenServicio:        null,
       fechaEntregaEstimada: cotizacion?.fechaEntregaEstimada ?? null,
-      centroOperativo:      null,
+      centroOperativo:       sucursal?.nombre ?? null,
+      centroOperativoCodigo: sucursal?.codigo ?? null,
     }
   }, [cotizacion, remitente, destinatario, selectedService, esInternacional,
-      servicioId, pesoKg, seguroAdicional, valorDeclarado, altoCm, anchoCm, largoCm])
+      servicioId, pesoKg, seguroAdicional, valorDeclarado, altoCm, anchoCm, largoCm,
+      diceContener, observaciones, consecutivo, apartadoP, sucursal])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -5011,127 +5077,133 @@ function TabServiciosPostales({
                   <PaisCombobox value={pais} onChange={setPais} />
                 </div>
 
-                {/* 2. Servicio */}
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    <span className="text-primary mr-1">2.</span> Servicio
-                  </Label>
-                  {loadingServicios ? (
-                    <div className="flex justify-center py-3">
-                      <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : (
-                    <Select
-                      value={servicioId ? String(servicioId) : ''}
-                      onValueChange={(v) => setServicioId(Number(v))}
-                    >
-                      <SelectTrigger className="h-7 text-xs">
-                        <SelectValue placeholder="Seleccionar servicio..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(() => {
-                          const noPrior =
-                            serviciosFiltrados?.filter((s: ServicioCatalogo) =>
-                              s.codigo.startsWith('NP-'),
-                            ) ?? []
-                          const prior =
-                            serviciosFiltrados?.filter((s: ServicioCatalogo) =>
-                              s.codigo.startsWith('P-'),
-                            ) ?? []
-                          const otros =
-                            serviciosFiltrados?.filter(
-                              (s: ServicioCatalogo) =>
-                                !s.codigo.startsWith('NP-') && !s.codigo.startsWith('P-'),
-                            ) ?? []
-                          const item = (s: ServicioCatalogo) => (
-                            <SelectItem key={s.id} value={String(s.id)} className="text-xs">
-                              {s.nombre}
-                            </SelectItem>
-                          )
-                          return (
-                            <>
-                              {noPrior.length > 0 && (
-                                <SelectGroup>
-                                  <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    No Prioritaria
-                                  </SelectLabel>
-                                  {noPrior.map(item)}
-                                </SelectGroup>
-                              )}
-                              {prior.length > 0 && (
-                                <SelectGroup>
-                                  <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    Prioritaria
-                                  </SelectLabel>
-                                  {prior.map(item)}
-                                </SelectGroup>
-                              )}
-                              {otros.length > 0 && (
-                                <SelectGroup>
-                                  <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    Otros
-                                  </SelectLabel>
-                                  {otros.map(item)}
-                                </SelectGroup>
-                              )}
-                            </>
-                          )
-                        })()}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
+                {/* 2. Servicio · Trayecto · Apartado postal — grid 3 cols */}
+                <div className="grid grid-cols-3 gap-2">
 
-                {/* Tipo de trayecto — solo para servicios nacionales */}
-                {!esInternacional && (
+                  {/* Servicio */}
                   <div className="space-y-1">
                     <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                      Trayecto
+                      <span className="text-primary mr-1">2.</span> Servicio
                     </Label>
-                    <Select
-                      value={tipoTrayecto}
-                      onValueChange={(v) => setTipoTrayecto(v as TipoTrayecto)}
-                    >
-                      <SelectTrigger className="h-7 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="NACIONAL" className="text-xs">Normal</SelectItem>
-                        <SelectItem value="URBANO" className="text-xs">Urbano</SelectItem>
-                        <SelectItem value="ESPECIAL" className="text-xs">Especial</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {/* Apartado postal */}
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    Apartado postal
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      className="h-7 w-40 text-xs font-mono px-2"
-                      placeholder="Nº casilla…"
-                      value={apartadoP}
-                      onChange={(e) => setApartadoP(e.target.value.trim())}
-                    />
-                    {apartadoP && !apartadoValido && (
-                      <span className="text-[10px] text-destructive">No encontrado</span>
-                    )}
-                    {apartadoValido && (
-                      <span className="text-[10px] text-green-600 font-medium">✓ válido</span>
-                    )}
-                    {apartadoP && (
-                      <button
-                        type="button"
-                        onClick={() => setApartadoP('')}
-                        className="text-muted-foreground hover:text-foreground"
+                    {loadingServicios ? (
+                      <div className="flex justify-center py-3">
+                        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <Select
+                        value={servicioId ? String(servicioId) : ''}
+                        onValueChange={(v) => setServicioId(Number(v))}
                       >
-                        <X className="h-3 w-3" />
-                      </button>
+                        <SelectTrigger className="h-7 text-xs w-full">
+                          <SelectValue placeholder="Servicio..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(() => {
+                            const noPrior =
+                              serviciosFiltrados?.filter((s: ServicioCatalogo) =>
+                                s.codigo.startsWith('NP-'),
+                              ) ?? []
+                            const prior =
+                              serviciosFiltrados?.filter((s: ServicioCatalogo) =>
+                                s.codigo.startsWith('P-'),
+                              ) ?? []
+                            const otros =
+                              serviciosFiltrados?.filter(
+                                (s: ServicioCatalogo) =>
+                                  !s.codigo.startsWith('NP-') && !s.codigo.startsWith('P-'),
+                              ) ?? []
+                            const item = (s: ServicioCatalogo) => (
+                              <SelectItem key={s.id} value={String(s.id)} className="text-xs">
+                                {s.nombre}
+                              </SelectItem>
+                            )
+                            return (
+                              <>
+                                {noPrior.length > 0 && (
+                                  <SelectGroup>
+                                    <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                      No Prioritaria
+                                    </SelectLabel>
+                                    {noPrior.map(item)}
+                                  </SelectGroup>
+                                )}
+                                {prior.length > 0 && (
+                                  <SelectGroup>
+                                    <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                      Prioritaria
+                                    </SelectLabel>
+                                    {prior.map(item)}
+                                  </SelectGroup>
+                                )}
+                                {otros.length > 0 && (
+                                  <SelectGroup>
+                                    <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                      Otros
+                                    </SelectLabel>
+                                    {otros.map(item)}
+                                  </SelectGroup>
+                                )}
+                              </>
+                            )
+                          })()}
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
+
+                  {/* Trayecto — solo servicios nacionales; ocupa la columna aunque esté vacío */}
+                  <div className="space-y-1">
+                    {!esInternacional && (
+                      <>
+                        <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                          Trayecto
+                        </Label>
+                        <Select
+                          value={tipoTrayecto}
+                          onValueChange={(v) => setTipoTrayecto(v as TipoTrayecto)}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NACIONAL" className="text-xs">Normal</SelectItem>
+                            <SelectItem value="URBANO" className="text-xs">Urbano</SelectItem>
+                            <SelectItem value="ESPECIAL" className="text-xs">Especial</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Apartado postal */}
+                  <div className="space-y-1">
+                    <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      Apartado postal
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        className="h-7 w-full text-xs font-mono px-2 uppercase"
+                        placeholder="Ej. 360662 · AA1234"
+                        value={apartadoP}
+                        maxLength={12}
+                        onChange={(e) =>
+                          setApartadoP(
+                            e.target.value.toUpperCase().replace(/[^0-9A-Z -]/g, ''),
+                          )
+                        }
+                      />
+                      {apartadoP && (
+                        <button
+                          type="button"
+                          onClick={() => setApartadoP('')}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
 
                 {/* 3. Remitente */}

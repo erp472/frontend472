@@ -105,9 +105,11 @@ interface UserFormProps {
   user?: UserResponse | null
   open: boolean
   onClose: () => void
+  /** Restringe la sucursal a un conjunto cerrado (p. ej. las de una regional) */
+  sucursales?: { id: number; codigo: string; nombre: string }[]
 }
 
-function UserForm({ user, open, onClose }: UserFormProps) {
+export function UserForm({ user, open, onClose, sucursales }: UserFormProps) {
   const isEdit = !!user
   const createMutation = useCreateUser()
   const updateMutation = useUpdateUser()
@@ -254,17 +256,40 @@ function UserForm({ user, open, onClose }: UserFormProps) {
             )}
           </div>
 
-          {/* Sucursal ID */}
+          {/* Sucursal */}
           <div className="space-y-1.5">
-            <Label htmlFor="u-suc">ID de sucursal <span className="text-muted-foreground text-xs ml-1">(opcional)</span></Label>
-            <Input
-              id="u-suc"
-              type="number"
-              min={1}
-              placeholder="1"
-              {...form.register('sucursal_id')}
-              aria-invalid={!!form.formState.errors.sucursal_id}
-            />
+            <Label htmlFor="u-suc">Sucursal <span className="text-muted-foreground text-xs ml-1">(opcional)</span></Label>
+            {sucursales ? (
+              <Controller
+                control={form.control}
+                name="sucursal_id"
+                render={({ field }) => (
+                  <Select
+                    value={field.value ? String(field.value) : '_none'}
+                    onValueChange={(v) => field.onChange(v === '_none' ? null : Number(v))}
+                  >
+                    <SelectTrigger id="u-suc">
+                      <SelectValue placeholder="Sin sucursal" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Sin sucursal</SelectItem>
+                      {sucursales.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.codigo} — {s.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            ) : (
+              <Input
+                id="u-suc"
+                type="number"
+                min={1}
+                placeholder="1"
+                {...form.register('sucursal_id')}
+                aria-invalid={!!form.formState.errors.sucursal_id}
+              />
+            )}
             {form.formState.errors.sucursal_id && (
               <p className="text-xs text-destructive">{form.formState.errors.sucursal_id.message as string}</p>
             )}

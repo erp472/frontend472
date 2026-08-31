@@ -55,6 +55,7 @@ import {
   useResetAutomatico,
   useResolverDiferencia,
   useStatusPunto,
+  esCajaOperativa,
 } from '@/queries/cajas.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -652,7 +653,7 @@ function CajaAlertaCard({
                 <div
                   key={s.id}
                   className={cn(
-                    'px-3 py-2 flex items-center gap-3 text-xs',
+                    'px-3 py-2 flex items-start gap-3 text-xs',
                     esForzada && 'bg-destructive/5',
                     s.estado === 'abierta' && 'bg-emerald-50/40 dark:bg-emerald-950/10',
                   )}
@@ -695,7 +696,12 @@ function CajaAlertaCard({
                       )}
                     </div>
                     {s.observaciones && (
-                      <span className="text-muted-foreground truncate">{s.observaciones}</span>
+                      <span
+                        className="text-muted-foreground truncate block"
+                        title={s.observaciones}
+                      >
+                        {s.observaciones}
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0 tabular-nums">
@@ -1048,27 +1054,29 @@ function PanelCierre({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto text-xs">
-      {/* Saldos del Punto */}
-      <div className="border-b">
-        <div className="px-3 py-2 bg-primary text-primary-foreground text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
-          <Vault className="size-3" /> Saldos del Punto
+      {/* Saldos del Punto — el backend anula estos montos para el rol CAJERO */}
+      {panel.cajaFuerteGeneral !== null && (
+        <div className="border-b">
+          <div className="px-3 py-2 bg-primary text-primary-foreground text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
+            <Vault className="size-3" /> Saldos del Punto
+          </div>
+          <div className="p-3 space-y-2">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Caja Fuerte:</span>
+              <span className="font-bold tabular-nums">{fmt(panel.cajaFuerteGeneral)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Caja General:</span>
+              <span className="font-bold tabular-nums">{fmt(panel.cajaGeneral)}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between text-muted-foreground">
+              <span>Base asignada:</span>
+              <span className="tabular-nums">{fmt(panel.baseGeneral)}</span>
+            </div>
+          </div>
         </div>
-        <div className="p-3 space-y-2">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Caja Fuerte:</span>
-            <span className="font-bold tabular-nums">{fmt(panel.cajaFuerteGeneral)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Caja General:</span>
-            <span className="font-bold tabular-nums">{fmt(panel.cajaGeneral)}</span>
-          </div>
-          <Separator />
-          <div className="flex justify-between text-muted-foreground">
-            <span>Base asignada:</span>
-            <span className="tabular-nums">{fmt(panel.baseGeneral)}</span>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Progreso de cierre */}
       <div className="border-b p-3 space-y-2">
@@ -1259,18 +1267,20 @@ function PanelCierre({
           <p className="font-semibold text-[11px] uppercase tracking-wide text-muted-foreground">
             Arqueo Final del Punto
           </p>
-          <div className="rounded-lg bg-muted/40 p-2.5 space-y-1.5">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Caja Fuerte:</span>
-              <span className="font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                {fmt(panel.cajaFuerteGeneral)}
-              </span>
+          {panel.cajaFuerteGeneral !== null && (
+            <div className="rounded-lg bg-muted/40 p-2.5 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Caja Fuerte:</span>
+                <span className="font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  {fmt(panel.cajaFuerteGeneral)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Caja General:</span>
+                <span className="font-bold tabular-nums">{fmt(panel.cajaGeneral)}</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Caja General:</span>
-              <span className="font-bold tabular-nums">{fmt(panel.cajaGeneral)}</span>
-            </div>
-          </div>
+          )}
 
           {/* Cierre de sesión principal */}
           {sesionPrincipalId != null && (
@@ -1380,7 +1390,7 @@ export default function AlertasCierre() {
   const [showReset, setShowReset] = useState(false)
 
   const cajasPos: CardAuxiliar[] = useMemo(
-    () => (data?.cajas ?? []).filter((c) => c.tipo === 'pos'),
+    () => (data?.cajas ?? []).filter((c) => esCajaOperativa(c.tipo)),
     [data],
   )
 
@@ -1440,7 +1450,18 @@ export default function AlertasCierre() {
     const cajaId = caja.cajaId
     setCerrando((p) => ({ ...p, [sid]: true }))
     try {
-      await cerrar.mutateAsync({ sesionId: sid, totalArqueo: String(fila.contado) })
+      // RF-3.01: el backend exige desglose físico y rechaza el cierre sin él.
+      // Esta pantalla solo captura el total, así que se envía como una única
+      // denominación que lo cubre. Un cajón vacío va como cantidad 0 porque el
+      // schema no admite denominaciones en cero.
+      const total = fila.contado
+      await cerrar.mutateAsync({
+        sesionId:    sid,
+        totalArqueo: total.toFixed(2),
+        denominaciones: total > 0
+          ? [{ denominacion: total, tipo: 'billete' as const, cantidad: 1, valorTotal: total }]
+          : [{ denominacion: 1000, tipo: 'billete' as const, cantidad: 0, valorTotal: 0 }],
+      })
 
       // Guardar cierre local (por cajaId) para mostrar la fila con datos de arqueo
       setCierresLocales((p) => ({
@@ -1530,7 +1551,7 @@ export default function AlertasCierre() {
 
       {/* Confirmación reset automático */}
       <Dialog open={showReset} onOpenChange={setShowReset}>
-        <DialogContent className="max-w-[460px]">
+        <DialogContent className="max-w-[720px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <RotateCcw className="size-4" />

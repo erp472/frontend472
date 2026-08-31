@@ -48,7 +48,10 @@ export function AdminLayout() {
       <div className="flex h-screen flex-col">
         {tricolorBar}
         <TopNavBar />
-        <main className="flex flex-1 flex-col overflow-hidden">
+        {/* Las pantallas POS ocupan exactamente el alto con h-full y hacen su propio
+            scroll interno; el resto crece y necesita que sea este contenedor el que
+            desplace, o las tarjetas quedan recortadas sin manera de alcanzarlas. */}
+        <main className="flex flex-1 flex-col min-h-0 overflow-y-auto">
           <Outlet />
         </main>
       </div>

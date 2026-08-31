@@ -25,19 +25,22 @@ import {
 import {
   usePanelAdmin, useToggleServicioSucursal, useAbrirCajaDirecta,
   useCreateCajaPadre, useCreateCaja,
-  type SucursalPanelItem,
+  type SucursalPanelItem, type CajaPosPanel,
 } from '@/queries/cajas.queries'
 import { useCreateUser } from '@/queries/users.queries'
 import { ApiError } from '@/lib/api'
 
+const TIPO_CAJA_LABEL: Record<string, string> = { pos: 'Ventas', pagos: 'Pagos' }
+
+interface AperturaTarget { caja: CajaPosPanel; sucursalNombre: string }
+
 // ── Apertura dialog ───────────────────────────────────────────────────────────
 
 function AperturaDialog({
-  sucursal, open, onClose,
-}: { sucursal: SucursalPanelItem | null; open: boolean; onClose: () => void }) {
+  target, open, onClose,
+}: { target: AperturaTarget | null; open: boolean; onClose: () => void }) {
   const [base, setBase] = useState('')
-  const cajaId = sucursal?.cajaPos?.id ?? 0
-  const abrir  = useAbrirCajaDirecta(cajaId)
+  const abrir = useAbrirCajaDirecta(target?.caja.id ?? 0)
 
   async function handleAbrir() {
     if (!base || isNaN(Number(base)) || Number(base) < 0) {
@@ -46,7 +49,7 @@ function AperturaDialog({
     }
     try {
       await abrir.mutateAsync({ baseAsignada: base })
-      toast.success(`Caja ${sucursal?.cajaPos?.codigo} aperturada`)
+      toast.success(`Caja ${target?.caja.codigo} aperturada`)
       setBase('')
       onClose()
     } catch (e) {
@@ -60,7 +63,7 @@ function AperturaDialog({
         <DialogHeader>
           <DialogTitle>Aperturar caja</DialogTitle>
           <DialogDescription>
-            {sucursal?.nombre} · Caja {sucursal?.cajaPos?.codigo}
+            {target?.sucursalNombre} · Caja {target?.caja.codigo}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5 py-2">
@@ -107,7 +110,7 @@ function CrearCajaPrincipalDialog({
     if (!sucursal) return
     const nombreFinal = nombre.trim() || `Caja Principal ${sucursal.nombre}`
     if (baseGeneral && (isNaN(Number(baseGeneral)) || Number(baseGeneral) < 0)) {
-      toast.error('La base mínima debe ser un número válido')
+      toast.error('La base del punto debe ser un número válido')
       return
     }
     setLoading(true)
@@ -165,7 +168,7 @@ function CrearCajaPrincipalDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="cp-base">Base mínima ($)</Label>
+            <Label htmlFor="cp-base">Base del punto ($)</Label>
             <Input
               id="cp-base"
               type="number"
@@ -176,7 +179,8 @@ function CrearCajaPrincipalDialog({
               onChange={(e) => setBaseGeneral(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Monto mínimo que debe tener la caja general del punto.
+              Monto máximo que el punto puede custodiar. Ni la Caja Fuerte ni la suma de
+              las auxiliares pueden superarlo.
             </p>
           </div>
         </div>
@@ -301,7 +305,7 @@ function SucursalSheet({
   sucursal: SucursalPanelItem | null
   open: boolean
   onClose: () => void
-  onApertura: (s: SucursalPanelItem) => void
+  onApertura: (t: AperturaTarget) => void
   onCrearCajaPrincipal: (s: SucursalPanelItem) => void
   onAgregarCajero: (s: SucursalPanelItem) => void
 }) {
@@ -317,8 +321,7 @@ function SucursalSheet({
     }
   }
 
-  const cajaPos      = sucursal?.cajaPos ?? null
-  const sesionActiva = cajaPos?.sesionActiva ?? false
+  const cajas = sucursal?.cajas ?? []
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
@@ -339,35 +342,41 @@ function SucursalSheet({
             </SheetHeader>
 
             <div className="mt-6 space-y-5">
-              {/* Caja auxiliar */}
+              {/* Cajas auxiliares */}
               <div className="rounded-lg border p-3 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Caja auxiliar</p>
-                {cajaPos ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="font-mono font-semibold">{cajaPos.codigo}</p>
-                      <p className="text-xs text-muted-foreground">{cajaPos.nombre}</p>
-                    </div>
-                    {sesionActiva ? (
-                      <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-300 gap-1">
-                        <CheckCircle2 className="size-3" />Abierta
-                      </Badge>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="gap-1 text-muted-foreground">
-                          <CircleDashed className="size-3" />Cerrada
-                        </Badge>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1.5 h-7 text-xs"
-                          onClick={() => onApertura(sucursal)}
-                        >
-                          <Unlock className="size-3" />Aperturar
-                        </Button>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Cajas auxiliares
+                </p>
+                {cajas.length > 0 ? (
+                  cajas.map((caja) => (
+                    <div key={caja.id} className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono font-semibold truncate">{caja.codigo}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {caja.nombre} · {TIPO_CAJA_LABEL[caja.tipo] ?? caja.tipo}
+                        </p>
                       </div>
-                    )}
-                  </div>
+                      {caja.sesionActiva ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-300 gap-1 shrink-0">
+                          <CheckCircle2 className="size-3" />Abierta
+                        </Badge>
+                      ) : (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant="outline" className="gap-1 text-muted-foreground">
+                            <CircleDashed className="size-3" />Cerrada
+                          </Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 h-7 text-xs"
+                            onClick={() => onApertura({ caja, sucursalNombre: sucursal.nombre })}
+                          >
+                            <Unlock className="size-3" />Aperturar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))
                 ) : (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">Sin cajas configuradas</p>
@@ -448,7 +457,7 @@ function TableSkeleton() {
 export default function PuntoVentasAdmin() {
   const [buscar,              setBuscar]              = useState('')
   const [sheetTarget,         setSheetTarget]         = useState<SucursalPanelItem | null>(null)
-  const [aperturaTarget,      setAperturaTarget]      = useState<SucursalPanelItem | null>(null)
+  const [aperturaTarget,      setAperturaTarget]      = useState<AperturaTarget | null>(null)
   const [cajaPrincipalTarget, setCajaPrincipalTarget] = useState<SucursalPanelItem | null>(null)
   const [cajeroTarget,        setCajeroTarget]        = useState<SucursalPanelItem | null>(null)
 
@@ -463,9 +472,19 @@ export default function PuntoVentasAdmin() {
       (s.ciudad ?? '').toLowerCase().includes(q) ||
       (s.departamento ?? '').toLowerCase().includes(q) ||
       s.regional.toLowerCase().includes(q) ||
-      (s.cajaPos?.codigo ?? '').includes(q)
+      s.cajas.some((c) => c.codigo.toLowerCase().includes(q))
     )
   })
+
+  // Una fila por caja: una sucursal puede tener varias auxiliares y antes solo se veía una
+  const filas = sucursales.flatMap((s) =>
+    s.cajas.length > 0
+      ? s.cajas.map((caja) => ({ s, caja }))
+      : [{ s, caja: null as CajaPosPanel | null }],
+  )
+  const totalAbiertas = (data ?? []).reduce(
+    (n, s) => n + s.cajas.filter((c) => c.sesionActiva).length, 0,
+  )
 
   return (
     <div className="p-6 space-y-4">
@@ -522,8 +541,8 @@ export default function PuntoVentasAdmin() {
                 </TableCell>
               </TableRow>
             ) : (
-              sucursales.map((s) => (
-                <TableRow key={s.sucursalId} className="group">
+              filas.map(({ s, caja }) => (
+                <TableRow key={`${s.sucursalId}-${caja?.id ?? 'sin-caja'}`} className="group">
                   <TableCell>
                     <Badge variant="outline" className="font-mono">{s.codigo}</Badge>
                   </TableCell>
@@ -532,14 +551,21 @@ export default function PuntoVentasAdmin() {
                   <TableCell className="text-sm text-muted-foreground">{s.ciudad ?? '—'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{s.departamento ?? '—'}</TableCell>
                   <TableCell>
-                    {s.cajaPos ? (
-                      <span className="font-mono text-sm">{s.cajaPos.codigo}</span>
+                    {caja ? (
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">{caja.codigo}</span>
+                        {caja.tipo !== 'pos' && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {TIPO_CAJA_LABEL[caja.tipo] ?? caja.tipo}
+                          </Badge>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-muted-foreground text-sm">—</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    {s.cajaPos?.sesionActiva ? (
+                    {caja?.sesionActiva ? (
                       <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-300 gap-1 text-xs">
                         <CheckCircle2 className="size-3" />Abierta
                       </Badge>
@@ -551,13 +577,13 @@ export default function PuntoVentasAdmin() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                      {s.cajaPos && !s.cajaPos.sesionActiva && (
+                      {caja && !caja.sesionActiva && (
                         <Button
                           variant="ghost"
                           size="icon"
                           className="size-7 text-emerald-600"
                           title="Aperturar caja"
-                          onClick={() => setAperturaTarget(s)}
+                          onClick={() => setAperturaTarget({ caja, sucursalNombre: s.nombre })}
                         >
                           <Unlock className="size-4" />
                         </Button>
@@ -581,11 +607,9 @@ export default function PuntoVentasAdmin() {
 
         {!isLoading && !isError && data && (
           <div className="border-t px-4 py-2.5 text-xs text-muted-foreground tabular-nums">
-            {sucursales.length} de {data.length} sucursales
-            {data.filter((s) => s.cajaPos?.sesionActiva).length > 0 && (
-              <span className="ml-3 text-emerald-600">
-                · {data.filter((s) => s.cajaPos?.sesionActiva).length} abiertas
-              </span>
+            {filas.length} cajas en {sucursales.length} de {data.length} sucursales
+            {totalAbiertas > 0 && (
+              <span className="ml-3 text-emerald-600">· {totalAbiertas} abiertas</span>
             )}
           </div>
         )}
@@ -601,7 +625,7 @@ export default function PuntoVentasAdmin() {
       />
 
       <AperturaDialog
-        sucursal={aperturaTarget}
+        target={aperturaTarget}
         open={!!aperturaTarget}
         onClose={() => setAperturaTarget(null)}
       />

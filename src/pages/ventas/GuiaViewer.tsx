@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ZoomIn, ZoomOut, Printer, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
-import type { GuiaEnvio } from '@/queries/ventas.queries'
+import { GuiaPostalSvg, GUIA_SVG_W, GUIA_SVG_H } from '@/components/GuiaPostalSvg'
+import { toast } from 'sonner'
+import { abrirGuiaEnvioPdf, type GuiaEnvio } from '@/queries/ventas.queries'
 
 const ZOOM_STEP = 0.15
 const ZOOM_MIN  = 0.3
@@ -44,9 +45,8 @@ export default function GuiaViewer() {
     )
   }
 
-  // GuiaPostalSvg usa 765px de ancho (SVG landscape)
-  const svgW = 765
-  const svgH = 1056
+  const svgW = GUIA_SVG_W
+  const svgH = GUIA_SVG_H
 
   return (
     <div className="flex flex-col h-screen bg-zinc-200 dark:bg-zinc-800 overflow-hidden">
@@ -105,8 +105,16 @@ export default function GuiaViewer() {
 
         {/* Acciones */}
         <div className="flex items-center gap-2">
-          {guia.estado !== 'BORRADOR' && (
-            <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={() => window.print()}>
+          {guia.estado !== 'BORRADOR' && guia.envioId != null && (
+            <Button
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() =>
+                abrirGuiaEnvioPdf(guia.envioId!).catch(() =>
+                  toast.error('No se pudo obtener la guía en PDF'),
+                )
+              }
+            >
               <Printer className="size-3.5" />
               Imprimir
             </Button>

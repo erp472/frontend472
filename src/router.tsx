@@ -19,6 +19,7 @@ const PermisosPage = lazy(() => import('@/pages/admin/Permisos'))
 const FeatureFlagsPage = lazy(() => import('@/pages/admin/FeatureFlags'))
 const ComerciosPage  = lazy(() => import('@/pages/admin/Comercios'))
 const RegionalesPage = lazy(() => import('@/pages/admin/Regionales'))
+const RegionalDetallePage = lazy(() => import('@/pages/admin/RegionalDetalle'))
 const SucursalesPage = lazy(() => import('@/pages/admin/Sucursales'))
 const EquiposPage    = lazy(() => import('@/pages/admin/Equipos'))
 const ProductosPage           = lazy(() => import('@/pages/admin/Productos'))
@@ -354,7 +355,10 @@ export const router = createBrowserRouter(
                     },
                     {
                       element: <FlagGuard flag="modulo_regionales" />,
-                      children: [{ path: '/admin/regionales', element: lazySuspense(RegionalesPage) }],
+                      children: [
+                        { path: '/admin/regionales', element: lazySuspense(RegionalesPage) },
+                        { path: '/admin/regionales/:regionalId', element: lazySuspense(RegionalDetallePage) },
+                      ],
                     },
                   ],
                 },

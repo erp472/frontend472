@@ -41,6 +41,7 @@ import {
   useConfirmarCustodia,
   useMovimientos,
   useStatusPunto,
+  esCajaOperativa,
 } from '@/queries/cajas.queries'
 import { useResumenTurno } from '@/queries/ventas.queries'
 import { useSessionStore } from '@/stores/useSessionStore'
@@ -959,18 +960,22 @@ export default function PuntoVentas() {
     intervalo,
   )
 
-  const todasPosCajas = data?.cajas.filter((c) => c.tipo === 'pos') ?? []
+  const todasPosCajas = data?.cajas.filter((c) => esCajaOperativa(c.tipo)) ?? []
   const todasAbiertas = todasPosCajas.filter((c) => c.estado === 'abierta')
 
   const cajasAbiertas = esCajero
     ? todasAbiertas.filter((c) => c.cajeroId === Number(user?.id))
     : todasAbiertas
 
-  // Caja cerrada/sin_sesión asignable al cajero (para poder reabrirla)
+  // Caja cerrada/sin_sesión asignable al cajero (para poder reabrirla).
+  // Solo las suyas: una caja de otro cajero abriría a nombre de su cajero fijo y él no podría vender.
   const cajaParaAbrir =
     esCajero && cajasAbiertas.length === 0
-      ? (todasPosCajas.find((c) => c.cajeroId === Number(user?.id) && c.estado !== 'abierta') ??
-        todasPosCajas.find((c) => c.estado !== 'abierta'))
+      ? todasPosCajas.find(
+          (c) =>
+            c.estado !== 'abierta' &&
+            (c.cajeroId === Number(user?.id) || c.cajeroFijoId === Number(user?.id)),
+        )
       : null
 
   // Activar polling rápido cuando el cajero no tiene caja abierta

@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Eye, EyeOff } from 'lucide-react'
+import { useState } from 'react'
 
 const loginSchema = z.object({
   email: z.string().email('Email inválido'),
@@ -23,6 +24,7 @@ export default function Login() {
   const navigate = useNavigate()
   const setToken = useSessionStore((s) => s.setToken)
   const setUser  = useSessionStore((s) => s.setUser)
+  const [verPassword, setVerPassword] = useState(false)
 
   const { form, handleSubmit, isPending, serverError } = useApiForm<typeof loginSchema, void>({
     schema: loginSchema,
@@ -108,13 +110,25 @@ export default function Login() {
 
           <div className="space-y-1.5">
             <Label htmlFor="password">Contraseña</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              {...register('password')}
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={verPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="••••••••"
+                className="pr-10"
+                {...register('password')}
+              />
+              <button
+                type="button"
+                onClick={() => setVerPassword((v) => !v)}
+                aria-label={verPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={verPassword}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-r-lg"
+              >
+                {verPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
             {errors.password && (
               <p className="text-xs text-destructive">{errors.password.message}</p>
             )}

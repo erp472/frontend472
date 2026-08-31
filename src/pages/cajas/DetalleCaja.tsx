@@ -122,7 +122,7 @@ function PanelResumen({
 
       {/* Saldo */}
       <div className="rounded-lg border p-3 bg-card text-center mb-3">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Saldo del turno</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Efectivo del turno</p>
         <p className="text-2xl font-bold tabular-nums mt-0.5">{fmt(sesion.saldoActual)}</p>
       </div>
 
@@ -356,7 +356,7 @@ function TabCierre({ sesionId, saldoEsperado }: { sesionId: number; saldoEsperad
         {saldoEsperado && (
           <>
             <div className="flex justify-between text-muted-foreground text-xs">
-              <span>Saldo esperado (sistema):</span>
+              <span>Efectivo esperado (sistema):</span>
               <span className="tabular-nums">{fmt(saldoEsperado)}</span>
             </div>
             {diferencia !== null && (

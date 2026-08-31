@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import { GuiaPostal } from '@/components/GuiaPostal'
-import { GuiaPostalSvg } from '@/components/GuiaPostalSvg'
+import { GuiaPostalSvg, GUIA_SVG_W, GUIA_SVG_H } from '@/components/GuiaPostalSvg'
 import type { GuiaEnvio } from '@/queries/ventas.queries'
 
 // ── Mock con número de guía real 4-72 (formato UPU 13 chars) ─────────────────
@@ -110,8 +110,8 @@ export default function GuiaDemo() {
   const [vista, setVista]       = useState<Vista>('html')
 
   const guia  = MOCKS[selected]
-  const W     = vista === 'html' ? 816 : 765
-  const H     = vista === 'html' ? 1056 : 342
+  const W     = vista === 'html' ? 816 : GUIA_SVG_W
+  const H     = vista === 'html' ? 1056 : GUIA_SVG_H
   const clamp = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, parseFloat(z.toFixed(2))))
 
   return (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Vault, Pencil, Plus, Loader2, AlertCircle, Clock, Building2, Trash2,
+  AlertTriangle, CheckCircle2,
 } from 'lucide-react'
 import { Button }    from '@/components/ui/button'
 import { Input }     from '@/components/ui/input'
@@ -24,15 +25,73 @@ import {
 } from '@/components/ui/table'
 import {
   useListCajasPadres, useCreateCajaPadre, useUpdateCajaPadre, useDeleteCajaPadre,
-  type CajaPadre,
+  useDiagnosticoPunto,
+  type CajaPadre, type ProblemaPunto,
 } from '@/queries/cajas.queries'
 import { useSucursales } from '@/queries/sucursales.queries'
+import { DesglosePunto } from '@/components/DesglosePunto'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const COP = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 const fmt = (v: string | number | null | undefined) =>
   v != null && v !== '' ? COP.format(Number(v)) : '—'
+
+const PROBLEMA_LABEL: Record<ProblemaPunto, string> = {
+  sin_caja_fuerte:          'Sin Caja Fuerte',
+  sin_supervisor:           'Sin supervisor',
+  base_fuerte_excede_punto: 'Caja Fuerte sobre la base',
+  reparto_excede_fuerte:    'Reparto sobre la Caja Fuerte',
+}
+
+// La configuración se guarda en tres pantallas distintas (punto, cajas, asignación)
+// y ninguna ve a las otras: el diagnóstico es lo único que cruza las tres.
+function DiagnosticoPunto({ cajaPadreId }: { cajaPadreId: number }) {
+  const { data, isLoading } = useDiagnosticoPunto(cajaPadreId)
+
+  if (isLoading) return <Skeleton className="h-5 w-24" />
+  if (!data) return <span className="text-xs text-muted-foreground">—</span>
+
+  if (data.problemas.length === 0) {
+    return (
+      <Badge variant="outline" className="gap-1 text-emerald-600 border-emerald-600/40">
+        <CheckCircle2 className="size-3" /> Coherente
+      </Badge>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {data.problemas.map((p) => (
+        <Badge key={p} variant="destructive" className="gap-1 text-[11px] font-normal">
+          <AlertTriangle className="size-3" /> {PROBLEMA_LABEL[p]}
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
+function DiagnosticoDetalle({ cajaPadreId }: { cajaPadreId: number }) {
+  const { data } = useDiagnosticoPunto(cajaPadreId)
+  if (!data) return null
+
+  return (
+    <div className="rounded-lg border p-3 space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">Diagnóstico del punto</p>
+      <DesglosePunto data={data} />
+      {data.problemas.length > 0 && (
+        <ul className="space-y-1 pt-1">
+          {data.problemas.map((p) => (
+            <li key={p} className="flex items-start gap-1.5 text-xs text-destructive">
+              <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+              {PROBLEMA_LABEL[p]}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 // ── Sheet de edición ──────────────────────────────────────────────────────────
 
@@ -112,6 +171,8 @@ function EditSheet({ cajaPadre, open, onClose, onDeleted }: EditSheetProps) {
 
             {phase === 'edit' ? (
               <div className="mt-6 space-y-5">
+                <DiagnosticoDetalle cajaPadreId={cajaPadre.id} />
+
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-nombre">Nombre del punto</Label>
                   <Input
@@ -401,6 +462,7 @@ export default function CajasConfig() {
               <TableHead>Sucursal ID</TableHead>
               <TableHead className="text-right">Base general</TableHead>
               <TableHead>Reset automático</TableHead>
+              <TableHead>Estado</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -408,14 +470,14 @@ export default function CajasConfig() {
             {isLoading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 6 }).map((_, j) => (
+                  {Array.from({ length: 7 }).map((_, j) => (
                     <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                   ))}
                 </TableRow>
               ))
             ) : isError ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-16 text-center">
+                <TableCell colSpan={7} className="py-16 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <AlertCircle className="size-8 opacity-40" />
                     <p className="text-sm">No se pudo cargar la configuración</p>
@@ -427,7 +489,7 @@ export default function CajasConfig() {
               </TableRow>
             ) : !cajas || cajas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-16 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="py-16 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <Building2 className="size-8 opacity-30" />
                     <p className="text-sm">No hay puntos de caja configurados</p>
@@ -457,6 +519,9 @@ export default function CajasConfig() {
                     ) : (
                       <span className="italic">Sin reset</span>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <DiagnosticoPunto cajaPadreId={c.id} />
                   </TableCell>
                   <TableCell>
                     <Button

@@ -26,9 +26,9 @@ import { useSessionStore } from '@/stores/useSessionStore'
 import {
   useStatusPunto, useAbrirCajaDirecta, useCajaPadre, useHistorialSesiones, useUpdateCaja,
   useCambioCustodia, useConfirmarCustodia, useDiferenciasPendientes,
-  useAbrirSesionPrincipal, useCerrarSesionPrincipal,
+  useAbrirSesionPrincipal, useCerrarSesionPrincipal, esCajaOperativa,
   type CardAuxiliar, type PanelPunto, type TipoAlerta, type CambioCustodiaResult,
-  type DiferenciaPendiente,
+  type DiferenciaPendiente, type MedioPagoCaja,
 } from '@/queries/cajas.queries'
 import { useUsers } from '@/queries/users.queries'
 
@@ -43,6 +43,30 @@ function tipoLabel(tipo: string) {
   return MAP[tipo] ?? tipo
 }
 
+const MEDIO_LABELS: Record<MedioPagoCaja, string> = {
+  efectivo:          'Efectivo',
+  tarjeta_debito:    'T. Débito',
+  tarjeta_credito:   'T. Crédito',
+  transferencia:     'Transferencia',
+  consignacion:      'Consignación',
+  cheque:            'Cheque',
+  preporteado:       'Preporteado',
+  mixto_preporteado: 'Mixto preporteado',
+  estampilla:        'Estampilla',
+}
+
+// saldoActual es solo el efectivo del cajón: un pago con tarjeta o preporteado se
+// factura pero nunca entra físicamente. El desglose evita que el cajero lo lea como
+// venta perdida.
+function desgloseNoEfectivo(card: CardAuxiliar) {
+  return (Object.entries(card.saldoPorMedioPago) as [MedioPagoCaja, string][])
+    .filter(([medio, monto]) => medio !== 'efectivo' && Number(monto) !== 0)
+}
+
+function totalNoEfectivo(card: CardAuxiliar) {
+  return desgloseNoEfectivo(card).reduce((acc, [, monto]) => acc + Number(monto), 0)
+}
+
 function estadoBadge(estado: CardAuxiliar['estado']) {
   if (estado === 'sin_sesion') return <Badge variant="outline" className="text-[10px]">Disponible</Badge>
   if (estado === 'cerrada')    return <Badge variant="secondary" className="text-[10px]">Cerrada</Badge>
@@ -50,7 +74,7 @@ function estadoBadge(estado: CardAuxiliar['estado']) {
 }
 
 function isSinCajero(card: CardAuxiliar) {
-  return card.estado === 'abierta' && card.tipo === 'pos' && card.cajeroId === null
+  return card.estado === 'abierta' && esCajaOperativa(card.tipo) && card.cajeroId === null
 }
 
 function cardBg(card: CardAuxiliar) {
@@ -124,6 +148,10 @@ function PanelLateral({
 
   const fuerteAbierta = cajaFuerte?.estado === 'abierta'
   const fuerteSinSesion = !cajaFuerte || cajaFuerte.estado === 'sin_sesion'
+
+  // El backend anula los montos del panel para el rol CAJERO. Se ocultan los
+  // bloques en vez de mostrar $0, que se leería como una bóveda vacía.
+  const puedeVerBoveda = panel.cajaFuerteGeneral !== null
 
   const panelRows = [
     { label: 'Base',                 valor: panel.baseGeneral },
@@ -233,6 +261,7 @@ function PanelLateral({
       </div>
 
       {/* Saldo asignado al punto */}
+      {puedeVerBoveda && (
       <div>
         <div className="px-3 py-2 bg-primary text-primary-foreground text-[10px] font-semibold uppercase tracking-wider">
           Saldo Asignado al Punto
@@ -260,8 +289,10 @@ function PanelLateral({
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Caja Fuerte — apertura / cierre */}
+      {puedeVerBoveda && (
       <div className="border-t">
         <div className="px-3 py-2 bg-muted/50 text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1.5">
           <Vault className="size-3" />
@@ -369,6 +400,7 @@ function PanelLateral({
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
@@ -392,6 +424,7 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
   const cerrada   = card.estado === 'cerrada'
   const sinCajero = isSinCajero(card)
   const servicios = SERVICIOS[card.tipo] ?? []
+  const noEfectivo = totalNoEfectivo(card)
 
   return (
     <button
@@ -424,6 +457,7 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
       {abierta && (
         <div className="space-y-1">
           <p className="text-2xl font-bold tabular-nums leading-none">{fmtOrDash(card.saldoActual)}</p>
+          <p className="text-[10px] text-muted-foreground">Efectivo en caja</p>
           <div className="flex items-center gap-3 text-[11px]">
             <span className="flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400">
               <TrendingUp className="size-2.5" /> {fmt(card.ingresosSesion)}
@@ -432,6 +466,11 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
               <TrendingDown className="size-2.5" /> {fmt(card.egresosSesion)}
             </span>
           </div>
+          {noEfectivo !== 0 && (
+            <p className="text-[10px] text-sky-700 dark:text-sky-400 tabular-nums">
+              + {fmt(String(noEfectivo))} en otros medios
+            </p>
+          )}
           {card.girosCount > 0 && (
             <p className="text-[10px] text-muted-foreground">
               {card.girosCount} giro{card.girosCount > 1 ? 's' : ''} · {fmt(card.girosValor)}
@@ -730,13 +769,14 @@ function CustodiaDialog({
 
 // ── CajaModal ─────────────────────────────────────────────────────────────────
 
-function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadreId, cajaFuerte }: {
+function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadreId, cajaFuerte, panel }: {
   open: boolean; onClose: () => void
   card: CardAuxiliar | null
   sucursalId: number
   sesionesAbiertas: CardAuxiliar[]
   cajaPadreId: number
   cajaFuerte: CardAuxiliar | undefined
+  panel: PanelPunto
 }) {
   const navigate    = useNavigate()
   const user        = useSessionStore(s => s.user)
@@ -751,7 +791,7 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
   const [baseDia,      setBaseDia]      = useState('')
   const [showCustodia, setShowCustodia] = useState(false)
 
-  const { data: usuariosSuc } = useUsers({
+  const { data: usuariosSuc, isError: cajerosNoDisponibles } = useUsers({
     rol:        'CAJERO',
     sucursal_id: user?.sucursal_id ?? undefined,
     activo:     true,
@@ -767,7 +807,10 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
     if (card) {
       setServicios([...(SERVICIOS[card.tipo] ?? [])])
       setBase('')
-      setCajeroId(card.cajeroId ?? undefined)
+      // Pre-select: cajeroFijo when opening a new session, otherwise the active session cajero
+      setCajeroId(card.estado === 'sin_sesion'
+        ? (card.cajeroFijoId ?? undefined)
+        : (card.cajeroId ?? undefined))
       setLimiteAlerta(card.limiteAlerta ?? '')
       setBaseDia(card.baseDia ?? '')
       setShowConfig(false)
@@ -781,6 +824,18 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
   const cerrada   = card.estado === 'cerrada'
   const sinCajero = isSinCajero(card)
   const catServ   = SERVICIOS[card.tipo] ?? []
+
+  // BR-CAJ-011: base disponible para esta apertura
+  const baseDisponible  = Number(panel.baseDisponible ?? '0')
+  const baseEntrada     = Number(base) || 0
+  const baseSinCupo     = sinSesion && baseDisponible <= 0
+  const baseExcedeCupo  = baseEntrada > 0 && baseEntrada > baseDisponible
+
+  // La sesión nace a nombre de un cajero: el que elija la apertura o, si no elige, el fijo
+  // de la caja. Sin ninguno de los dos el backend rechaza la apertura de una caja operativa.
+  const cajeroApertura = esCajaOperativa(card.tipo) ? (cajeroId ?? card.cajeroFijoId ?? null) : null
+  const faltaCajero    = sinSesion && esCajaOperativa(card.tipo) && cajeroApertura === null
+  const nombreCajero   = cajeros.find(c => c.id === cajeroApertura)?.nombre ?? null
 
   function submitConfig() {
     if (!card) return
@@ -799,7 +854,7 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
   function submitApertura() {
     if (!card) return
     abrir.mutate(
-      { baseAsignada: base, ...(cajeroId ? { cajeroAsignadoId: cajeroId } : {}) },
+      { baseAsignada: base, ...(cajeroApertura ? { cajeroAsignadoId: cajeroApertura } : {}) },
       {
         onSuccess: () => { toast.success(`${card.nombre} abierta`); onClose() },
         onError:   (e) => toast.error(e.message),
@@ -809,7 +864,7 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] flex flex-col p-0 gap-0">
 
         <DialogHeader className="pl-6 pr-14 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-center gap-2.5">
@@ -871,35 +926,80 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
 
                 <Separator />
 
-                {esSupervisor && cajeros.length > 0 && (
+                {esSupervisor && esCajaOperativa(card.tipo) && (
                   <div className="space-y-2">
                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                       Cajero asignado
                     </Label>
-                    <select
-                      value={cajeroId ?? ''}
-                      onChange={e => setCajeroId(e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                    >
-                      <option value="">Sin asignar</option>
-                      {cajeros.map(c => (
-                        <option key={c.id} value={c.id}>{c.nombre} — {c.email}</option>
-                      ))}
-                    </select>
+                    {cajeros.length > 0 ? (
+                      <select
+                        value={cajeroId ?? ''}
+                        onChange={e => setCajeroId(e.target.value ? Number(e.target.value) : undefined)}
+                        className={cn(
+                          'w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring',
+                          faltaCajero && 'border-red-400 focus:ring-red-400',
+                        )}
+                      >
+                        <option value="">Sin asignar</option>
+                        {cajeros.map(c => (
+                          <option key={c.id} value={c.id}>{c.nombre} — {c.email}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-3 py-2.5 text-[12px] text-amber-700 dark:text-amber-400">
+                        {cajerosNoDisponibles
+                          ? 'No se pudo cargar la lista de cajeros: el módulo de usuarios está desactivado. Actívelo en Aperturas del sistema.'
+                          : 'No hay cajeros activos en esta sucursal. Cree uno antes de abrir la caja.'}
+                      </div>
+                    )}
+                    {faltaCajero ? (
+                      <p className="text-xs text-red-500">
+                        Esta caja no tiene cajero fijo, así que no se puede abrir: la sesión nacería sin
+                        dueño y cualquiera podría vender en ella.
+                      </p>
+                    ) : nombreCajero ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        La sesión y sus ventas quedan a nombre de {nombreCajero}. Solo él podrá vender en esta caja.
+                      </p>
+                    ) : cajeroApertura !== null && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Se abrirá con el cajero fijo de la caja.
+                      </p>
+                    )}
                   </div>
                 )}
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Base de apertura
-                  </Label>
-                  <Input
-                    type="number" min="0" step="1000" placeholder="0"
-                    value={base} onChange={e => setBase(e.target.value)}
-                    className="text-lg font-semibold tabular-nums h-11"
-                  />
-                  {base && Number(base) > 0 && (
-                    <p className="text-sm font-bold text-primary tabular-nums">{fmt(base)}</p>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Base de apertura
+                    </Label>
+                    <span className={cn(
+                      'text-[11px] tabular-nums font-medium',
+                      baseSinCupo ? 'text-red-500' : 'text-muted-foreground',
+                    )}>
+                      Disponible: {fmt(String(baseDisponible))}
+                    </span>
+                  </div>
+                  {baseSinCupo ? (
+                    <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 px-3 py-3 text-[12px] text-red-700 dark:text-red-400">
+                      Base agotada — todas las cajas del punto tienen la base asignada al completo.
+                      Cierre una caja auxiliar para liberar cupo.
+                    </div>
+                  ) : (
+                    <>
+                      <Input
+                        type="number" min="0" max={baseDisponible} step="1000" placeholder="0"
+                        value={base} onChange={e => setBase(e.target.value)}
+                        className={cn('text-lg font-semibold tabular-nums h-11', baseExcedeCupo && 'border-red-400 focus-visible:ring-red-400')}
+                      />
+                      {baseExcedeCupo && (
+                        <p className="text-xs text-red-500">Supera la base disponible ({fmt(String(baseDisponible))})</p>
+                      )}
+                      {base && Number(base) > 0 && !baseExcedeCupo && (
+                        <p className="text-sm font-bold text-primary tabular-nums">{fmt(base)}</p>
+                      )}
+                    </>
                   )}
                 </div>
               </>
@@ -909,7 +1009,7 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
             {abierta && (
               <div className="space-y-4">
                 <div className="rounded-lg bg-muted/30 border px-4 py-4 text-center">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Saldo actual</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Efectivo en caja</p>
                   <p className="text-3xl font-bold tabular-nums mt-1">{fmtOrDash(card.saldoActual)}</p>
                   <div className="flex justify-center gap-5 mt-2 text-xs">
                     <span className="flex items-center gap-1 text-emerald-700">
@@ -925,6 +1025,42 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
                     </p>
                   )}
                 </div>
+
+                {desgloseNoEfectivo(card).length > 0 && (
+                  <div className="rounded-lg border bg-muted/20 px-4 py-3 space-y-1.5">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Facturado en otros medios
+                    </p>
+                    {desgloseNoEfectivo(card).map(([medio, monto]) => (
+                      <div key={medio} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{MEDIO_LABELS[medio]}</span>
+                        <span className="tabular-nums font-medium">{fmt(monto)}</span>
+                      </div>
+                    ))}
+                    <Separator className="my-1" />
+                    <div className="flex justify-between text-xs font-semibold">
+                      <span>Total no efectivo</span>
+                      <span className="tabular-nums">{fmt(String(totalNoEfectivo(card)))}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground pt-0.5">
+                      No entra al cajón: no se cuenta en el arqueo.
+                    </p>
+                  </div>
+                )}
+
+                {card.deltaReposicion && Number(card.deltaReposicion) > 0 && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50/60 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/20">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Reposición sugerida</span>
+                      <span className="tabular-nums font-semibold">{fmt(card.deltaReposicion)}</span>
+                    </div>
+                    {card.tTarget && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+                        Nivel óptimo: {fmt(card.tTarget)}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {card.alertas.length > 0 && (
                   <div className="flex flex-wrap gap-2">
@@ -1089,7 +1225,7 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
 
           {sinSesion && (
             <Button
-              disabled={!base || Number(base) <= 0 || abrir.isPending}
+              disabled={!base || Number(base) <= 0 || abrir.isPending || baseSinCupo || baseExcedeCupo || faltaCajero}
               onClick={submitApertura}
             >
               {abrir.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
@@ -1174,7 +1310,7 @@ export default function PuntoCajas() {
     )
   }
 
-  const cajas         = data.cajas.filter(c => c.tipo === 'pos')
+  const cajas         = data.cajas.filter(c => esCajaOperativa(c.tipo))
   const cajaFuerte    = data.cajas.find(c => c.tipo === 'general')
   const totalAlertas  = cajas.reduce((a, c) => a + c.alertas.length, 0) + diferenciasPendientes.length
   const totalAbiertas = cajas.filter(c => c.estado === 'abierta').length
@@ -1261,6 +1397,7 @@ export default function PuntoCajas() {
         sucursalId={id}
         cajaPadreId={data.cajaPadreId}
         cajaFuerte={cajaFuerte}
+        panel={data.panel}
         sesionesAbiertas={[
           ...cajas.filter(c => c.estado === 'abierta'),
           ...(cajaFuerte && cajaFuerte.estado === 'abierta' ? [cajaFuerte] : []),

@@ -80,14 +80,20 @@ function TableSkeleton() {
   ))
 }
 
-function SucursalForm({
-  sucursal, open, onClose,
-}: { sucursal: SucursalResponse | null; open: boolean; onClose: () => void }) {
+export function SucursalForm({
+  sucursal, open, onClose, regionalId,
+}: {
+  sucursal: SucursalResponse | null
+  open: boolean
+  onClose: () => void
+  regionalId?: number
+}) {
   const isEdit = !!sucursal
   const createMutation = useCreateSucursal()
   const updateMutation = useUpdateSucursal()
   const { data: regionalesData } = useRegionales({ activo: true, limite: 200 })
   const regionales = regionalesData?.datos ?? []
+  const pideRegional = !isEdit && regionalId === undefined
 
   const schema = isEdit ? updateSchema : createSchema
   const {
@@ -112,7 +118,7 @@ function SucursalForm({
       pais_id:          sucursal.pais?.id ?? null,
       departamento_id:  sucursal.departamento?.id ?? null,
       ciudad_id:        sucursal.ciudad?.id ?? null,
-    } : { tipo: 'unipersonal' as const }
+    } : { tipo: 'unipersonal' as const, regional_id: regionalId }
     reset(vals as any)
     const g = {
       paisId:         sucursal?.pais?.id ?? null,
@@ -166,7 +172,7 @@ function SucursalForm({
         </SheetHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
-          {!isEdit && (
+          {pideRegional && (
             <div className="space-y-1.5">
               <Label>Regional *</Label>
               <Select onValueChange={(v) => setValue('regional_id', Number(v) as any)}>

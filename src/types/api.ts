@@ -241,6 +241,7 @@ export interface CreateSucursalInput {
 }
 
 export interface UpdateSucursalInput {
+  regional_id?:      number | undefined
   nombre?:           string | undefined
   tipo?:             TipoSucursal | undefined
   direccion?:        string | null | undefined

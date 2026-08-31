@@ -40,13 +40,14 @@ export interface GuiaData {
   ordenServicio:       string  // número de OS, vacío si no aplica
 
   // Número de guía (zona grande superior-derecha)
-  barcodeText1:  string  // '*' + primeros 10 chars del número de guía
-  barcodeText2:  string  // resto + '*' (sólo si guía > 10 chars)
+  barcodeText1:  string  // '*' + primeros 10 chars del código de barras
+  barcodeText2:  string  // resto + '*'
   codigoGuia:    string  // número completo
 
   // Remitente
   remitenteNombre:    string
   remitenteDireccion: string
+  remitenteReferencia: string // adición de dirección (apto, torre, interior…)
   remitenteNit:       string  // NIT / documento del remitente
   remitenteCiudad:    string
   remitenteDepto:     string
@@ -56,9 +57,11 @@ export interface GuiaData {
   // Destinatario
   destinatarioNombre:    string
   destinatarioDireccion: string
+  destinatarioReferencia: string
   destinatarioCiudad:    string
   destinatarioDepto:     string
   destinatarioTel:       string
+  destinatarioCP:        string
 
   // Pesos (en gramos, como string entero)
   pesoFisico:      string
@@ -76,8 +79,8 @@ export interface GuiaData {
   diceContener:  string
 
   // Código de barras
-  codigoOperativo:     string  // primeros 7 chars del barcode completo (origen)
-  codigoOperativoBajo: string  // chars 7-14 del barcode completo (destino)
+  codigoOperativo:     string  // código del servicio postal
+  codigoOperativoBajo: string  // código de la sucursal de admisión
   barcodeLineal:       string  // string completo que genera el código de barras
 
   // Slots de fecha adicionales de la plantilla
@@ -99,10 +102,10 @@ export interface GuiaData {
   lateral_remitenteCiudad:    string
   lateral_remitenteDepto:     string
   lateral_remitenteCP:        string
-  lateral_envio:               string  // nombre/tipo del servicio
+  lateral_envio:               string  // código del servicio
 
   // Franja derecha
-  lateral_derecho_codigo: string  // código de zona/distrito (4 chars)
+  lateral_derecho_codigo: string  // tramo final del código de sucursal
   lateral_derecho_centro: string  // nombre del centro operativo
 
   // Pie legal inferior
@@ -140,66 +143,114 @@ function fmtDateOnly(iso: string | null | undefined): string {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
 }
 
+// El slot vertical de la franja derecha sólo admite 8 caracteres, así que el
+// código de sucursal completo ("SUC-BOG-002") se recortaría a "SUC-BOG-". El
+// tramo final es el que identifica el punto, así que es el que conservamos.
+function codigoCorto(codigoSucursal: string): string {
+  const partes = codigoSucursal.split('-')
+  return partes.length > 1 ? partes[partes.length - 1]! : codigoSucursal
+}
+
+// Corta en el último espacio antes del límite para no partir una palabra por la
+// mitad ("Chapinero Centro Alto" → "Chapinero" y no "Chapinero Cent").
+function truncarPalabra(texto: string, max: number): string {
+  if (texto.length <= max) return texto
+  const corte = texto.slice(0, max)
+  const sep   = corte.lastIndexOf(' ')
+  return (sep > 0 ? corte.slice(0, sep) : corte).trimEnd()
+}
+
+// El formulario compone la dirección como "<dirección>, <adición>" (ver
+// composeAddress en CarritoVenta) y la envía en un solo campo, así que aquí es
+// donde se vuelve a separar para llenar el slot "Referencia:" de la guía. Las
+// direcciones normalizadas nunca traen coma en la parte principal, así que el
+// corte es en la primera.
+function partirDireccion(direccion: string): [string, string] {
+  const i = direccion.indexOf(', ')
+  if (i < 0) return [direccion, '']
+  return [direccion.slice(0, i), direccion.slice(i + 2)]
+}
+
 // ── Builder ───────────────────────────────────────────────────────────────────
 
 export function buildGuiaData(guia: GuiaEnvio): GuiaData {
   const guide = guia.numeroGuia ?? ''
+  // El código de barras es el S10 (RA185194038CO) cuando el servicio tiene
+  // rastreo; si no, cae al número de guía.
+  const cb      = guia.codigoBarras ?? guide
+  const cbHead  = cb.slice(0, 10)
+  const cbTail  = cb.slice(10)
+  const centro  = guia.centroOperativo       ?? ''
+  const centroC = guia.centroOperativoCodigo ?? ''
+  const servCod = guia.codigoServicio        ?? ''
 
-  // Barcode: formato 4-72 = {origOp:7}{destOp:7}{guia:13+}
-  const cb           = guia.codigoBarras ?? ''
-  const isFullBarcode = /^\d{14}/.test(cb)
-  const origOp       = isFullBarcode ? cb.slice(0, 7)  : ''
-  const destOp       = isFullBarcode ? cb.slice(7, 14) : ''
+  // El borrador se arma desde el formulario a medio llenar, así que los objetos
+  // anidados pueden faltar; sin esto un remitente ausente lanzaba y dejaba la
+  // guía entera en blanco en vez de mostrar los campos que sí hay.
+  const rem  = guia.remitente    ?? ({} as NonNullable<GuiaEnvio['remitente']>)
+  const dest = guia.destinatario ?? ({} as NonNullable<GuiaEnvio['destinatario']>)
+  const peso = guia.peso         ?? ({} as NonNullable<GuiaEnvio['peso']>)
+  const val  = guia.valores      ?? ({} as NonNullable<GuiaEnvio['valores']>)
+
+  const [remDir,  remRef]  = partirDireccion(rem.direccion  ?? '')
+  const [destDir, destRef] = partirDireccion(dest.direccion ?? '')
 
   return {
     // Encabezado
     tipoEtiqueta:       guia.tipo === 'internacional'
                           ? 'CORREO CERTIFICADO INTERNACIONAL'
                           : 'CORREO CERTIFICADO NACIONAL',
-    centroOperativo:    guia.centroOperativo ?? '',
+    // El clip del slot admite ~28 caracteres en Helvetica 5px; con 18 se perdía
+    // la palabra que identifica el centro ("Medellín El Poblado" → "Medellín El").
+    centroOperativo:    truncarPalabra(centro, 28),
     fechaAdmision:      fmtDate(guia.generadoEn),
     fechaApproxEntrega: fmtDateOnly(guia.fechaEntregaEstimada),
     ordenServicio:      guia.ordenServicio != null ? String(guia.ordenServicio) : '',
 
-    // Número de guía
-    barcodeText1: `*${guide.slice(0, 10)}`,
-    barcodeText2: guide.length > 10 ? `${guide.slice(10)}*` : '*',
+    // Número de guía — se parte en dos renglones porque el slot grande sólo
+    // admite 10 caracteres. Un código de 10 o menos cabe entero, así que el
+    // asterisco de cierre va en el primer renglón y el segundo queda vacío.
+    barcodeText1: cbTail ? `*${cbHead}` : `*${cbHead}*`,
+    barcodeText2: cbTail ? `${cbTail}*` : '',
     codigoGuia:   guide,
 
     // Remitente
-    remitenteNombre:    guia.remitente.nombre       ?? '',
-    remitenteDireccion: guia.remitente.direccion    ?? '',
-    remitenteNit:       guia.remitente.documento    ?? '',
-    remitenteCiudad:    guia.remitente.ciudad        ?? '',
-    remitenteDepto:     guia.remitente.departamento  ?? '',
-    remitenteTelefono:  guia.remitente.telefono     ?? '',
-    remitenteCP:        guia.remitente.codigoPostal ?? '',
+    remitenteNombre:    rem.nombre       ?? '',
+    remitenteDireccion:  remDir,
+    remitenteReferencia: remRef,
+    remitenteNit:       rem.documento    ?? '',
+    remitenteCiudad:    rem.ciudad        ?? '',
+    remitenteDepto:     rem.departamento  ?? '',
+    remitenteTelefono:  rem.telefono     ?? '',
+    remitenteCP:        rem.codigoPostal ?? '',
 
     // Destinatario
-    destinatarioNombre:    guia.destinatario.nombre       ?? '',
-    destinatarioDireccion: guia.destinatario.direccion    ?? '',
-    destinatarioCiudad:    guia.destinatario.ciudad        ?? '',
-    destinatarioDepto:     guia.destinatario.departamento  ?? '',
-    destinatarioTel:       guia.destinatario.telefono     ?? '',
+    destinatarioNombre:    dest.nombre       ?? '',
+    destinatarioDireccion:  destDir,
+    destinatarioReferencia: destRef,
+    destinatarioCiudad:    dest.ciudad        ?? '',
+    destinatarioDepto:     dest.departamento  ?? '',
+    destinatarioTel:       dest.telefono     ?? '',
+    destinatarioCP:        dest.codigoPostal ?? '',
 
     // Pesos
-    pesoFisico:      grams(guia.peso.fisicoKg),
-    pesoVolumetrico: grams(guia.peso.volumetricoKg ?? null),
-    pesoFacturado:   grams(guia.peso.tarificadoKg),
+    pesoFisico:      grams(peso.fisicoKg),
+    pesoVolumetrico: grams(peso.volumetricoKg ?? null),
+    pesoFacturado:   grams(peso.tarificadoKg),
 
     // Valores
-    valorDeclarado: fmt(guia.valores.declarado),
-    valorFlete:     fmt(guia.valores.servicio),
-    costoManejo:    guia.valores.manejo > 0 ? fmt(guia.valores.manejo) : '$0',
-    valorTotal:     fmt(guia.valores.total),
+    valorDeclarado: fmt(val.declarado),
+    valorFlete:     fmt(val.servicio),
+    costoManejo:    (val.manejo ?? 0) > 0 ? fmt(val.manejo) : '$0',
+    valorTotal:     fmt(val.total),
 
     // Observaciones y contenido
     observaciones: guia.observaciones ?? '',
     diceContener:  guia.contenido ?? '',
 
     // Código de barras
-    codigoOperativo:     origOp,
-    codigoOperativoBajo: destOp,
+    codigoOperativo:     servCod,
+    codigoOperativoBajo: centroC,
     barcodeLineal:       cb,
 
     // Fechas adicionales
@@ -208,24 +259,27 @@ export function buildGuiaData(guia: GuiaEnvio): GuiaData {
     fechaPlaceholder2: fmtDateOnly(guia.fechaEntregaEstimada),
 
     // Talón lateral — Destinatario
-    lateral_destinatarioNombre:    guia.destinatario.nombre       ?? '',
-    lateral_destinatarioDireccion: guia.destinatario.direccion    ?? '',
-    lateral_destinatarioCiudad:    guia.destinatario.ciudad        ?? '',
-    lateral_destinatarioDepto:     guia.destinatario.departamento  ?? '',
-    lateral_destinatarioCP:        guia.destinatario.codigoPostal ?? '',
+    lateral_destinatarioNombre:    dest.nombre       ?? '',
+    lateral_destinatarioDireccion: dest.direccion    ?? '',
+    lateral_destinatarioCiudad:    dest.ciudad        ?? '',
+    lateral_destinatarioDepto:     dest.departamento  ?? '',
+    lateral_destinatarioCP:        dest.codigoPostal ?? '',
     lateral_fechaAdmision:         fmtDateOnly(guia.generadoEn),
 
     // Talón lateral — Remitente
-    lateral_remitenteNombre:    guia.remitente.nombre       ?? '',
-    lateral_remitenteDireccion: guia.remitente.direccion    ?? '',
-    lateral_remitenteCiudad:    guia.remitente.ciudad        ?? '',
-    lateral_remitenteDepto:     guia.remitente.departamento  ?? '',
-    lateral_remitenteCP:        guia.remitente.codigoPostal ?? '',
-    lateral_envio:               guia.tipoServicio            ?? '',
+    lateral_remitenteNombre:    rem.nombre       ?? '',
+    lateral_remitenteDireccion: rem.direccion    ?? '',
+    lateral_remitenteCiudad:    rem.ciudad        ?? '',
+    lateral_remitenteDepto:     rem.departamento  ?? '',
+    lateral_remitenteCP:        rem.codigoPostal ?? '',
+    // El slot admite 18 caracteres y los nombres de servicio pasan de 38, así que
+    // el código es lo único que cabe entero sin volverse ambiguo.
+    lateral_envio:               servCod || (guia.tipoServicio ?? ''),
 
     // Franja derecha
-    lateral_derecho_codigo: destOp ? destOp.slice(0, 4) : '',
-    lateral_derecho_centro: guia.centroOperativo ?? '',
+    lateral_derecho_codigo: codigoCorto(centroC),
+    // La plantilla fija textLength="110" en este slot, así que se condensa solo.
+    lateral_derecho_centro: truncarPalabra(centro, 24),
 
     // Pie legal
     pieLegal1: PIE_LEGAL_472.linea1,

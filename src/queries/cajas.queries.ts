@@ -8,6 +8,16 @@ export type TipoAlerta = 'reposicion_caja' | 'limite_efectivo_caja'
 export type TipoCaja = 'general' | 'pos' | 'menor' | 'pagos'
 export type TipoDenominacion = 'billete' | 'moneda'
 
+/**
+ * La Caja Fuerte y la Caja Menor son bolsillos de la caja principal: las custodia el
+ * supervisor del punto. Solo las que atienden público —venden (pos) o prestan
+ * servicios (pagos)— abren turno y reciben un cajero propio. El backend rechaza
+ * cualquier asignación sobre las demás con CajaNoAsignableError.
+ */
+export function esCajaOperativa(tipo: TipoCaja): boolean {
+  return tipo === 'pos' || tipo === 'pagos'
+}
+
 export interface Denominacion {
   denominacion: number
   tipo:         TipoDenominacion
@@ -42,11 +52,28 @@ export interface Caja {
   activo:       boolean
 }
 
+export type MedioPagoCaja =
+  | 'efectivo' | 'tarjeta_debito' | 'tarjeta_credito' | 'transferencia'
+  | 'consignacion' | 'cheque' | 'preporteado' | 'mixto_preporteado' | 'estampilla'
+
+/**
+ * Los montos llegan en null para el rol CAJERO: la bóveda y las bases del punto
+ * son información del custodio principal, no de una caja auxiliar.
+ */
 export interface PanelPunto {
-  baseGeneral:               string
-  cajaGeneral:               string   // total del punto (Caja Fuerte + todos los bolsillos)
-  cajaFuerteGeneral:         string   // solo la sesión tipo:general (safe físico)
-  acumuladoMonedaCirculante: string
+  baseGeneral:               string | null
+  cajaGeneral:               string | null   // total del punto (Caja Fuerte + todos los bolsillos)
+  cajaFuerteGeneral:         string | null   // solo la sesión tipo:general (safe físico)
+  basePagos:                 string | null
+  cajaPagos:                 string | null
+  cajaFuertePagos:           string | null
+  acumuladoMonedaCirculante: string | null
+  /** Σ reposiciones en estado en_transito del punto */
+  tTransito:                 string | null
+  /** Base restante que puede asignarse a nuevas cajas auxiliares (BR-CAJ-011) */
+  baseDisponible:            string | null
+  debeReset:                 boolean
+  horaReset:                 string | null
 }
 
 export interface CardAuxiliar {
@@ -56,13 +83,22 @@ export interface CardAuxiliar {
   nombre:        string
   tipo:          TipoCaja
   cajeroId:      number | null
+  cajeroFijoId:  number | null
   estado:        EstadoCard
-  /** Balance del bolsillo de este cajero (o del safe si tipo:general) */
+  /** Efectivo físico del bolsillo de este cajero (o del safe si tipo:general).
+   *  Los pagos con tarjeta/transferencia/preporteado NO suman aquí — ver saldoPorMedioPago. */
   saldoActual:   string | null
   baseDia:       string
   limiteAlerta:  string | null
+  /** Nivel óptimo de liquidez configurado por tesorería */
+  tTarget:         string | null
+  /** Monto sugerido de reposición (tTarget − saldoActual); null si no aplica */
+  deltaReposicion: string | null
+  /** Entradas/salidas de efectivo de la sesión: saldoActual = base + ingresos − egresos */
   ingresosSesion: string
   egresosSesion:  string
+  /** Facturación neta de la sesión por medio de pago, incluida la que no entra al cajón */
+  saldoPorMedioPago: Record<MedioPagoCaja, string>
   girosCount:    number
   girosValor:    string
   alertas:       TipoAlerta[]
@@ -123,6 +159,7 @@ export interface CajaPosPanel {
   id:          number
   codigo:      string
   nombre:      string
+  tipo:        TipoCaja
   sesionActiva: boolean
   sesionId:    number | null
 }
@@ -135,7 +172,7 @@ export interface SucursalPanelItem {
   regional:    string
   ciudad:      string | null
   departamento: string | null
-  cajaPos:     CajaPosPanel | null
+  cajas:       CajaPosPanel[]
   servicios:   ServicioSucursalItem[]
 }
 
@@ -155,6 +192,7 @@ export const CAJAS_KEYS = {
   habilitadas:      (sucursalId: number)  => ['cajas', 'habilitadas', sucursalId]         as const,
   saldoFuerte:      (cajaPadreId: number) => ['cajas', 'saldo-fuerte', cajaPadreId]       as const,
   reposicionSugerida:(sesionId: number)   => ['cajas', 'reposicion-sugerida', sesionId]   as const,
+  diagnostico:      (cajaPadreId: number) => ['cajas', 'diagnostico', cajaPadreId]        as const,
 }
 
 export interface SesionHistorial {
@@ -194,7 +232,10 @@ export function useCreateCajaPadre() {
   return useMutation({
     mutationFn: (data: { sucursalId: number; nombre: string; baseGeneral?: string; horaReset?: string }) =>
       apiFetch<CajaPadre>('/cajas', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: CAJAS_KEYS.padres() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.padres() })
+      qc.invalidateQueries({ queryKey: ['cajas', 'diagnostico'] })
+    },
   })
 }
 
@@ -206,6 +247,7 @@ export function useUpdateCajaPadre(id: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CAJAS_KEYS.padres() })
       qc.invalidateQueries({ queryKey: CAJAS_KEYS.padre(id) })
+      qc.invalidateQueries({ queryKey: ['cajas', 'diagnostico'] })
     },
   })
 }
@@ -214,7 +256,10 @@ export function useDeleteCajaPadre(id: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => apiFetch<void>(`/cajas/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: CAJAS_KEYS.padres() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.padres() })
+      qc.invalidateQueries({ queryKey: ['cajas', 'diagnostico'] })
+    },
   })
 }
 
@@ -245,7 +290,10 @@ export function useCreateCaja() {
       sucursalId: number; cajaPadreId?: number; codigo: string; nombre: string
       tipo: TipoCaja; baseDia?: string; limiteAlerta?: string
     }) => apiFetch<Caja>('/cajas/auxiliares', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: CAJAS_KEYS.auxiliares(vars.sucursalId) }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.auxiliares(vars.sucursalId) })
+      qc.invalidateQueries({ queryKey: ['cajas', 'diagnostico'] })
+    },
   })
 }
 
@@ -259,6 +307,7 @@ export function useUpdateCaja(id: number, sucursalId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CAJAS_KEYS.auxiliares(sucursalId) })
       qc.invalidateQueries({ queryKey: CAJAS_KEYS.auxiliar(id) })
+      qc.invalidateQueries({ queryKey: ['cajas', 'diagnostico'] })
     },
   })
 }
@@ -267,7 +316,10 @@ export function useDeleteCaja(id: number, sucursalId: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => apiFetch<void>(`/cajas/auxiliares/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: CAJAS_KEYS.auxiliares(sucursalId) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CAJAS_KEYS.auxiliares(sucursalId) })
+      qc.invalidateQueries({ queryKey: ['cajas', 'diagnostico'] })
+    },
   })
 }
 
@@ -610,6 +662,30 @@ export function useCapacidadPunto(cajaPadreId: number) {
   return useQuery({
     queryKey: CAJAS_KEYS.capacidad(cajaPadreId),
     queryFn:  () => apiFetch<CapacidadPunto>(`/cajas/principales/${cajaPadreId}/capacidad`),
+    enabled:  cajaPadreId > 0,
+  })
+}
+
+export type ProblemaPunto =
+  | 'sin_caja_fuerte'
+  | 'sin_supervisor'
+  | 'base_fuerte_excede_punto'
+  | 'reparto_excede_fuerte'
+
+export interface DiagnosticoPunto {
+  baseGeneral:    string
+  baseFuerte:     string
+  sumaOperativas: string
+  baseMenor:      string
+  sumaRepartida:  string
+  disponible:     string
+  problemas:      ProblemaPunto[]
+}
+
+export function useDiagnosticoPunto(cajaPadreId: number) {
+  return useQuery({
+    queryKey: CAJAS_KEYS.diagnostico(cajaPadreId),
+    queryFn:  () => apiFetch<DiagnosticoPunto>(`/cajas/principales/${cajaPadreId}/diagnostico`),
     enabled:  cajaPadreId > 0,
   })
 }

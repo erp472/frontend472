@@ -6,9 +6,9 @@
    xmlns:svg="http://www.w3.org/2000/svg"
    xmlns="http://www.w3.org/2000/svg"
    xmlns:xlink="http://www.w3.org/1999/xlink"
-   viewBox="0 0 765 342"
-   height="342"
-   width="765"
+   viewBox="0 0 816 362"
+   height="362"
+   width="816"
    xml:space="preserve"
    id="svg2"
    version="1.1"><metadata
@@ -614,21 +614,24 @@
                transform="matrix(1,0,0,-1,134.0725,535.672)"><tspan
                  id="tspan_pieLegal1"
                  y="0"
-                 x="0"></tspan></text>
+                 x="0"
+                 data-maxw="421.03"></tspan></text>
 <text
                id="text_pieLegal2"
                style="font-variant:normal;font-weight:normal;font-size:4.8499999px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB';writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
                transform="matrix(1,0,0,-1,150.964,530.272)"><tspan
                  id="tspan_pieLegal2"
                  y="0"
-                 x="0"></tspan></text>
+                 x="0"
+                 data-maxw="417.31"></tspan></text>
 <text
                id="text_pieLegal3"
                style="font-variant:normal;font-weight:normal;font-size:4.8499999px;font-family:'Agency FB';-inkscape-font-specification:'Agency FB';writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
                transform="matrix(1,0,0,-1,319.453,524.872)"><tspan
                  id="tspan_pieLegal3"
                  y="0"
-                 x="0"></tspan></text>
+                 x="0"
+                 data-maxw="47.62"></tspan></text>
 </g></g><path
            id="path306"
            style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1"
@@ -1052,7 +1055,17 @@
       transform="matrix(1,0,0,-1,275.051,629)"><tspan
         id="tspan_diceContener"
         y="0"
-        x="0"></tspan></text>
+        x="0"
+        data-wrap="134"
+        data-wrap-next="tspan_diceContener2"></tspan></text>
+<text id="text_diceContener2"
+      style="font-variant:normal;font-weight:normal;font-size:5px;font-family:Helvetica;-inkscape-font-specification:Helvetica;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+      transform="matrix(1,0,0,-1,275.051,622.6)"><tspan
+        id="tspan_diceContener2"
+        y="0"
+        x="0"
+        data-wrap="134"
+        data-maxw="134"></tspan></text>
 </g></g><g
            id="g692"><g
              clip-path="url(#clipPath698)"
@@ -1069,7 +1082,25 @@
                transform="matrix(1,0,0,-1,340.765,609.472)"><tspan
                  id="tspan704"
                  y="0"
-                 x="0"></tspan></text>
+                 x="0"
+                 data-wrap="69"
+                 data-wrap-next="tspan_observaciones2"></tspan></text>
+<text id="text_observaciones2"
+      style="font-variant:normal;font-weight:normal;font-size:5px;font-family:Helvetica;-inkscape-font-specification:Helvetica;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+      transform="matrix(1,0,0,-1,277,603)"><tspan
+        id="tspan_observaciones2"
+        y="0"
+        x="0"
+        data-wrap="133"
+        data-wrap-next="tspan_observaciones3"></tspan></text>
+<text id="text_observaciones3"
+      style="font-variant:normal;font-weight:normal;font-size:5px;font-family:Helvetica;-inkscape-font-specification:Helvetica;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+      transform="matrix(1,0,0,-1,277,596.5)"><tspan
+        id="tspan_observaciones3"
+        y="0"
+        x="0"
+        data-wrap="133"
+        data-maxw="133"></tspan></text>
 </g></g><g
            id="g708"><g
              clip-path="url(#clipPath714)"
@@ -1617,7 +1648,8 @@
                transform="matrix(1,0,0,-1,383.389,692.344)"><tspan
                  id="tspan1306"
                  y="0"
-                 x="0"></tspan></text>
+                 x="0"
+                 data-maxw="26.5"></tspan></text>
 </g></g><path
            id="path1310"
            style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1"
@@ -2135,165 +2167,35 @@
         transform="matrix(0,1,1,0,573,690)">
     <tspan id="tspan_lateral_derecho_codigo" y="0" x="0" textLength="42" lengthAdjust="spacingAndGlyphs"></tspan>
   </text>
+
+  <!-- ── Slot de valor sin recorte: el label "Código Postal:" del destinatario
+       no traía <text> propio en el PDF de origen ── -->
+  <text id="text_destinatarioCP"
+        style="font-variant:normal;font-weight:normal;font-family:Helvetica;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;font-size:5.0px"
+        transform="matrix(1,0,0,-1,312,660.88)">
+    <tspan id="tspan_destinatarioCP" y="0" x="0"></tspan>
+  </text>
+
+  <!-- ── Referencia (la "adición de dirección" del formulario) ──
+       El remitente ya trae su label "Referencia:" en el PDF pero sin slot de
+       valor; el destinatario no traía ninguno de los dos. ── -->
+  <text id="text_remitenteReferencia"
+        style="font-variant:normal;font-weight:normal;font-family:Helvetica;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;font-size:5.0px"
+        transform="matrix(1,0,0,-1,202.6,704.728)">
+    <tspan id="tspan_remitenteReferencia" y="0" x="0" data-maxw="64"></tspan>
+  </text>
+  <text id="label_destinatarioReferencia"
+        style="font-variant:normal;font-weight:bold;font-family:Helvetica;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;font-size:5.0px"
+        transform="matrix(1,0,0,-1,275.029,672.832)">
+    <tspan y="0" x="0">Referencia:</tspan>
+  </text>
+  <text id="text_destinatarioReferencia"
+        style="font-variant:normal;font-weight:normal;font-family:Helvetica;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none;font-size:5.0px"
+        transform="matrix(1,0,0,-1,306,672.832)">
+    <tspan id="tspan_destinatarioReferencia" y="0" x="0" data-maxw="97"></tspan>
+  </text>
 </g>
 <!-- ══════════════════════════════════════════════════════════════════ -->
 
-<script type="text/javascript"><![CDATA[
-/* ================================================================
-   GUÍA POSTAL 4-72 — Motor de inyección de datos
-   Uso: setGuia(data) o setGuia(GUIA_TEST)
-   ================================================================ */
-
-var CAMPOS = {
-  /* ── Cuerpo principal ── tspan ID ── máx caracteres ── */
-  centroOperativo:               { id: 'tspan80',                            max: 18  },
-  fechaAdmision:                 { id: 'tspan106',                           max: 14  },
-  fechaApproxEntrega:            { id: 'tspan146',                           max: 14  },
-  remitenteNombre:               { id: 'tspan332',                           max: 45  },
-  remitenteDireccion:            { id: 'tspan348',                           max: 48  },
-  remitenteNit:                  { id: 'tspan364',                           max: 20  },
-  remitenteCiudad:               { id: 'tspan392',                           max: 28  },
-  remitenteDepto:                { id: 'tspan408',                           max: 25  },
-  remitenteTelefono:             { id: 'tspan424',                           max: 15  },
-  remitenteCP:                   { id: 'tspan440',                           max: 10  },
-  destinatarioNombre:            { id: 'tspan456',                           max: 45  },
-  destinatarioDireccion:         { id: 'tspan472',                           max: 48  },
-  destinatarioCiudad:            { id: 'tspan488',                           max: 28  },
-  destinatarioDepto:             { id: 'tspan504',                           max: 25  },
-  destinatarioTel:               { id: 'tspan520',                           max: 15  },
-  codigoOperativo:               { id: 'tspan544',                           max: 15  },
-  pesoFisico:                    { id: 'tspan576',                           max: 8   },
-  pesoVolumetrico:               { id: 'tspan592',                           max: 8   },
-  pesoFacturado:                 { id: 'tspan608',                           max: 8   },
-  valorDeclarado:                { id: 'tspan624',                           max: 12  },
-  valorFlete:                    { id: 'tspan640',                           max: 12  },
-  costoManejo:                   { id: 'tspan656',                           max: 12  },
-  valorTotal:                    { id: 'tspan672',                           max: 12  },
-  observaciones:                 { id: 'tspan704',                           max: 30  },
-  diceContener:                  { id: 'tspan_diceContener',                  max: 54  },
-  barcodeText1:                  { id: 'tspan740',                           max: 14  },
-  barcodeText2:                  { id: 'tspan744',                           max: 14  },
-  fechaEntrega:                  { id: 'tspan812',                           max: 14  },
-  codigoGuia:                    { id: 'tspan1238',                          max: 20  },
-  fechaPlaceholder1:             { id: 'tspan1250',                          max: 12  },
-  fechaPlaceholder2:             { id: 'tspan1262',                          max: 12  },
-  codigoOperativoBajo:           { id: 'tspan1306',                          max: 15  },
-  barcodeLineal:                 { id: 'tspan1324',                          max: 24  },
-  /* ── Talón lateral — slot de DATOS (ty=576.771 dest / ty=702.665 remit) ── */
-  /* scaleY/char_avg_pdf (char≈fs*0.6): dest grandes=74px→24ch, dest cortos=56px→18ch */
-  /* remit grandes=75px→25ch, remit cortos=57px→18ch                                  */
-  lateral_destinatarioNombre:    { id: 'tspan_lateral_destinatarioNombre',    max: 24 },
-  lateral_destinatarioDireccion: { id: 'tspan_lateral_destinatarioDireccion', max: 24 },
-  lateral_destinatarioCiudad:    { id: 'tspan_lateral_destinatarioCiudad',    max: 24 },
-  lateral_destinatarioDepto:     { id: 'tspan_lateral_destinatarioDepto',     max: 18 },
-  lateral_destinatarioCP:        { id: 'tspan_lateral_destinatarioCP',        max: 18 },
-  lateral_fechaAdmision:         { id: 'tspan_lateral_fechaAdmision',         max: 20 },
-  lateral_remitenteNombre:       { id: 'tspan_lateral_remitenteNombre',       max: 25 },
-  lateral_remitenteDireccion:    { id: 'tspan_lateral_remitenteDireccion',    max: 25 },
-  lateral_remitenteCiudad:       { id: 'tspan_lateral_remitenteCiudad',       max: 25 },
-  lateral_remitenteDepto:        { id: 'tspan_lateral_remitenteDepto',        max: 18 },
-  lateral_remitenteCP:           { id: 'tspan_lateral_remitenteCP',           max: 18 },
-  lateral_envio:                 { id: 'tspan_lateral_envio',                 max: 18 },
-  /* ── Pie legal (fila inferior) — consolida texto fragmentado ── */
-  pieLegal1:                     { id: 'tspan_pieLegal1',                     max: 320 },
-  pieLegal2:                     { id: 'tspan_pieLegal2',                     max: 320 },
-  pieLegal3:                     { id: 'tspan_pieLegal3',                     max: 100 },
-  /* ── Franja derecha — contenido vertical dinámico ── */
-  lateral_derecho_centro:        { id: 'tspan_lateral_derecho_centro',        max: 15  },
-  lateral_derecho_codigo:        { id: 'tspan_lateral_derecho_codigo',        max: 8   }
-};
-
-/**
- * Inyecta todos los campos de una guía postal en el SVG.
- * @param {Object} data  Objeto con claves iguales a las de CAMPOS.
- */
-function setGuia(data) {
-  Object.keys(data).forEach(function(campo) {
-    var def = CAMPOS[campo];
-    if (!def) return;
-    var el = document.getElementById(def.id);
-    if (!el) return;
-    var valor = String(data[campo] != null ? data[campo] : '');
-    el.textContent = valor.length > def.max ? valor.slice(0, def.max) : valor;
-  });
-}
-
-/** Limpia todos los campos dinámicos del SVG. */
-function clearGuia() {
-  var empty = {};
-  Object.keys(CAMPOS).forEach(function(k) { empty[k] = ''; });
-  setGuia(empty);
-}
-
-/* ── Datos de prueba ──────────────────────────────────────────── */
-/* Laterales abreviados según límite real de cada strip:          */
-/*   destinatario: max 14 | dir/ciudad remitente: max 8 | envio: max 6 */
-var GUIA_TEST = {
-  /* Cuerpo principal */
-  centroOperativo:               'PV.CHAPINERO CENTRO A',
-  fechaAdmision:                 '25/08/2026',
-  fechaApproxEntrega:            '28/08/2026',
-  remitenteNombre:               'COMERCIALIZADORA ANDINA SAS',
-  remitenteDireccion:            'CRA 15 # 93-75 OF 302',
-  remitenteNit:                  '900.123.456-7',
-  remitenteCiudad:               'BOGOTÁ D.C.',
-  remitenteDepto:                'CUNDINAMARCA',
-  remitenteTelefono:             '6013456789',
-  remitenteCP:                   '110221',
-  destinatarioNombre:            'JUAN C. RAMÍREZ PÉREZ',
-  destinatarioDireccion:         'CLL 45 # 28-10 AP.304',
-  destinatarioCiudad:            'MEDELLÍN',
-  destinatarioDepto:             'ANTIOQUIA',
-  destinatarioTel:               '3001234567',
-  codigoOperativo:               '4-72 PKGS',
-  pesoFisico:                    '2.500',
-  pesoVolumetrico:               '1.800',
-  pesoFacturado:                 '2.500',
-  valorDeclarado:                '150.000',
-  valorFlete:                    '18.500',
-  costoManejo:                   '2.000',
-  valorTotal:                    '20.500',
-  observaciones:                 'FRÁGIL - MANEJAR CON CUIDADO',
-  diceContener:                  'DOCUMENTOS COMERCIALES',
-  barcodeText1:                  '*RA18519403',
-  barcodeText2:                  '8CO*',
-  fechaEntrega:                  '28/08/2026',
-  codigoGuia:                    'RA185194038CO',
-  fechaPlaceholder1:             '25/08/2026',
-  fechaPlaceholder2:             '28/08/2026',
-  codigoOperativoBajo:           '7419000',
-  barcodeLineal:                 '74190007777025RA185194038CO',
-  /* Talón lateral — slot de datos (frente a cada label estático) */
-  lateral_destinatarioNombre:    'JUAN C. RAMÍREZ PÉREZ', /* max 24 */
-  lateral_destinatarioDireccion: 'CLL 45 # 28-10 AP.304', /* max 24 */
-  lateral_destinatarioCiudad:    'MEDELLÍN - ANTIOQUIA',  /* max 24 */
-  lateral_destinatarioDepto:     'ANTIOQUIA',             /* max 18 */
-  lateral_destinatarioCP:        '050001',                /* max 18 */
-  lateral_fechaAdmision:         '25/08/2026',            /* max 20 */
-  lateral_remitenteNombre:       'COMERCIALIZADORA ANDINA', /* max 25 */
-  lateral_remitenteDireccion:    'CRA 15 # 93-75 OF 302', /* max 25 */
-  lateral_remitenteCiudad:       'BOGOTÁ D.C.',           /* max 25 */
-  lateral_remitenteDepto:        'CUNDINAMARCA',          /* max 18 */
-  lateral_remitenteCP:           '110221',                /* max 18 */
-  lateral_envio:                 '4-72 PKG ORDINARIO',    /* max 18 */
-  /* Pie legal */
-  pieLegal1:                     'Principal: Bogotá D.C. Colombia Diagonal 25 G # 95 A 55 Bogotá / www.4-72.com.co Línea Nacional: 01 8000 111 210 / Tel. contacto: (571) 4722000. Min. Transporte, Lic. de carga 000200 del 20 de mayo de 2011/Min.TIC, Res. Mensajería Expresa 001967 de 9 septiembre del 2011',
-  pieLegal2:                     'El usuario deja expresa constancia que tuvo conocimiento del contrato que se encuentra publicado en la pagina web, 4-72 tratará sus datos personales para probar la entrega del envío. Para ejercer algún reclamo: servicioalcliente@4-72.com.co Para consultar la Política de',
-  pieLegal3:                     'Tratamiento: www.4-72.com.co',
-  /* Franja derecha */
-  lateral_derecho_centro:        'PV.CHAPINERO',  /* max 15 — sede grande (abajo) */
-  lateral_derecho_codigo:        '7419'           /* max 8  — código grande (arriba) */
-};
-
-/* Auto-render al cargar el SVG */
-(function() {
-  function render() { setGuia(GUIA_TEST); }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', render);
-  } else {
-    render();
-  }
-})();
-]]></script>
 
 </svg>

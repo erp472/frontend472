@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
 import type {
   CreateUserInput,
@@ -31,6 +31,24 @@ export function useUsers(params: UserQueryParams = {}) {
     queryKey:       USER_KEYS.list(params),
     queryFn:        () => apiFetch<PaginatedUsers>(`/users?${qs.toString()}`),
     placeholderData: keepPreviousData,
+  })
+}
+
+// El endpoint /users no filtra por regional, así que se consulta sucursal por sucursal.
+export function useUsersBySucursales(sucursalIds: number[]) {
+  return useQueries({
+    queries: sucursalIds.map((sucursal_id) => {
+      const params: UserQueryParams = { sucursal_id, limite: 200 }
+      return {
+        queryKey: USER_KEYS.list(params),
+        queryFn:  () => apiFetch<PaginatedUsers>(`/users?sucursal_id=${sucursal_id}&limite=200`),
+      }
+    }),
+    combine: (results) => ({
+      datos:     results.flatMap((r) => r.data?.datos ?? []),
+      isLoading: results.some((r) => r.isLoading),
+      isError:   results.some((r) => r.isError),
+    }),
   })
 }
 
