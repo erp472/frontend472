@@ -118,17 +118,17 @@ export interface ImportarCsvResult {
   errores:    Array<{ fila: number; error: string }>
 }
 
-export interface ConfirmarLoteResult {
-  loteId:        number
-  enviosCreados: number
-  guias:         Array<{ fila: number; numeroGuia: string; envioId: number }>
+export interface AgregarItemsBulkResult {
+  agregados: number
+  errores:   Array<{ fila: number; error: string }>
 }
 
-export interface CobrarLoteResult {
-  loteId:      number
-  movimiento:  unknown
-  saldoActual: string
-  alertas:     string[]
+export interface ConfirmarLoteResult {
+  loteId:        number
+  ventaId:       number
+  enviosCreados: number
+  totalCarrito:  number
+  guias:         Array<{ fila: number; numeroGuia: string; envioId: number }>
 }
 
 // ── Keys ──────────────────────────────────────────────────────────────────────
@@ -184,6 +184,18 @@ export function useAgregarItemMasivo(loteId: number) {
   })
 }
 
+export function useAgregarItemsMasivosBulk(loteId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (items: AgregarItemPayload[]) =>
+      apiFetch<AgregarItemsBulkResult>(`/envios-masivos/${loteId}/items/bulk`, {
+        method: 'POST',
+        body:   JSON.stringify({ items }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEYS.lote(loteId) }),
+  })
+}
+
 export function useActualizarItemMasivo(loteId: number, itemId: number) {
   const qc = useQueryClient()
   return useMutation({
@@ -220,29 +232,15 @@ export function useImportarCsvMasivo(loteId: number) {
 export function useConfirmarLoteMasivo(loteId: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (cajaId: number) =>
+    mutationFn: ({ cajaId, ventaId }: { cajaId: number; ventaId: number }) =>
       apiFetch<ConfirmarLoteResult>(
-        `/envios-masivos/${loteId}/confirmar?cajaId=${cajaId}`,
+        `/envios-masivos/${loteId}/confirmar?cajaId=${cajaId}&ventaId=${ventaId}`,
         { method: 'PATCH' },
       ),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: KEYS.lote(loteId) })
       qc.invalidateQueries({ queryKey: ['envios-masivos', 'lotes'] })
-    },
-  })
-}
-
-export function useCobrarLoteMasivo(loteId: number) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ cajaId, medioPago }: { cajaId: number; medioPago: string }) =>
-      apiFetch<CobrarLoteResult>(
-        `/envios-masivos/${loteId}/cobrar?cajaId=${cajaId}&medioPago=${medioPago}`,
-        { method: 'PATCH' },
-      ),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: KEYS.lote(loteId) })
-      qc.invalidateQueries({ queryKey: ['envios-masivos', 'lotes'] })
+      qc.invalidateQueries({ queryKey: ['ventas', 'carrito', result.ventaId] })
     },
   })
 }

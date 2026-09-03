@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   ArrowRightLeft,
-  Banknote,
   Bookmark,
   Calculator,
   Check,
@@ -98,6 +97,7 @@ import {
   type CrearEnvioPayload,
   type DireccionFrecuente,
   type GuiaEnvio,
+  type LoteMasivoPagado,
   type MedioPagoVenta,
   type ServicioCatalogo,
   type TipoProducto,
@@ -131,16 +131,24 @@ import {
 } from '@/queries/ventas.queries'
 import { useEstampillasDisponibles } from '@/queries/productos.queries'
 import {
+  type DatosTarjeta,
+  PagoTarjetaFields,
+  TARJETA_VACIA,
+  montoTarjeta,
+  payloadTarjeta,
+  validarTarjeta,
+} from './PagoTarjeta'
+import {
   type AgregarItemPayload,
   type EstadoLote,
   type ItemMasivo,
   type LoteMasivo,
   type LoteMasivoResumen,
   useAgregarItemMasivo,
+  useAgregarItemsMasivosBulk,
   useActualizarItemMasivo,
   useEliminarLoteMasivo,
   useConfirmarLoteMasivo,
-  useCobrarLoteMasivo,
   useCrearLoteMasivo,
   useEliminarItemMasivo,
   useGenerarGuiasPdf,
@@ -369,16 +377,24 @@ const TIPOS_PRODUCTO: { value: TipoProducto; label: string }[] = [
   { value: 'filatelia',        label: 'Filatelia' },
 ]
 
-const MEDIOS_PAGO: { value: MedioPagoVenta; label: string }[] = [
+// 'tarjeta' es solo la opción visible: el medio real (débito/crédito) lo define el
+// selector de tipo dentro del bloque del datáfono.
+type MedioPagoUI = MedioPagoVenta | 'tarjeta'
+
+const MEDIOS_PAGO: { value: MedioPagoUI; label: string }[] = [
   { value: 'efectivo',   label: 'Efectivo' },
+  { value: 'tarjeta',    label: 'Tarjeta débito / crédito' },
   { value: 'estampilla', label: 'Preporteado / Estampillas' },
 ]
 
 type MedioPagoEnvio = Exclude<MedioPagoVenta, 'cheque'>
 
-const MEDIOS_PAGO_ENVIO: { value: MedioPagoEnvio; label: string }[] = [
+const MEDIOS_PAGO_ENVIO: { value: MedioPagoUI; label: string }[] = [
   { value: 'efectivo', label: 'Efectivo' },
+  { value: 'tarjeta',  label: 'Tarjeta débito / crédito' },
 ]
+
+const esMedioTarjeta = (m: string) => m === 'tarjeta_debito' || m === 'tarjeta_credito'
 
 // ── Tipos de documento ────────────────────────────────────────────────────────
 
@@ -2618,10 +2634,9 @@ function TablaRapidaMasiva({
 }) {
   const [filas, setFilas]         = useState<FilaMasiva[]>(() => Array.from({ length: 8 }, () => nuevaFilaMasiva(clienteDefault)))
   const [guardando, setGuardando] = useState(false)
-  const [progreso,  setProgreso]  = useState({ actual: 0, total: 0 })
   const cellRefs   = useRef<Map<string, HTMLInputElement>>(new Map())
-  const agregar    = useAgregarItemMasivo(loteId)
-  const eliminarIt = useEliminarItemMasivo(loteId)
+  const agregarBulk = useAgregarItemsMasivosBulk(loteId)
+  const eliminarIt  = useEliminarItemMasivo(loteId)
 
   // Pre-llenar filas vacías cuando carga el cliente
   useEffect(() => {
@@ -2714,12 +2729,9 @@ function TablaRapidaMasiva({
     if (hasErrors) { setFilas(validated); return }
 
     setGuardando(true)
-    setProgreso({ total: filasConDatos.length, actual: 0 })
-    let exitos = 0
-
-    for (const fila of filasConDatos) {
-      try {
-        await agregar.mutateAsync({
+    try {
+      const { agregados, errores } = await agregarBulk.mutateAsync(
+        filasConDatos.map(fila => ({
           ...(fila.orNombre.trim() ? {
             remitente: {
               nombre:    fila.orNombre.trim(),
@@ -2738,19 +2750,28 @@ function TablaRapidaMasiva({
           destinatarioCp:        fila.destCp     || undefined,
           pesoFisicoKg:          Number(fila.peso),
           contenido:             fila.contenido  || undefined,
-        })
-        exitos++
-      } catch (err: unknown) {
-        toast.error(`"${fila.destNombre}": ${err instanceof Error ? err.message : 'Error'}`)
-      }
-      setProgreso(p => ({ ...p, actual: p.actual + 1 }))
-    }
+        })),
+      )
 
-    setGuardando(false)
-    if (exitos > 0) {
-      toast.success(`${exitos} paquete(s) agregado(s)`)
-      setFilas(Array.from({ length: 8 }, () => nuevaFilaMasiva(clienteDefault)))
-      onGuardado()
+      // El backend numera las filas en el mismo orden que las enviamos
+      for (const { fila, error } of errores) {
+        toast.error(`"${filasConDatos[fila - 1]?.destNombre ?? `Fila ${fila}`}": ${error}`)
+      }
+
+      if (agregados > 0) {
+        toast.success(`${agregados} paquete(s) agregado(s)`)
+        const fallidas = new Set(errores.map(e => e.fila - 1))
+        setFilas(
+          errores.length > 0
+            ? filasConDatos.filter((_, i) => fallidas.has(i))
+            : Array.from({ length: 8 }, () => nuevaFilaMasiva(clienteDefault)),
+        )
+        onGuardado()
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'No se pudieron guardar los paquetes')
+    } finally {
+      setGuardando(false)
     }
   }
 
@@ -2912,7 +2933,7 @@ function TablaRapidaMasiva({
           onClick={handleGuardar}
         >
           {guardando
-            ? <><Loader2 className="size-3 animate-spin" />{progreso.actual}/{progreso.total}</>
+            ? <><Loader2 className="size-3 animate-spin" />Guardando {filasConDatos.length}…</>
             : <><CheckCircle2 className="size-3" />Guardar {filasConDatos.length} paquete(s)</>}
         </Button>
       </div>
@@ -2925,13 +2946,15 @@ function TablaRapidaMasiva({
 function LoteDetalle({
   loteId,
   cajaId,
+  ventaId,
   onBack,
-  onIniciarCobro,
+  onEnviadoAlCarrito,
 }: {
   loteId: number
   cajaId: number
+  ventaId: number | null
   onBack: () => void
-  onIniciarCobro: (loteId: number, total: number, items: number) => void
+  onEnviadoAlCarrito: () => void
 }) {
   const { data: lote, isLoading, refetch: refetchLote } = useLoteMasivo(loteId)
   const { data: clienteLote }     = useCliente(lote?.clienteId ?? 0)
@@ -2950,7 +2973,7 @@ function LoteDetalle({
   const isBorrador     = lote?.estado === 'borrador'
   const isConfirmado   = lote?.estado === 'confirmado'
   const isPagado       = isConfirmado && !!lote?.cobrado
-  const pendienteCobro = isConfirmado && lote && !lote.cobrado
+  const enCarrito      = isConfirmado && !!lote && !lote.cobrado
   const puedeEliminar  = lote?.estado === 'borrador' || lote?.estado === 'anulado'
 
   const handleDescargarGuia = async (envioId: number) => {
@@ -2995,12 +3018,14 @@ function LoteDetalle({
     direccion:       lote.remitente.direccion ?? undefined,
   } : undefined
 
-  const handleConfirmar = () => {
-    confirmar.mutate(cajaId, {
+  const handleEnviarAlCarrito = () => {
+    if (!ventaId) { toast.error('Abre una venta en el carrito antes de enviar el lote'); return }
+    confirmar.mutate({ cajaId, ventaId }, {
       onSuccess: (r) => {
-        toast.success(`Lote confirmado · ${r.enviosCreados} guías generadas · Pendiente de cobro`)
+        toast.success(`${r.enviosCreados} paquete(s) en el carrito · ${fmtCop(r.totalCarrito)} por cobrar`)
+        onEnviadoAlCarrito()
       },
-      onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al confirmar'),
+      onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al enviar al carrito'),
     })
   }
 
@@ -3047,6 +3072,10 @@ function LoteDetalle({
               <span className="text-[10px] font-medium px-1.5 py-px rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
                 Pagado
               </span>
+            ) : enCarrito ? (
+              <span className="text-[10px] font-medium px-1.5 py-px rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                En el carrito · pendiente de pago
+              </span>
             ) : (
               <span className={`text-[10px] font-medium px-1.5 py-px rounded-full ${ESTADO_LOTE_COLOR[lote.estado]}`}>
                 {ESTADO_LOTE_LABEL[lote.estado]}
@@ -3085,23 +3114,17 @@ function LoteDetalle({
           {isBorrador && (
             <Button
               size="sm"
-              className="h-7 text-[11px] px-2"
-              disabled={confirmar.isPending || lote.totales.items === 0}
-              onClick={handleConfirmar}
+              className="h-7 text-[11px] px-2 gap-1"
+              disabled={confirmar.isPending || lote.totales.items === 0 || !ventaId}
+              title={!ventaId ? 'Abre una venta en el carrito para poder cobrar el lote' : undefined}
+              onClick={handleEnviarAlCarrito}
             >
-              {confirmar.isPending ? <Loader2 className="size-3 animate-spin" /> : 'Confirmar'}
+              {confirmar.isPending
+                ? <Loader2 className="size-3 animate-spin" />
+                : <><ShoppingCart className="size-3" />Enviar al carrito</>}
             </Button>
           )}
-          {pendienteCobro && (
-            <Button
-              size="sm"
-              className="h-7 text-[11px] px-2 bg-green-600 hover:bg-green-700"
-              onClick={() => onIniciarCobro(loteId, lote.totales.total, lote.totales.items)}
-            >
-              Cobrar
-            </Button>
-          )}
-          {isConfirmado && (
+          {isPagado && (
             <Button
               size="sm"
               variant="ghost"
@@ -3148,7 +3171,7 @@ function LoteDetalle({
                   <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Destinatario</th>
                   <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-14">Peso</th>
                   <th className="px-2 py-1.5 text-right font-medium text-muted-foreground w-20">Total</th>
-                  {(isBorrador || isConfirmado) && <th className="px-2 py-1.5 w-14" />}
+                  {(isBorrador || isPagado) && <th className="px-2 py-1.5 w-14" />}
                 </tr>
               </thead>
               <tbody>
@@ -3177,7 +3200,7 @@ function LoteDetalle({
                         </div>
                       </td>
                     )}
-                    {isConfirmado && item.envioId !== null && (
+                    {isPagado && item.envioId !== null && (
                       <td className="px-2 py-2">
                         <Button
                           variant="ghost"
@@ -3193,7 +3216,7 @@ function LoteDetalle({
                         </Button>
                       </td>
                     )}
-                    {isConfirmado && item.envioId === null && <td className="px-2 py-2" />}
+                    {isPagado && item.envioId === null && <td className="px-2 py-2" />}
                   </tr>
                 ))}
               </tbody>
@@ -3283,12 +3306,14 @@ function TabMasivos({
   sucursalId,
   cajaId,
   clienteId,
-  onCobrar,
+  ventaId,
+  onEnviadoAlCarrito,
 }: {
   sucursalId: number
   cajaId:     number
   clienteId:  number | null
-  onCobrar:   (loteId: number, total: number, items: number) => void
+  ventaId:    number | null
+  onEnviadoAlCarrito: () => void
 }) {
   const { data: lotes, isLoading } = useLotesMasivos(sucursalId)
   const crearLote = useCrearLoteMasivo()
@@ -3356,8 +3381,9 @@ function TabMasivos({
       <LoteDetalle
         loteId={activeLoteId}
         cajaId={cajaId}
+        ventaId={ventaId}
         onBack={() => setActiveLoteId(null)}
-        onIniciarCobro={onCobrar}
+        onEnviadoAlCarrito={onEnviadoAlCarrito}
       />
     )
   }
@@ -3606,6 +3632,9 @@ function composeAddress(d: DirState): string {
   if (d.modo === 'libre') {
     return [d.textoLibre.trim(), d.adicion.trim()].filter(Boolean).join(', ')
   }
+  // tipoVia siempre trae un valor por defecto ("CLL"), así que un formulario
+  // vacío componía la cadena basura "CLL #" y se guardaba como dirección real.
+  if (!d.numVia.trim() && !d.numGen.trim() && !d.placa.trim()) return ''
   const viaParts = [d.tipoVia, d.numVia, d.letraVia, d.bis ? 'BIS' : '', d.cuadrante1]
     .filter(Boolean)
     .join(' ')
@@ -3622,21 +3651,47 @@ function composeAddress(d: DirState): string {
 
 const COLOMBIA_PAIS_ID = 82
 
+const normalizarGeo = (s: string) =>
+  s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
 function GeoSelectsCascade({
   paisId,
   departamentoId,
   ciudadId,
+  departamentoNombre,
+  ciudadNombre,
   onDeptChange,
   onCityChange,
+  onResolveDept,
+  onResolveCity,
 }: {
   paisId: number | null
   departamentoId: number | null
   ciudadId: number | null
+  departamentoNombre: string
+  ciudadNombre: string
   onDeptChange: (id: number | null, nombre: string) => void
   onCityChange: (id: number | null, nombre: string) => void
+  onResolveDept: (id: number) => void
+  onResolveCity: (id: number) => void
 }) {
   const { data: deptos, isLoading: loadingDeptos } = useDepartamentos(paisId)
   const { data: ciudades, isLoading: loadingCiudades } = useCiudades(departamentoId)
+
+  // Las direcciones guardadas sólo persisten los nombres de ciudad/depto, no los
+  // ids. Sin esta reconciliación los selects quedan en blanco al recargarlas y el
+  // usuario cree que el dato se perdió (y al guardar de nuevo, se pierde de verdad).
+  useEffect(() => {
+    if (departamentoId != null || !departamentoNombre || !deptos?.length) return
+    const match = deptos.find((d) => normalizarGeo(d.nombre) === normalizarGeo(departamentoNombre))
+    if (match) onResolveDept(match.id)
+  }, [deptos, departamentoId, departamentoNombre, onResolveDept])
+
+  useEffect(() => {
+    if (ciudadId != null || !ciudadNombre || !ciudades?.length) return
+    const match = ciudades.find((c) => normalizarGeo(c.nombre) === normalizarGeo(ciudadNombre))
+    if (match) onResolveCity(match.id)
+  }, [ciudades, ciudadId, ciudadNombre, onResolveCity])
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -3892,6 +3947,8 @@ function DireccionInput({
           paisId={paisId}
           departamentoId={value.departamentoId}
           ciudadId={value.ciudadId}
+          departamentoNombre={value.departamento}
+          ciudadNombre={value.ciudad}
           onDeptChange={(id, nombre) =>
             onChange({
               ...value,
@@ -3902,6 +3959,8 @@ function DireccionInput({
             })
           }
           onCityChange={(id, nombre) => onChange({ ...value, ciudadId: id, ciudad: nombre })}
+          onResolveDept={(id) => onChange({ ...value, departamentoId: id })}
+          onResolveCity={(id) => onChange({ ...value, ciudadId: id })}
         />
       ) : (
         /* Internacional sin datos BD — texto libre */
@@ -3989,9 +4048,18 @@ function AddressModal({
   const { data: guardadas = [] } = useDireccionesFrecuentes(open && clienteId ? clienteId : 0, rol)
   const guardar = useGuardarDireccionFrecuente(clienteId ?? 0)
 
+  // handleAddDir limpia draftDir al mover la dirección a la lista, así que el
+  // draft vacío ya no representa lo que el usuario eligió. Un draft con datos
+  // gana (es lo que está editando); si no, manda la fila seleccionada.
+  const dirEfectiva = (): DirState => {
+    if (hasAddressData(draftDir) || draftDir.ciudad.trim()) return draftDir
+    return (selDirIdx !== null ? addresses[selDirIdx]?.dir : null) ?? draftDir
+  }
+
   const handleGuardarDireccion = async () => {
     if (!nombre.trim()) return
-    const dir = hasAddressData(draftDir) || draftDir.ciudad.trim() ? draftDir : null
+    const efectiva = dirEfectiva()
+    const dir = hasAddressData(efectiva) || efectiva.ciudad.trim() ? efectiva : null
     const telefono = selPhIdx !== null ? phones[selPhIdx]?.numero : phones[0]?.numero
     const emailRaw = email.trim()
     const emailVal = emailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : undefined
@@ -4063,7 +4131,7 @@ function AddressModal({
   }
 
   const handleOk = () => {
-    const dir = draftDir
+    const dir = dirEfectiva()
     const telefono = selPhIdx !== null ? phones[selPhIdx].numero : (phones[0]?.numero ?? '')
     onSave({
       nombre,
@@ -4697,7 +4765,7 @@ function TabServiciosPostales({
   onCotizChange,
   onEnvioAgregado,
   onVerGuia,
-  onCobrarLote,
+  onLoteEnviadoAlCarrito,
 }: {
   sucursalId: number
   cajaId: number
@@ -4706,7 +4774,7 @@ function TabServiciosPostales({
   onCotizChange?: (c: CotizPreview | null) => void
   onEnvioAgregado?: () => void
   onVerGuia?: (g: GuiaEnvio) => void
-  onCobrarLote: (loteId: number, total: number, items: number) => void
+  onLoteEnviadoAlCarrito: () => void
 }) {
   const [pais, setPais] = useState('CO')
   const [servicioId, setServicioId] = useState(0)
@@ -4725,6 +4793,7 @@ function TabServiciosPostales({
   const [diceContener, setDiceContener] = useState('')
   const [cantidadPiezas, setCantidadPiezas] = useState(1)
   const [medioPago, setMedioPago] = useState<MedioPagoEnvio>('efectivo')
+  const [tarjeta, setTarjeta] = useState<DatosTarjeta>(TARJETA_VACIA)
   const [tipoTrayecto, setTipoTrayecto] = useState<TipoTrayecto>('NACIONAL')
   const [enviosGenerados, setEnviosGenerados] = useState<EnvioLocal[]>([])
 
@@ -4847,6 +4916,7 @@ function TabServiciosPostales({
     setDestinatario(personaDirVacia())
     setObservaciones('')
     setMedioPago('efectivo')
+    setTarjeta(TARJETA_VACIA)
     setTipoTrayecto('NACIONAL')
     setSeguroAdicional(false)
     setCantidadPiezas(1)
@@ -4909,6 +4979,11 @@ function TabServiciosPostales({
     if (clienteId) body.clienteId = clienteId
     // Con venta activa: el envío se añade al carrito (se cobra al confirmar la venta)
     // Sin venta: pago directo standalone
+    if (!ventaId && esMedioTarjeta(medioPago)) {
+      const err = validarTarjeta(tarjeta, totalCotizado)
+      if (err) { toast.error(err); return }
+      Object.assign(body, payloadTarjeta(tarjeta, totalCotizado))
+    }
     const result = ventaId
       ? await agregarEnvioCarrito.mutateAsync(body)
       : await crearEnvio.mutateAsync(body)
@@ -4966,6 +5041,16 @@ function TabServiciosPostales({
   }
 
   const totalEnvios = enviosGenerados.reduce((s, e) => s + e.valorTotal, 0)
+
+  // Valor a cobrar por este envío — base para repartir un pago con tarjeta
+  const totalCotizado = useMemo(() => {
+    if (!cotizacion) return 0
+    const minimoSeg = selectedService?.minimoSeguroPostal ?? 0
+    const seguro = seguroAdicional && Number(valorDeclarado) > 0
+      ? Math.max(Math.round((Number(valorDeclarado) * 0.5) / 100), minimoSeg)
+      : 0
+    return cotizacion.valorServicio + (cotizacion.valorCertificacion ?? 0) + seguro
+  }, [cotizacion, selectedService, seguroAdicional, valorDeclarado])
 
   const previewGuia = useMemo<GuiaEnvio | null>(() => {
     // Require only the fields the user can enter — cotización is optional (shows 0s when not loaded yet)
@@ -5443,7 +5528,10 @@ function TabServiciosPostales({
                   <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                     Medio de pago
                   </Label>
-                  <Select value={medioPago} onValueChange={(v) => setMedioPago(v as MedioPagoEnvio)}>
+                  <Select
+                    value={esMedioTarjeta(medioPago) ? 'tarjeta' : medioPago}
+                    onValueChange={(v) => setMedioPago(v === 'tarjeta' ? tarjeta.tipo : (v as MedioPagoEnvio))}
+                  >
                     <SelectTrigger className="h-7 text-xs">
                       <SelectValue />
                     </SelectTrigger>
@@ -5454,6 +5542,14 @@ function TabServiciosPostales({
                     </SelectContent>
                   </Select>
                 </div>
+
+                {esMedioTarjeta(medioPago) && !ventaId && (
+                  <PagoTarjetaFields
+                    datos={tarjeta}
+                    onChange={(d) => { setTarjeta(d); setMedioPago(d.tipo) }}
+                    total={totalCotizado}
+                  />
+                )}
               </div>
             </ScrollArea>
 
@@ -5612,7 +5708,13 @@ function TabServiciosPostales({
 
         {/* ── Tab 3: Masivos ──────────────────────────────────────────────── */}
         <TabsContent value="masivos" className="flex flex-col flex-1 overflow-hidden m-0 border-t">
-          <TabMasivos sucursalId={sucursalId} cajaId={cajaId} clienteId={clienteId} onCobrar={onCobrarLote} />
+          <TabMasivos
+            sucursalId={sucursalId}
+            cajaId={cajaId}
+            clienteId={clienteId}
+            ventaId={ventaId}
+            onEnviadoAlCarrito={onLoteEnviadoAlCarrito}
+          />
         </TabsContent>
       </Tabs>
 
@@ -5956,20 +6058,19 @@ function TabResumenPago({
   cliente,
   ventaId,
   cajaId,
-  pendingLote,
   onExito,
 }: {
   carrito: Venta | null
   cliente: ClienteResumen | null
   ventaId: number | null
   cajaId: number
-  pendingLote?: { loteId: number; total: number } | null
-  onExito: (guias: GuiaEnvio[], cambio: number | null) => void
+  onExito: (guias: GuiaEnvio[], cambio: number | null, lotes: LoteMasivoPagado[]) => void
 }) {
   const { user } = useSessionStore()
   const canAnular = ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA'].includes(user?.rol ?? '')
 
   const [medioPago, setMedioPago] = useState<MedioPagoVenta>('efectivo')
+  const [tarjeta, setTarjeta] = useState<DatosTarjeta>(TARJETA_VACIA)
   const [email, setEmail] = useState(cliente?.email ?? '')
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
   const [anularOpen, setAnularOpen] = useState(false)
@@ -5982,7 +6083,6 @@ function TabResumenPago({
 
   const confirmar = useConfirmarVenta(ventaId ?? 0, cajaId)
   const anular    = useAnularVenta(ventaId ?? 0, cajaId)
-  const cobrar    = useCobrarLoteMasivo(pendingLote?.loteId ?? 0)
   // Limpiar lista de estampillas al cambiar medio de pago
   useEffect(() => {
     setStampsList([])
@@ -5996,24 +6096,29 @@ function TabResumenPago({
       await anular.mutateAsync({ motivo: motivoAnular.trim() })
       toast.success('Venta anulada')
       setAnularOpen(false)
-      onExito([], null)
+      onExito([], null, [])
     } catch {
       toast.error('No se pudo anular la venta')
     }
   }
 
   const isEstampilla  = medioPago === 'estampilla'
-  const loteTotal     = pendingLote?.total ?? 0
-  const total         = (carrito?.total ?? 0) + loteTotal
+  const isTarjeta     = esMedioTarjeta(medioPago)
+  const total         = carrito?.total ?? 0
 
   // Estampillas: total físico ingresado y cuánto queda por cubrir en efectivo
   const stampsTotal     = stampsList.reduce((s, e) => s + e.valor, 0)
   const stampsCashPend  = Math.max(0, total - stampsTotal)   // efectivo requerido
   const stampsExceso    = stampsTotal > total                  // el cliente entregó de más
 
-  const showEfectivo = medioPago === 'efectivo' || (isEstampilla && stampsList.length > 0 && stampsCashPend > 0)
+  // Tarjeta parcial: lo que el datáfono no cubre se cobra en efectivo
+  const tarjetaCashPend = isTarjeta ? Math.max(0, total - montoTarjeta(tarjeta, total)) : 0
+
+  const showEfectivo = medioPago === 'efectivo'
+    || (isEstampilla && stampsList.length > 0 && stampsCashPend > 0)
+    || (isTarjeta && tarjetaCashPend > 0)
   const efectivo     = Number(efectivoRecibido) || 0
-  const cashTarget   = isEstampilla ? stampsCashPend : total
+  const cashTarget   = isEstampilla ? stampsCashPend : isTarjeta ? tarjetaCashPend : total
   const cambio       = showEfectivo ? Math.max(0, efectivo - cashTarget) : 0
   const faltante     = showEfectivo ? Math.max(0, cashTarget - efectivo) : 0
 
@@ -6049,6 +6154,10 @@ function TabResumenPago({
         return
       }
     }
+    if (isTarjeta) {
+      const err = validarTarjeta(tarjeta, total)
+      if (err) { toast.error(err); return }
+    }
     if (!isEstampilla && showEfectivo && efectivo > 0 && efectivo < cashTarget) {
       toast.error('El efectivo recibido no cubre el valor a pagar')
       return
@@ -6057,13 +6166,14 @@ function TabResumenPago({
     const efectivoEnviar = showEfectivo
       ? (efectivo > 0 ? efectivo : cashTarget)
       : undefined
-    if (!isEstampilla && showEfectivo && (!efectivoEnviar || efectivoEnviar <= 0)) {
+    if (!isEstampilla && !isTarjeta && showEfectivo && (!efectivoEnviar || efectivoEnviar <= 0)) {
       toast.error('El total de la venta no puede ser cero')
       return
     }
     try {
       let guias: GuiaEnvio[] = []
       let cambio: number | null = null
+      let lotes: LoteMasivoPagado[] = []
       if (ventaId != null) {
         // Para estampillas: el medioPago real depende de si cubren el total o no
         const apiMedioPago: MedioPagoVenta = isEstampilla
@@ -6079,18 +6189,21 @@ function TabResumenPago({
               montoEfectivo: stampsCashPend,
               efectivoRecibido: efectivo > 0 ? efectivo : stampsCashPend,
             } : {}),
+          } : isTarjeta ? {
+            ...payloadTarjeta(tarjeta, total),
+            ...(tarjetaCashPend > 0 ? {
+              efectivoRecibido: efectivo > 0 ? efectivo : tarjetaCashPend,
+            } : {}),
           } : {
             ...(efectivoEnviar !== undefined ? { efectivoRecibido: efectivoEnviar } : {}),
           }),
         })
         guias  = result.guias  ?? []
         cambio = result.cambio ?? null
-      }
-      if (pendingLote) {
-        await cobrar.mutateAsync({ cajaId, medioPago })
+        lotes  = result.lotesMasivos ?? []
       }
       toast.success('Pago confirmado')
-      onExito(guias, cambio)
+      onExito(guias, cambio, lotes)
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : 'No se pudo confirmar el pago')
     }
@@ -6103,7 +6216,7 @@ function TabResumenPago({
     (carrito?.detalle.length ?? 0) > 0 ||
     (carrito?.enviosPendientes?.length ?? 0) > 0 ||
     (carrito?.apartadosPendientes?.length ?? 0) > 0
-  if ((!carrito || !tieneItems) && !pendingLote) {
+  if (!carrito || !tieneItems) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
         <ShoppingCart className="size-8 opacity-20" />
@@ -6358,7 +6471,10 @@ function TabResumenPago({
           <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
             Medio de pago
           </Label>
-          <Select value={medioPago} onValueChange={(v) => setMedioPago(v as MedioPagoVenta)}>
+          <Select
+            value={isTarjeta ? 'tarjeta' : medioPago}
+            onValueChange={(v) => setMedioPago(v === 'tarjeta' ? tarjeta.tipo : (v as MedioPagoVenta))}
+          >
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
             </SelectTrigger>
@@ -6369,6 +6485,15 @@ function TabResumenPago({
             </SelectContent>
           </Select>
         </div>
+
+        {isTarjeta && (
+          <PagoTarjetaFields
+            datos={tarjeta}
+            onChange={(d) => { setTarjeta(d); setMedioPago(d.tipo) }}
+            sucursalId={user?.sucursal_id}
+            total={total}
+          />
+        )}
 
         {/* Estampillas físicas / Preporteado — captura de códigos */}
         {isEstampilla && (
@@ -6515,9 +6640,9 @@ function TabResumenPago({
           <Button
             className="flex-1"
             onClick={handleConfirmar}
-            disabled={confirmar.isPending || cobrar.isPending}
+            disabled={confirmar.isPending}
           >
-            {(confirmar.isPending || cobrar.isPending) && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            {confirmar.isPending && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
             Confirmar pago — {fmt(total)}
           </Button>
           {canAnular && (
@@ -6580,15 +6705,11 @@ function CarritoPanel({
   cajaId,
   onPagar,
   cotizPreview,
-  pendingLote,
-  onCancelPendingLote,
 }: {
   ventaId: number | null
   cajaId: number
   onPagar: () => void
   cotizPreview?: CotizPreview | null
-  pendingLote?: { loteId: number; total: number; items: number } | null
-  onCancelPendingLote?: () => void
 }) {
   const { data: carrito, isLoading } = useCarrito(ventaId ?? 0)
   const eliminar         = useEliminarProducto(ventaId ?? 0, cajaId)
@@ -6597,7 +6718,20 @@ function CarritoPanel({
   const detalle   = carrito?.detalle ?? []
   const envios    = carrito?.enviosPendientes ?? []
   const apartados = carrito?.apartadosPendientes ?? []
-  const tieneItems = detalle.length > 0 || envios.length > 0 || apartados.length > 0 || !!pendingLote
+
+  // Un lote masivo puede traer cientos de guías: se muestran como una sola línea
+  const enviosSueltos = envios.filter((e) => e.loteMasivoId == null)
+  const lotesEnCarrito = Object.values(
+    envios.reduce<Record<number, { loteId: number; items: number; total: number }>>((acc, e) => {
+      if (e.loteMasivoId == null) return acc
+      const g = acc[e.loteMasivoId] ??= { loteId: e.loteMasivoId, items: 0, total: 0 }
+      g.items += 1
+      g.total += e.valorTotal
+      return acc
+    }, {}),
+  )
+
+  const tieneItems = detalle.length > 0 || envios.length > 0 || apartados.length > 0
 
   const handleEliminar = async (detalleId: number) => {
     try {
@@ -6621,7 +6755,9 @@ function CarritoPanel({
         <ShoppingCart className="size-4 text-primary" />
         <span className="text-xs font-semibold flex-1">Carrito</span>
         {tieneItems && (
-          <Badge className="text-[10px] h-5 px-1.5">{detalle.length + envios.length + apartados.length}</Badge>
+          <Badge className="text-[10px] h-5 px-1.5">
+            {detalle.length + enviosSueltos.length + lotesEnCarrito.length + apartados.length}
+          </Badge>
         )}
       </div>
 
@@ -6673,7 +6809,7 @@ function CarritoPanel({
                 </button>
               </div>
             ))}
-            {envios.map((env) => (
+            {enviosSueltos.map((env) => (
               <div
                 key={`env-${env.id}`}
                 className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 bg-blue-50/40 dark:bg-blue-950/20"
@@ -6720,29 +6856,26 @@ function CarritoPanel({
                 </button>
               </div>
             ))}
-            {pendingLote && (
-              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 bg-amber-50/40 dark:bg-amber-950/20">
+            {lotesEnCarrito.map((lote) => (
+              <div
+                key={`lote-${lote.loteId}`}
+                className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-2.5 py-2 bg-amber-50/40 dark:bg-amber-950/20"
+              >
                 <div className="min-w-0">
                   <p className="text-xs font-medium leading-tight line-clamp-1 text-amber-700 dark:text-amber-300">
-                    Lote masivo #{pendingLote.loteId}
+                    Lote masivo #{lote.loteId}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
-                    {pendingLote.items} paquete{pendingLote.items !== 1 ? 's' : ''} · pendiente de cobro
+                    {lote.items} paquete{lote.items !== 1 ? 's' : ''} · guías al pagar
                   </p>
                 </div>
-                <span className="text-xs tabular-nums text-right w-7 text-muted-foreground">1</span>
+                <span className="text-xs tabular-nums text-right w-7 text-muted-foreground">{lote.items}</span>
                 <span className="text-xs font-semibold tabular-nums text-right w-16 text-amber-700 dark:text-amber-300">
-                  {fmt(pendingLote.total)}
+                  {fmt(lote.total)}
                 </span>
-                <button
-                  type="button"
-                  onClick={onCancelPendingLote}
-                  className="flex justify-center w-4 text-muted-foreground/30 hover:text-destructive transition-colors"
-                >
-                  <X className="size-3" />
-                </button>
+                <span className="w-4" />
               </div>
-            )}
+            ))}
           </div>
         )}
       </ScrollArea>
@@ -6807,7 +6940,7 @@ function CarritoPanel({
       )}
 
       <div className="border-t p-3 space-y-2 shrink-0">
-        {(carrito || pendingLote) && (
+        {carrito && (
           <div className="space-y-1 text-xs">
             {carrito && (
               <>
@@ -6842,7 +6975,7 @@ function CarritoPanel({
             )}
             <div className="flex justify-between font-bold text-sm pt-1 border-t">
               <span>TOTAL</span>
-              <span className="tabular-nums text-primary">{fmt((carrito?.total ?? 0) + (pendingLote?.total ?? 0))}</span>
+              <span className="tabular-nums text-primary">{fmt(carrito.total)}</span>
             </div>
           </div>
         )}
@@ -6852,7 +6985,7 @@ function CarritoPanel({
           disabled={!tieneItems}
         >
           {tieneItems ? (
-            <>Ir a pagar — {fmt((carrito?.total ?? 0) + (pendingLote?.total ?? 0))}</>
+            <>Ir a pagar — {fmt(carrito?.total ?? 0)}</>
           ) : (
             'Ir a pagar'
           )}
@@ -6888,6 +7021,7 @@ function PagarDialog({
   onSuccess,
 }: PagarDialogProps) {
   const [medioPago, setMedioPago] = useState<MedioPagoVenta>('efectivo')
+  const [tarjeta, setTarjeta] = useState<DatosTarjeta>(TARJETA_VACIA)
   const [efectivoRecibido, setEfectivoRecibido] = useState('')
   const [preporteadoMonto, setPreporteadoMonto] = useState('')
   const [email, setEmail] = useState(clienteEmail ?? '')
@@ -6898,12 +7032,15 @@ function PagarDialog({
 
   const isPreporteado = medioPago === 'preporteado'
   const isMixto = medioPago === 'mixto_preporteado'
-  const showEfectivo = medioPago === 'efectivo' || isMixto
+  const isTarjeta = esMedioTarjeta(medioPago)
+  const tarjetaCashPend = isTarjeta ? Math.max(0, total - montoTarjeta(tarjeta, total)) : 0
+  const showEfectivo = medioPago === 'efectivo' || isMixto || tarjetaCashPend > 0
   const efectivo = Number(efectivoRecibido) || 0
   const preporteado = Number(preporteadoMonto) || 0
-  const enEc = isMixto ? Math.max(0, total - preporteado) : 0
-  const cambio = showEfectivo ? Math.max(0, efectivo - (isMixto ? enEc : total)) : 0
-  const faltante = showEfectivo ? Math.max(0, (isMixto ? enEc : total) - efectivo) : 0
+  const enEc = isMixto ? Math.max(0, total - preporteado) : isTarjeta ? tarjetaCashPend : 0
+  const cashTarget = isMixto || isTarjeta ? enEc : total
+  const cambio = showEfectivo ? Math.max(0, efectivo - cashTarget) : 0
+  const faltante = showEfectivo ? Math.max(0, cashTarget - efectivo) : 0
 
   const handleConfirmar = async () => {
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -6922,7 +7059,11 @@ function PagarDialog({
       toast.error('El monto preporteado no puede cubrir el total completo — usa "Preporteado" directamente')
       return
     }
-    if (showEfectivo && efectivo > 0 && efectivo < (isMixto ? enEc : total)) {
+    if (isTarjeta) {
+      const err = validarTarjeta(tarjeta, total)
+      if (err) { toast.error(err); return }
+    }
+    if (showEfectivo && efectivo > 0 && efectivo < cashTarget) {
       toast.error('El efectivo recibido no cubre el total')
       return
     }
@@ -6930,9 +7071,10 @@ function PagarDialog({
       await confirmar.mutateAsync({
         medioPago,
         ...(email.trim() ? { emailFactura: email.trim() } : {}),
-        ...(showEfectivo ? { efectivoRecibido: efectivo > 0 ? efectivo : isMixto ? enEc : total } : {}),
+        ...(showEfectivo ? { efectivoRecibido: efectivo > 0 ? efectivo : cashTarget } : {}),
         ...(isPreporteado ? { montoEstampillas: total } : {}),
         ...(isMixto && preporteado > 0 ? { montoEstampillas: preporteado, montoEfectivo: enEc } : {}),
+        ...(isTarjeta ? payloadTarjeta(tarjeta, total) : {}),
       })
       toast.success('Pago confirmado')
       onSuccess()
@@ -6945,6 +7087,7 @@ function PagarDialog({
   const handleOpen = (v: boolean) => {
     if (v) {
       setMedioPago('efectivo')
+      setTarjeta(TARJETA_VACIA)
       setEfectivoRecibido('')
       setPreporteadoMonto('')
       setEmail(clienteEmail ?? '')
@@ -6997,7 +7140,10 @@ function PagarDialog({
           <Label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
             Medio de pago
           </Label>
-          <Select value={medioPago} onValueChange={(v) => setMedioPago(v as MedioPagoVenta)}>
+          <Select
+            value={isTarjeta ? 'tarjeta' : medioPago}
+            onValueChange={(v) => setMedioPago(v === 'tarjeta' ? tarjeta.tipo : (v as MedioPagoVenta))}
+          >
             <SelectTrigger className="h-9">
               <SelectValue />
             </SelectTrigger>
@@ -7008,6 +7154,14 @@ function PagarDialog({
             </SelectContent>
           </Select>
         </div>
+
+        {isTarjeta && (
+          <PagoTarjetaFields
+            datos={tarjeta}
+            onChange={(d) => { setTarjeta(d); setMedioPago(d.tipo) }}
+            total={total}
+          />
+        )}
 
         {/* Preporteado puro */}
         {isPreporteado && (
@@ -7144,88 +7298,43 @@ function PagarDialog({
   )
 }
 
-// ── LotePagoPanel ─────────────────────────────────────────────────────────────
+// ── LotePostPagoCard ──────────────────────────────────────────────────────────
 
-function LotePagoPanel({
-  loteId,
-  cajaId,
-  total,
-  items,
-  onSuccess,
-  onCancel,
-}: {
-  loteId:    number
-  cajaId:    number
-  total:     number
-  items:     number
-  onSuccess: () => void
-  onCancel:  () => void
-}) {
-  const cobrar = useCobrarLoteMasivo(loteId)
-  const [montoRecibido, setMontoRecibido] = useState('')
+function LotePostPagoCard({ lote }: { lote: LoteMasivoPagado }) {
+  const token = useSessionStore((s) => s.token)
+  const [descargando, setDescargando] = useState(false)
 
-  const efectivo = Number(montoRecibido) || 0
-  const cambio   = Math.max(0, efectivo - total)
-  const falta    = Math.max(0, total - efectivo)
-
-  const handleCobrar = () => {
-    cobrar.mutate({ cajaId, medioPago: 'efectivo' }, {
-      onSuccess: () => {
-        toast.success('Cobro registrado')
-        onSuccess()
-      },
-      onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Error al cobrar'),
-    })
+  const handleDescargar = async () => {
+    if (!token) { toast.error('Sin sesión'); return }
+    setDescargando(true)
+    try {
+      await descargarGuiasPdf(lote.loteId, token)
+    } catch {
+      toast.error('No se pudo descargar el PDF de guías')
+    } finally {
+      setDescargando(false)
+    }
   }
 
   return (
-    <div className="flex flex-col h-full border-l">
-      <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
-        <Banknote className="size-4 text-green-600" />
-        <span className="text-xs font-semibold flex-1">Cobrar lote masivo</span>
-        <button type="button" onClick={onCancel} className="text-muted-foreground hover:text-foreground">
-          <X className="size-4" />
-        </button>
+    <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5">
+      <MailOpen className="size-4 text-amber-600 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold">Lote masivo #{lote.loteId}</p>
+        <p className="text-[10px] text-muted-foreground">
+          {lote.totalItems} guía{lote.totalItems !== 1 ? 's' : ''} · {fmt(lote.total)}
+        </p>
       </div>
-
-      <div className="flex-1 flex flex-col gap-4 p-4">
-        <div className="rounded-lg bg-muted/50 p-3 space-y-1 text-center">
-          <p className="text-[11px] text-muted-foreground">{items} paquete{items !== 1 ? 's' : ''}</p>
-          <p className="text-2xl font-bold tabular-nums">{fmtCop(total)}</p>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label className="text-xs">Monto recibido (efectivo)</Label>
-          <Input
-            className="h-9 text-sm tabular-nums"
-            type="number"
-            min={0}
-            placeholder={String(total)}
-            value={montoRecibido}
-            onChange={e => setMontoRecibido(e.target.value)}
-            autoFocus
-          />
-          {efectivo > 0 && (
-            <p className={`text-xs ${falta > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {falta > 0 ? `Falta: ${fmtCop(falta)}` : `Cambio: ${fmtCop(cambio)}`}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="px-4 py-3 border-t shrink-0 flex flex-col gap-2">
-        <Button
-          className="w-full bg-green-600 hover:bg-green-700"
-          disabled={cobrar.isPending || (efectivo > 0 && falta > 0)}
-          onClick={handleCobrar}
-        >
-          {cobrar.isPending ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-          Confirmar cobro · {fmtCop(total)}
-        </Button>
-        <Button variant="ghost" size="sm" className="w-full text-xs" onClick={onCancel}>
-          Cancelar
-        </Button>
-      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs gap-1.5 shrink-0"
+        disabled={descargando}
+        onClick={handleDescargar}
+      >
+        {descargando ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}
+        Guías PDF
+      </Button>
     </div>
   )
 }
@@ -7281,7 +7390,7 @@ export default function CarritoVenta() {
   const [guiasPostPago, setGuiasPostPago] = useState<GuiaEnvio[]>([])
   const [cambioPostPago, setCambioPostPago] = useState<number | null>(null)
   const [ultimaVentaId, setUltimaVentaId] = useState<number | null>(null)
-  const [loteCobro, setLoteCobro] = useState<{ loteId: number; total: number; items: number } | null>(null)
+  const [lotesPostPago, setLotesPostPago] = useState<LoteMasivoPagado[]>([])
   const prevTabRef = useRef<Tab>('productos')
 
   const handleTabClick = (value: Tab) => {
@@ -7328,18 +7437,23 @@ export default function CarritoVenta() {
     setCliente((prev) => (prev ? { ...prev, email, telefono } : prev))
   }
 
-  const handlePagoExitoso = (guias: GuiaEnvio[] = [], cambio: number | null = null) => {
+  const handlePagoExitoso = (
+    guias: GuiaEnvio[] = [],
+    cambio: number | null = null,
+    lotes: LoteMasivoPagado[] = [],
+  ) => {
     setUltimaVentaId(ventaId)
     setVentaId(null)
     setCliente(null)
-    setLoteCobro(null)
     setGuiasPostPago(guias)
     setCambioPostPago(cambio)
+    setLotesPostPago(lotes)
   }
 
   const handleGuiasDismiss = () => {
     setGuiasPostPago([])
     setCambioPostPago(null)
+    setLotesPostPago([])
     setUltimaVentaId(null)
     const first = tabs.find((t) => t.value !== 'historial' && t.value !== 'pagar')
     setActiveTab(first?.value ?? 'historial')
@@ -7566,6 +7680,10 @@ export default function CarritoVenta() {
                             </Button>
                           </div>
                         ))}
+                        {/* Lotes masivos cobrados en esta venta */}
+                        {lotesPostPago.map((l) => (
+                          <LotePostPagoCard key={l.loteId} lote={l} />
+                        ))}
                       </div>
                     </ScrollArea>
                     <div className="px-4 py-3 border-t shrink-0">
@@ -7604,23 +7722,22 @@ export default function CarritoVenta() {
                         onCotizChange={setCotizPreview}
                         onEnvioAgregado={() => handleTabClick('pagar')}
                         onVerGuia={setGuiaViewer}
-                        onCobrarLote={(id, total, items) => setLoteCobro({ loteId: id, total, items })}
+                        onLoteEnviadoAlCarrito={() => handleTabClick('pagar')}
                       />
                     )}
                     {activeTab === 'historial' && (
                       <TabHistorial cajaId={cajaId} userRol={user?.rol ?? ''} />
                     )}
-                    {activeTab === 'pagar' && (ventaId != null || loteCobro !== null) && (
+                    {activeTab === 'pagar' && ventaId != null && (
                       <TabResumenPago
                         carrito={carrito ?? null}
                         cliente={cliente}
                         ventaId={ventaId}
                         cajaId={cajaId}
-                        pendingLote={loteCobro ? { loteId: loteCobro.loteId, total: loteCobro.total } : null}
                         onExito={handlePagoExitoso}
                       />
                     )}
-                    {activeTab === 'pagar' && ventaId == null && loteCobro === null && (
+                    {activeTab === 'pagar' && ventaId == null && (
                       <div className="flex flex-col items-center justify-center gap-2 h-full text-muted-foreground">
                         <ShoppingCart className="size-8 opacity-20" />
                         <p className="text-xs">El carrito está vacío</p>
@@ -7633,16 +7750,14 @@ export default function CarritoVenta() {
           )}
         </div>
 
-        {/* Right: cart — visible cuando el cliente está activo y (carritoVisible o hay lote pendiente) */}
-        {cliente && (carritoVisible || loteCobro !== null) && (
+        {/* Right: cart */}
+        {cliente && carritoVisible && (
           <div className="w-80 xl:w-96 flex flex-col overflow-hidden shrink-0 border-l">
             <CarritoPanel
               ventaId={ventaId}
               cajaId={cajaId}
               onPagar={() => handleTabClick('pagar')}
               cotizPreview={activeTab === 'servicios' ? cotizPreview : null}
-              pendingLote={loteCobro}
-              onCancelPendingLote={() => setLoteCobro(null)}
             />
           </div>
         )}

@@ -247,14 +247,19 @@ Cypress.Commands.add(
       },
     }).as('agregarItem')
 
-    cy.intercept('POST', `${apiUrl}/envios-masivos/*/confirmar`, {
+    cy.intercept('POST', `${apiUrl}/envios-masivos/*/items/bulk`, {
+      statusCode: 201,
+      body: { agregados: 1, errores: [] },
+    }).as('agregarItemsBulk')
+
+    cy.intercept('PATCH', `${apiUrl}/envios-masivos/*/confirmar**`, {
       statusCode: 200,
       body: {
-        loteId: 99,
+        loteId: 1,
+        ventaId: 1,
         enviosCreados: 1,
-        movimiento: {},
-        saldoActual: '136500',
-        alertas: [],
+        totalCarrito: 10500,
+        guias: [{ fila: 1, numeroGuia: 'RR000000001CO', envioId: 501 }],
       },
     }).as('confirmarLote')
 

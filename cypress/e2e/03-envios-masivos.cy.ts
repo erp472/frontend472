@@ -8,7 +8,7 @@ export {}
  * A) CarritoVenta → tab "Servicios" → sub-tab "Masivos" (TabMasivos)
  *    - Lista de lotes masivos
  *    - Crear nuevo lote (dialog)
- *    - LoteDetalle: items, tabla rápida, CSV, confirmar, eliminar
+ *    - LoteDetalle: items, tabla rápida, CSV, enviar al carrito, eliminar
  *
  * B) Página standalone /ventas/masivos (EnviosMasivosPage)
  *    - Lista de lotes con estados
@@ -16,7 +16,6 @@ export {}
  *    - Agregar ítems individualmente
  *    - Tabla de entrada rápida
  *    - Importar CSV
- *    - Confirmar lote y resumen
  *    - Eliminar lote en borrador
  */
 
@@ -211,8 +210,8 @@ describe('Envíos Masivos — CarritoVenta → Servicios → Masivos', () => {
       cy.contains('$ 10.500').should('be.visible')
     })
 
-    it('botón "Confirmar lote" está habilitado al haber ítems', () => {
-      cy.contains('button', 'Confirmar lote').should('not.be.disabled')
+    it('botón "Enviar al carrito" está habilitado al haber ítems', () => {
+      cy.contains('button', 'Enviar al carrito').should('not.be.disabled')
     })
 
     it('botón "Agregar" abre el dialog de agregar ítem', () => {
@@ -384,9 +383,9 @@ describe('Envíos Masivos — CarritoVenta → Servicios → Masivos', () => {
     })
   })
 
-  // ── Confirmar lote ────────────────────────────────────────────────────────
+  // ── Enviar el lote al carrito ──────────────────────────────────────────────
 
-  describe('Confirmar lote', () => {
+  describe('Enviar al carrito', () => {
     beforeEach(() => {
       cy.fixture('lotes-masivos').then((lotes) => {
         visitCarrito(lotes)
@@ -401,28 +400,10 @@ describe('Envíos Masivos — CarritoVenta → Servicios → Masivos', () => {
       cy.wait('@loteDetalle')
     })
 
-    it('abre el dialog de confirmación al hacer click en "Confirmar lote"', () => {
-      cy.contains('button', 'Confirmar lote').click()
-      cy.contains('Confirmar lote masivo').should('be.visible')
-      cy.contains('Se crearán').should('be.visible')
-    })
-
-    it('dialog de confirmación muestra el total del lote', () => {
-      cy.contains('button', 'Confirmar lote').click()
-      cy.contains('$ 10.500').should('be.visible')
-    })
-
-    it('confirma el lote y muestra el toast de éxito', () => {
-      cy.contains('button', 'Confirmar lote').click()
-      cy.contains('button', 'Confirmar y registrar').click()
-      cy.wait('@confirmarLote')
-    })
-
-    it('cancela la confirmación y regresa al detalle', () => {
-      cy.contains('button', 'Confirmar lote').click()
-      cy.contains('button', 'Cancelar').click()
-      cy.contains('Confirmar lote masivo').should('not.exist')
-      cy.contains('Lote #1').should('be.visible')
+    it('envía el lote al carrito con la venta activa', () => {
+      cy.contains('button', 'Enviar al carrito').click()
+      cy.wait('@confirmarLote').its('request.url').should('include', 'ventaId=')
+      cy.contains('paquete(s) en el carrito').should('be.visible')
     })
   })
 })

@@ -50,12 +50,10 @@ import { cn } from '@/lib/utils'
 import {
   type AgregarItemPayload,
   type ItemMasivo,
-  type LoteMasivo,
   type RemitentePayload,
   descargarGuiasPdf,
   useAgregarItemMasivo,
   useEliminarLoteMasivo,
-  useConfirmarLoteMasivo,
   useCrearLoteMasivo,
   useEliminarItemMasivo,
   useGenerarGuiasPdf,
@@ -843,72 +841,6 @@ function ImportarCsvDialog({
   )
 }
 
-// ── ConfirmarDialog ───────────────────────────────────────────────────────────
-
-function ConfirmarDialog({
-  open,
-  lote,
-  cajaId,
-  onClose,
-}: {
-  open:   boolean
-  lote:   LoteMasivo
-  cajaId: number
-  onClose: () => void
-}) {
-  const confirmar = useConfirmarLoteMasivo(lote.id)
-
-  const handleConfirmar = async () => {
-    await confirmar.mutateAsync(cajaId)
-    toast.success(`Lote confirmado — ${lote.totales.items} envío(s) creados`)
-    onClose()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Confirmar lote masivo</DialogTitle>
-          <DialogDescription>
-            Se crearán <strong>{lote.totales.items}</strong> envío(s) reales y se registrará un movimiento de caja
-            por <strong>{fmt(lote.totales.total)}</strong> (preporteado).
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="rounded-md bg-muted p-3 text-sm space-y-1">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Envíos</span>
-            <span className="font-medium">{lote.totales.items}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Peso total</span>
-            <span className="font-medium">{lote.totales.pesoKg.toFixed(2)} kg</span>
-          </div>
-          {lote.totales.estampillas > 0 && (
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Estampillas</span>
-              <span className="font-medium">{fmt(lote.totales.estampillas)}</span>
-            </div>
-          )}
-          <Separator className="my-1" />
-          <div className="flex justify-between text-base font-semibold">
-            <span>Total preporteado</span>
-            <span>{fmt(lote.totales.total)}</span>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={handleConfirmar} disabled={confirmar.isPending}>
-            {confirmar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirmar y registrar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ── CrearLoteDialog ───────────────────────────────────────────────────────────
 
 function CrearLoteDialog({
@@ -1047,11 +979,9 @@ function CrearLoteDialog({
 
 function LoteEditor({
   loteId,
-  cajaId,
   onClose,
 }: {
   loteId:  number
-  cajaId:  number
   onClose: () => void
 }) {
   const { data: lote, isLoading, refetch } = useLoteMasivo(loteId)
@@ -1060,7 +990,6 @@ function LoteEditor({
   const token       = useSessionStore(s => s.token)
   const [showAgregar,      setShowAgregar]      = useState(false)
   const [showCsv,          setShowCsv]          = useState(false)
-  const [showConfirmar,    setShowConfirmar]    = useState(false)
   const [showTablaRapida,  setShowTablaRapida]  = useState(false)
   const [descargando,      setDescargando]      = useState(false)
 
@@ -1268,13 +1197,9 @@ function LoteEditor({
         </div>
 
         {esBorrador && (
-          <Button
-            onClick={() => setShowConfirmar(true)}
-            disabled={lote.totales.items === 0}
-          >
-            <CheckCircle2 className="mr-1.5 h-4 w-4" />
-            Confirmar lote
-          </Button>
+          <span className="text-xs text-muted-foreground">
+            Para cobrar el lote, ábrelo desde el carrito del POS (pestaña Servicios postales).
+          </span>
         )}
       </div>
 
@@ -1292,12 +1217,6 @@ function LoteEditor({
             loteId={loteId}
             modoIndividual={modoIndividual}
             onClose={() => setShowCsv(false)}
-          />
-          <ConfirmarDialog
-            open={showConfirmar}
-            lote={lote}
-            cajaId={cajaId}
-            onClose={() => setShowConfirmar(false)}
           />
         </>
       )}
@@ -1325,7 +1244,6 @@ export default function EnviosMasivosPage() {
       <div className="flex flex-col gap-0 h-[calc(100vh-4rem)] p-4">
         <LoteEditor
           loteId={loteActivoId}
-          cajaId={cajaIdNum}
           onClose={() => { setLoteActivoId(null); refetch() }}
         />
       </div>

@@ -41,6 +41,9 @@ export interface CrearEnvioPayload {
   medioPago:        MedioPagoEnvio
   montoEstampillas?: number
   montoEfectivo?:    number
+  // Tarjeta: baucher siempre, franquicia solo en crédito
+  codigoVoucher?:    string
+  franquiciaId?:     number
   guiaCp?:           string
   esCorrespondencia?: boolean
   tipoTrayecto?:     TipoTrayecto
@@ -128,6 +131,8 @@ export interface Envio {
   pesoFisicoKg: number; pesoTarificadoKg: number
   valorServicio: number; valorSeguro: number; valorEstampillas: number
   valorCertificacion: number; valorTotal: number; estado: string; createdAt: string
+  /** Presente cuando el envío entró al carrito como parte de un lote masivo. */
+  loteMasivoId?: number | null
 }
 
 export interface GuiaPersona {
@@ -195,11 +200,16 @@ export interface MovimientoVenta {
   referenciaTipo: string | null; createdAt: string
 }
 
+export interface LoteMasivoPagado {
+  loteId: number; totalItems: number; total: number
+}
+
 export interface ConfirmarVentaResult {
   venta: Venta; movimiento: MovimientoVenta
   saldoActual: number; alertas: string[]
   cambio: number | null
   guias: GuiaEnvio[]
+  lotesMasivos: LoteMasivoPagado[]
 }
 
 export interface DireccionFrecuente {
@@ -454,6 +464,10 @@ export interface ConfirmarVentaPayload {
   emailFactura?:     string
   montoEstampillas?: number
   montoEfectivo?:    number
+  estampillasUtilizadas?: { codigo: string; valor: number }[]
+  // Tarjeta: baucher siempre, franquicia solo en crédito
+  codigoVoucher?:    string
+  franquiciaId?:     number
 }
 
 export function useConfirmarVenta(ventaId: number, cajaId: number) {
