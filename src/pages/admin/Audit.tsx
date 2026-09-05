@@ -2,7 +2,9 @@ import { useState } from 'react'
 import {
   Shield, TrendingUp, Pencil, Trash2, Plus,
   ChevronDown, ChevronRight, AlertCircle, Filter,
+  Eye, LogIn, LogOut, Printer, Download, Ban, Loader2,
 } from 'lucide-react'
+import { useSessionStore } from '@/stores/useSessionStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,18 +15,46 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { useAuditEventos, useAuditStats, type AuditEvento, type AuditParams } from '@/queries/audit.queries'
+import {
+  ACCIONES, useAuditEventos, useAuditStats, buildAuditExportUrl,
+  type AuditAccion, type AuditEvento, type AuditParams,
+} from '@/queries/audit.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const OP_CONFIG = {
-  INSERT: { label: 'Inserción',      variant: 'default',     icon: Plus },
+const TIPO_CONFIG: Record<'ADM' | 'OPE' | 'FIN' | 'CBS', {
+  label: string
+  variant: 'default' | 'secondary' | 'destructive' | 'outline'
+}> = {
+  ADM: { label: 'Administrativo', variant: 'secondary'   },
+  OPE: { label: 'Operación',      variant: 'default'     },
+  FIN: { label: 'Finanza',        variant: 'outline'     },
+  CBS: { label: 'Ciberseguridad', variant: 'destructive' },
+}
+
+function TipoBadge({ tipo }: { tipo: AuditEvento['tipo'] | null | undefined }) {
+  const cfg = tipo ? TIPO_CONFIG[tipo] : TIPO_CONFIG.OPE
+  return <Badge variant={cfg.variant} className="text-xs">{cfg.label}</Badge>
+}
+
+const ACCION_CONFIG: Record<AuditAccion, {
+  label: string
+  variant: 'default' | 'secondary' | 'destructive' | 'outline'
+  icon: React.ElementType
+}> = {
+  CREATE: { label: 'Creación',       variant: 'default',     icon: Plus },
+  READ:   { label: 'Consulta',       variant: 'outline',     icon: Eye },
   UPDATE: { label: 'Actualización',  variant: 'secondary',   icon: Pencil },
   DELETE: { label: 'Eliminación',    variant: 'destructive', icon: Trash2 },
-} as const
+  LOGIN:  { label: 'Inicio sesión',  variant: 'secondary',   icon: LogIn },
+  LOGOUT: { label: 'Cierre sesión',  variant: 'outline',     icon: LogOut },
+  PRINT:  { label: 'Impresión',      variant: 'outline',     icon: Printer },
+  EXPORT: { label: 'Exportación',    variant: 'outline',     icon: Download },
+  DENIED: { label: 'Acceso negado',  variant: 'destructive', icon: Ban },
+}
 
-function OpBadge({ op }: { op: AuditEvento['operacion'] }) {
-  const cfg = OP_CONFIG[op]
+function AccionBadge({ accion }: { accion: AuditEvento['accion'] }) {
+  const cfg = ACCION_CONFIG[accion] ?? ACCION_CONFIG.CREATE
   return (
     <Badge variant={cfg.variant} className="gap-1 text-xs">
       <cfg.icon className="size-3" />
@@ -73,10 +103,12 @@ function EventoRow({ evento }: { evento: AuditEvento }) {
         <TableCell className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
           {formatFecha(evento.createdAt)}
         </TableCell>
-        <TableCell><OpBadge op={evento.operacion} /></TableCell>
+        <TableCell className="font-mono text-xs whitespace-nowrap">{evento.auditKey}</TableCell>
+        <TableCell><TipoBadge tipo={evento.tipo} /></TableCell>
+        <TableCell><AccionBadge accion={evento.accion} /></TableCell>
         <TableCell className="font-mono text-xs">{evento.tabla}</TableCell>
         <TableCell className="text-xs text-muted-foreground tabular-nums">
-          {evento.registroId}
+          {evento.registroId ?? '—'}
         </TableCell>
         <TableCell className="text-xs">
           {evento.usuario
@@ -87,15 +119,19 @@ function EventoRow({ evento }: { evento: AuditEvento }) {
           {evento.ipOrigen ?? '—'}
         </TableCell>
         <TableCell className="text-xs text-muted-foreground">
-          {(evento.datosDespues as Record<string, unknown> | null)?.['resultado'] === 'ERROR'
-            ? <AlertCircle className="size-3.5 text-destructive" />
+          {evento.resultado === 'ERROR'
+            ? (
+              <span title={evento.errorMsg ?? 'Error'}>
+                <AlertCircle className="size-3.5 text-destructive" />
+              </span>
+            )
             : null}
         </TableCell>
       </TableRow>
 
       {open && (
         <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={8} className="px-6 py-3">
+          <TableCell colSpan={10} className="px-6 py-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -142,45 +178,83 @@ function StatCard({ label, value, icon: Icon, className = '' }: {
 
 const LIMITE = 50
 
+// Radix lanza si un SelectItem tiene value="", así que "sin filtro" necesita centinela.
+const TODAS = '__todas__'
+
 export default function Audit() {
-  const [params, setParams] = useState<AuditParams>({ pagina: 1, limite: LIMITE })
-  const [draft, setDraft]   = useState({
-    tabla: '', operacion: '' as AuditParams['operacion'] | '', desde: '', hasta: '',
+  const [params, setParams]       = useState<AuditParams>({ pagina: 1, limite: LIMITE })
+  const [draft, setDraft]         = useState({
+    tabla: '', accion: '' as AuditAccion | '', desde: '', hasta: '',
   })
+  const [exporting, setExporting] = useState(false)
 
   const { data, isLoading } = useAuditEventos(params)
   const { data: stats }     = useAuditStats()
+
+  async function descargarExcel() {
+    setExporting(true)
+    try {
+      const url = buildAuditExportUrl(params)
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${useSessionStore.getState().token ?? ''}` },
+      })
+      if (!res.ok) throw new Error('Error al exportar')
+      const blob = await res.blob()
+      const href = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = href
+      a.download = `auditoria_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(href)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const totalPages = data?.meta.paginas ?? 1
   const page       = params.pagina ?? 1
 
   function aplicarFiltros() {
     setParams({
-      pagina:    1,
-      limite:    LIMITE,
-      tabla:     draft.tabla   || undefined,
-      operacion: (draft.operacion as AuditParams['operacion']) || undefined,
-      desde:     draft.desde   || undefined,
-      hasta:     draft.hasta   || undefined,
+      pagina: 1,
+      limite: LIMITE,
+      ...(draft.tabla  && { tabla:  draft.tabla }),
+      ...(draft.accion && { accion: draft.accion }),
+      ...(draft.desde  && { desde:  draft.desde }),
+      ...(draft.hasta  && { hasta:  draft.hasta }),
     })
   }
 
   function limpiarFiltros() {
-    setDraft({ tabla: '', operacion: '', desde: '', hasta: '' })
+    setDraft({ tabla: '', accion: '', desde: '', hasta: '' })
     setParams({ pagina: 1, limite: LIMITE })
   }
 
   return (
     <div className="space-y-6 p-6">
       {/* Cabecera */}
-      <div>
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Shield className="size-5" />
-          Auditoría
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Trazabilidad completa de todas las operaciones del sistema — hoy.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <Shield className="size-5" />
+            Auditoría
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Trazabilidad completa de todas las operaciones del sistema — hoy.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={descargarExcel}
+          disabled={exporting}
+          className="shrink-0"
+        >
+          {exporting
+            ? <Loader2 className="mr-2 size-4 animate-spin" />
+            : <Download className="mr-2 size-4" />}
+          Exportar Excel
+        </Button>
       </div>
 
       {/* Stats del día */}
@@ -207,17 +281,19 @@ export default function Audit() {
             onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}
           />
           <Select
-            value={draft.operacion}
-            onValueChange={(v) => setDraft((d) => ({ ...d, operacion: v as AuditParams['operacion'] }))}
+            value={draft.accion}
+            onValueChange={(v) =>
+              setDraft((d) => ({ ...d, accion: v === TODAS ? '' : (v as AuditAccion) }))
+            }
           >
             <SelectTrigger className="h-8 text-sm w-44">
-              <SelectValue placeholder="Operación" />
+              <SelectValue placeholder="Acción" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todas</SelectItem>
-              <SelectItem value="INSERT">Inserción</SelectItem>
-              <SelectItem value="UPDATE">Actualización</SelectItem>
-              <SelectItem value="DELETE">Eliminación</SelectItem>
+              <SelectItem value={TODAS}>Todas</SelectItem>
+              {ACCIONES.map((a) => (
+                <SelectItem key={a} value={a}>{ACCION_CONFIG[a].label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Input
@@ -244,7 +320,9 @@ export default function Audit() {
             <TableRow>
               <TableHead className="w-6" />
               <TableHead className="whitespace-nowrap">Fecha / Hora</TableHead>
-              <TableHead>Operación</TableHead>
+              <TableHead>Código</TableHead>
+              <TableHead>Categoría</TableHead>
+              <TableHead>Acción</TableHead>
               <TableHead>Tabla</TableHead>
               <TableHead>Registro</TableHead>
               <TableHead>Usuario</TableHead>
@@ -254,9 +332,9 @@ export default function Audit() {
           </TableHeader>
           <TableBody>
             {isLoading
-              ? Array.from({ length: 8 }).map((_, i) => (
+              ? Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
@@ -264,7 +342,7 @@ export default function Audit() {
               : data?.datos.length === 0
                 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-12 text-center text-muted-foreground text-sm">
+                    <TableCell colSpan={10} className="py-12 text-center text-muted-foreground text-sm">
                       No hay eventos con los filtros actuales.
                     </TableCell>
                   </TableRow>

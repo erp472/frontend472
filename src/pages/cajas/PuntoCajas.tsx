@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   RefreshCw, AlertTriangle, Eye, Loader2, Vault, PackageCheck,
   TrendingUp, TrendingDown, ChevronDown, ChevronRight, ShieldAlert, ShoppingCart, Settings,
-  ArrowLeftRight, Copy,
+  ArrowLeftRight, Copy, UserRound,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button }    from '@/components/ui/button'
@@ -26,7 +26,7 @@ import { useSessionStore } from '@/stores/useSessionStore'
 import {
   useStatusPunto, useAbrirCajaDirecta, useCajaPadre, useHistorialSesiones, useUpdateCaja,
   useCambioCustodia, useConfirmarCustodia, useDiferenciasPendientes,
-  useAbrirSesionPrincipal, useCerrarSesionPrincipal, esCajaOperativa,
+  useAbrirSesionPrincipal, useCerrarSesionPrincipal, esCajaOperativa, useToggleServicioCaja,
   type CardAuxiliar, type PanelPunto, type TipoAlerta, type CambioCustodiaResult,
   type DiferenciaPendiente, type MedioPagoCaja,
 } from '@/queries/cajas.queries'
@@ -405,16 +405,6 @@ function PanelLateral({
   )
 }
 
-// ── Catálogo de servicios por tipo ────────────────────────────────────────────
-
-const SERVICIOS: Record<string, string[]> = {
-  pos: [
-    'Emisión Giros Nacionales', 'Pago Giros Nacionales', 'Anulación Giro Nacional',
-    'Emisión Giros Internacionales', 'Pago Giros Internacionales',
-    'Estampillas', 'Venta de Empaques', 'Certificaciones', 'Apartado Postal', 'Recaudo de Facturas',
-  ],
-}
-
 // ── CajaCard ──────────────────────────────────────────────────────────────────
 
 function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAuxiliar) => void }) {
@@ -423,7 +413,7 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
   const sinSesion = card.estado === 'sin_sesion'
   const cerrada   = card.estado === 'cerrada'
   const sinCajero = isSinCajero(card)
-  const servicios = SERVICIOS[card.tipo] ?? []
+  const servicios = (card.servicios ?? []).filter(s => s.activo)
   const noEfectivo = totalNoEfectivo(card)
 
   return (
@@ -476,6 +466,11 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
               {card.girosCount} giro{card.girosCount > 1 ? 's' : ''} · {fmt(card.girosValor)}
             </p>
           )}
+          {card.cajeroEmail && (
+            <p className="text-[10px] text-muted-foreground truncate" title={card.cajeroEmail}>
+              <UserRound className="inline size-2.5 mr-0.5 -mt-0.5" />{card.cajeroEmail}
+            </p>
+          )}
         </div>
       )}
 
@@ -484,7 +479,7 @@ function CajaCard({ card, onSelect }: { card: CardAuxiliar; onSelect: (c: CardAu
           {servicios.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {servicios.slice(0, 3).map(s => (
-                <span key={s} className="text-[10px] bg-muted rounded px-1.5 py-0.5 text-muted-foreground">{s}</span>
+                <span key={s.codigo} className="text-[10px] bg-muted rounded px-1.5 py-0.5 text-muted-foreground">{s.nombre}</span>
               ))}
               {servicios.length > 3 && (
                 <span className="text-[10px] text-muted-foreground px-1">+{servicios.length - 3} más</span>
@@ -783,7 +778,6 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
   const esCajero    = user?.rol === 'CAJERO'
   const esSupervisor = user?.rol === 'SUPERVISOR_REGIONAL' || user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL'
 
-  const [servicios,    setServicios]    = useState<string[]>([])
   const [base,         setBase]         = useState('')
   const [cajeroId,     setCajeroId]     = useState<number | undefined>(undefined)
   const [showConfig,   setShowConfig]   = useState(false)
@@ -801,11 +795,11 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
 
   const abrir      = useAbrirCajaDirecta(card?.cajaId ?? 0)
   const updateCaja = useUpdateCaja(card?.cajaId ?? 0, sucursalId)
+  const toggleServicio = useToggleServicioCaja(card?.cajaId ?? 0)
   const { data: historial } = useHistorialSesiones(card?.cajaId ?? 0)
 
   useEffect(() => {
     if (card) {
-      setServicios([...(SERVICIOS[card.tipo] ?? [])])
       setBase('')
       // Pre-select: cajeroFijo when opening a new session, otherwise the active session cajero
       setCajeroId(card.estado === 'sin_sesion'
@@ -823,7 +817,8 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
   const abierta   = card.estado === 'abierta'
   const cerrada   = card.estado === 'cerrada'
   const sinCajero = isSinCajero(card)
-  const catServ   = SERVICIOS[card.tipo] ?? []
+  const catServ   = card.servicios ?? []
+  const activos   = catServ.filter(s => s.activo).length
 
   // BR-CAJ-011: base disponible para esta apertura
   const baseDisponible  = Number(panel.baseDisponible ?? '0')
@@ -885,45 +880,58 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
         <ScrollArea className="flex-1 overflow-auto">
           <div className="px-6 py-5 space-y-5">
 
-            {/* Sin sesión: servicios + base */}
+            {/* Servicios habilitados — persisten en la caja, se editan esté abierta o cerrada */}
+            {catServ.length > 0 && esCajaOperativa(card.tipo) && (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <PackageCheck className="size-3.5" /> Productos Asignados
+                  </Label>
+                  {esSupervisor && (
+                    <div className="flex gap-2 text-[11px]">
+                      <button type="button" className="text-primary hover:underline disabled:opacity-40"
+                        disabled={toggleServicio.isPending}
+                        onClick={() => catServ.filter(s => !s.activo).forEach(s => toggleServicio.mutate({ codigo: s.codigo, activo: true }))}>
+                        Todos
+                      </button>
+                      <span className="text-muted-foreground">·</span>
+                      <button type="button" className="text-muted-foreground hover:text-foreground hover:underline disabled:opacity-40"
+                        disabled={toggleServicio.isPending}
+                        onClick={() => catServ.filter(s => s.activo).forEach(s => toggleServicio.mutate({ codigo: s.codigo, activo: false }))}>
+                        Ninguno
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                  {catServ.map(s => (
+                    <div key={s.codigo} className="flex items-center gap-2.5">
+                      <Checkbox
+                        id={`srv-${card.cajaId}-${s.codigo}`}
+                        checked={s.activo}
+                        disabled={!esSupervisor || toggleServicio.isPending}
+                        onCheckedChange={checked =>
+                          toggleServicio.mutate(
+                            { codigo: s.codigo, activo: checked === true },
+                            { onError: e => toast.error(e.message) },
+                          )
+                        }
+                      />
+                      <label htmlFor={`srv-${card.cajaId}-${s.codigo}`} className="text-sm cursor-pointer select-none leading-none">
+                        {s.nombre}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {activos} de {catServ.length} servicio{catServ.length > 1 ? 's' : ''} habilitado{activos !== 1 ? 's' : ''} para el cajero
+                </p>
+              </div>
+            )}
+
+            {/* Sin sesión: base de apertura */}
             {sinSesion && (
               <>
-                {catServ.length > 0 && (
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                        <PackageCheck className="size-3.5" /> Productos Asignados
-                      </Label>
-                      <div className="flex gap-2 text-[11px]">
-                        <button type="button" className="text-primary hover:underline"
-                          onClick={() => setServicios([...catServ])}>Todos</button>
-                        <span className="text-muted-foreground">·</span>
-                        <button type="button" className="text-muted-foreground hover:text-foreground hover:underline"
-                          onClick={() => setServicios([])}>Ninguno</button>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                      {catServ.map(s => (
-                        <div key={s} className="flex items-center gap-2.5">
-                          <Checkbox
-                            id={`srv-${card.cajaId}-${s}`}
-                            checked={servicios.includes(s)}
-                            onCheckedChange={() =>
-                              setServicios(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
-                            }
-                          />
-                          <label htmlFor={`srv-${card.cajaId}-${s}`} className="text-sm cursor-pointer select-none leading-none">
-                            {s}
-                          </label>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      {servicios.length} de {catServ.length} servicio{catServ.length > 1 ? 's' : ''} seleccionado{servicios.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                )}
-
                 <Separator />
 
                 {esSupervisor && esCajaOperativa(card.tipo) && (
@@ -1008,6 +1016,16 @@ function CajaModal({ open, onClose, card, sucursalId, sesionesAbiertas, cajaPadr
             {/* Abierta: stats */}
             {abierta && (
               <div className="space-y-4">
+                {card.cajeroNombre && (
+                  <div className="rounded-lg border px-4 py-2.5 flex items-center gap-2.5">
+                    <UserRound className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Usuario activo en la caja</p>
+                      <p className="text-sm font-medium truncate">{card.cajeroNombre}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{card.cajeroEmail}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="rounded-lg bg-muted/30 border px-4 py-4 text-center">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Efectivo en caja</p>
                   <p className="text-3xl font-bold tabular-nums mt-1">{fmtOrDash(card.saldoActual)}</p>

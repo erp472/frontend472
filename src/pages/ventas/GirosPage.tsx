@@ -30,7 +30,7 @@ import { cn }  from '@/lib/utils'
 import { toast } from 'sonner'
 import { ApiError } from '@/lib/api'
 import { useSessionStore } from '@/stores/useSessionStore'
-import { useStatusPunto } from '@/queries/cajas.queries'
+import { useStatusPunto, useServiciosCaja } from '@/queries/cajas.queries'
 import {
   EmitirNacionalSchema,
   PagarNacionalSchema,
@@ -555,7 +555,7 @@ function PagarInternacionalForm({ cajaId }: { cajaId: number }) {
 
 // ── Lista de giros en sesión ──────────────────────────────────────────────────
 
-function ListaGiros({ sesionId }: { sesionId: number | null }) {
+function ListaGiros({ sesionId, puedeAnular }: { sesionId: number | null; puedeAnular: boolean }) {
   const [anularId, setAnularId] = useState<number | null>(null)
   const { data: giros, isLoading } = useGirosBySesion(sesionId ?? undefined)
   const anular = useAnularGiro()
@@ -622,7 +622,7 @@ function ListaGiros({ sesionId }: { sesionId: number | null }) {
             </div>
             <div className="text-right shrink-0 space-y-1">
               <p className="text-sm font-semibold">{fmtCOP(g.montoTotalCop)}</p>
-              {g.estado === 'pendiente' && (
+              {g.estado === 'pendiente' && puedeAnular && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -675,6 +675,26 @@ export default function GirosPage() {
   const cajaCard = statusPunto?.cajas.find(c => c.cajaId === cajaId)
   const sesionId = cajaCard?.sesionId ?? null
 
+  const { servicioActivo } = useServiciosCaja(cajaId)
+  const opsGiro = ([
+    { value: 'emitir-nacional', label: 'Emitir Nal.',  codigo: 'giro_nacional_emision' },
+    { value: 'pagar-nacional',  label: 'Pagar Nal.',   codigo: 'giro_nacional_pago' },
+    { value: 'emitir-intl',     label: 'Emitir Intl.', codigo: 'giro_internacional_emision' },
+    { value: 'pagar-intl',      label: 'Pagar Intl.',  codigo: 'giro_internacional_pago' },
+  ] as const).filter(o => servicioActivo(o.codigo))
+
+  if (opsGiro.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+        <Ban className="size-8 opacity-30" />
+        <p className="text-sm">El supervisor inhabilitó los giros en esta caja</p>
+        <Button variant="outline" size="sm" onClick={() => navigate(`/ventas/caja/${cajaId}`)}>
+          Volver al punto de venta
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -701,12 +721,14 @@ export default function GirosPage() {
       <div className="flex flex-1 gap-0 overflow-hidden">
         {/* Panel izquierdo — operaciones */}
         <div className="flex w-full max-w-md flex-col border-r">
-          <Tabs defaultValue="emitir-nacional" className="flex flex-col flex-1 overflow-hidden">
-            <TabsList className="mx-4 mt-3 grid grid-cols-4 shrink-0">
-              <TabsTrigger value="emitir-nacional"   className="text-xs">Emitir Nal.</TabsTrigger>
-              <TabsTrigger value="pagar-nacional"    className="text-xs">Pagar Nal.</TabsTrigger>
-              <TabsTrigger value="emitir-intl"       className="text-xs">Emitir Intl.</TabsTrigger>
-              <TabsTrigger value="pagar-intl"        className="text-xs">Pagar Intl.</TabsTrigger>
+          <Tabs defaultValue={opsGiro[0].value} className="flex flex-col flex-1 overflow-hidden">
+            <TabsList
+              className="mx-4 mt-3 grid shrink-0"
+              style={{ gridTemplateColumns: `repeat(${opsGiro.length}, minmax(0, 1fr))` }}
+            >
+              {opsGiro.map(o => (
+                <TabsTrigger key={o.value} value={o.value} className="text-xs">{o.label}</TabsTrigger>
+              ))}
             </TabsList>
 
             <ScrollArea className="flex-1 px-4 pb-4">
@@ -771,7 +793,7 @@ export default function GirosPage() {
             <p className="text-sm font-medium">Giros de la sesión</p>
           </div>
           <ScrollArea className="flex-1 p-4">
-            <ListaGiros sesionId={sesionId} />
+            <ListaGiros sesionId={sesionId} puedeAnular={servicioActivo('giro_nacional_anulacion')} />
           </ScrollArea>
         </div>
       </div>

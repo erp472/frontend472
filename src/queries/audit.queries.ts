@@ -1,15 +1,28 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
+import { env } from '@/lib/env'
+
+export const ACCIONES = [
+  'CREATE', 'READ', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'PRINT', 'EXPORT', 'DENIED',
+] as const
+
+export type AuditAccion = (typeof ACCIONES)[number]
 
 export interface AuditEvento {
-  id:           number
+  id:           string
+  auditKey:     string
+  tipo:         'ADM' | 'OPE' | 'FIN' | 'CBS'
   tabla:        string
   operacion:    'INSERT' | 'UPDATE' | 'DELETE'
-  registroId:   number
+  accion:       AuditAccion
+  registroId:   string | null
   datosAntes:   Record<string, unknown> | null
   datosDespues: Record<string, unknown> | null
   ipOrigen:     string | null
-  macOrigen:    string | null
+  resultado:    'OK' | 'ERROR' | null
+  errorMsg:     string | null
+  /** Correlaciona con los cambios de fila (`db_changes`) del mismo request. */
+  requestId:    string | null
   createdAt:    string
   usuario:      { id: number; nombre: string; email: string } | null
 }
@@ -31,7 +44,7 @@ export interface AuditStatsHoy {
 
 export interface AuditParams {
   tabla?:      string
-  operacion?:  'INSERT' | 'UPDATE' | 'DELETE' | ''
+  accion?:     AuditAccion | ''
   usuario_id?: number
   desde?:      string
   hasta?:      string
@@ -45,10 +58,22 @@ export const AUDIT_KEYS = {
   stats: ()             => ['audit', 'stats'] as const,
 }
 
+export function buildAuditExportUrl(params: AuditParams = {}): string {
+  const base = env.VITE_API_URL.replace(/\/$/, '')
+  const qs = new URLSearchParams()
+  if (params.tabla)      qs.set('tabla',      params.tabla)
+  if (params.accion)     qs.set('accion',     params.accion)
+  if (params.usuario_id) qs.set('usuario_id', String(params.usuario_id))
+  if (params.desde)      qs.set('desde',      params.desde)
+  if (params.hasta)      qs.set('hasta',      params.hasta)
+  const q = qs.toString()
+  return `${base}/audit/export${q ? `?${q}` : ''}`
+}
+
 export function useAuditEventos(params: AuditParams = {}) {
   const qs = new URLSearchParams()
   if (params.tabla)      qs.set('tabla',      params.tabla)
-  if (params.operacion)  qs.set('operacion',  params.operacion)
+  if (params.accion)     qs.set('accion',     params.accion)
   if (params.usuario_id) qs.set('usuario_id', String(params.usuario_id))
   if (params.desde)      qs.set('desde',      params.desde)
   if (params.hasta)      qs.set('hasta',      params.hasta)
@@ -59,6 +84,7 @@ export function useAuditEventos(params: AuditParams = {}) {
     queryKey:        AUDIT_KEYS.list(params),
     queryFn:         () => apiFetch(`/audit?${qs.toString()}`),
     placeholderData: keepPreviousData,
+    refetchInterval: 60_000,
   })
 }
 

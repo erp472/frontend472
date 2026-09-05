@@ -19,7 +19,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { useSessionStore } from '@/stores/useSessionStore'
-import { useStatusPunto } from '@/queries/cajas.queries'
+import { useStatusPunto, useServiciosCaja } from '@/queries/cajas.queries'
 import {
   useConvenios, useRecaudosSesion, useRegistrarRecaudo, useAnularRecaudo,
   type Recaudo,
@@ -67,6 +67,7 @@ export default function RecaudosPage() {
   const sucursalId = useSessionStore(s => s.user?.sucursal_id ?? 0)
 
   const { data: status }     = useStatusPunto(sucursalId)
+  const { servicioActivo }   = useServiciosCaja(cajaId)
   const sesionActiva         = status?.cajas.find(c => c.cajaId === cajaId)
   const sesionId             = sesionActiva?.sesionId ?? 0
 
@@ -113,6 +114,16 @@ export default function RecaudosPage() {
     r.referenciaPago.toLowerCase().includes(buscar.toLowerCase()) ||
     (r.codigoBarras ?? '').toLowerCase().includes(buscar.toLowerCase())
   )
+
+  if (!servicioActivo('recaudo_facturas')) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 p-12 text-muted-foreground">
+        <XCircle className="size-8 opacity-30" />
+        <p className="text-sm">El supervisor inhabilitó el recaudo de facturas en esta caja</p>
+        <Button variant="outline" size="sm" onClick={() => navigate(-1)}>Volver</Button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-2xl mx-auto">

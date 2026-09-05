@@ -83,6 +83,9 @@ export interface CardAuxiliar {
   nombre:        string
   tipo:          TipoCaja
   cajeroId:      number | null
+  /** Quién opera la caja ahora: cajero asignado → cajero fijo → quien la abrió. */
+  cajeroNombre:  string | null
+  cajeroEmail:   string | null
   cajeroFijoId:  number | null
   estado:        EstadoCard
   /** Efectivo físico del bolsillo de este cajero (o del safe si tipo:general).
@@ -102,6 +105,58 @@ export interface CardAuxiliar {
   girosCount:    number
   girosValor:    string
   alertas:       TipoAlerta[]
+  /** Operaciones habilitadas por el supervisor en esta caja */
+  servicios:     ServicioCaja[]
+}
+
+export type ServicioCajaCodigo =
+  | 'giro_nacional_emision'
+  | 'giro_nacional_pago'
+  | 'giro_nacional_anulacion'
+  | 'giro_internacional_emision'
+  | 'giro_internacional_pago'
+  | 'estampillas'
+  | 'empaques'
+  | 'certificaciones'
+  | 'apartado_postal'
+  | 'recaudo_facturas'
+
+export interface ServicioCaja {
+  codigo: ServicioCajaCodigo
+  nombre: string
+  activo: boolean
+}
+
+/**
+ * Operaciones habilitadas en una caja, para ocultarle al cajero lo que el
+ * supervisor apagó. Mientras carga se deja pasar todo: el bloqueo real vive en el
+ * backend (403), así que un falso positivo aquí no abre un hueco de seguridad.
+ */
+export function useServiciosCaja(cajaId: number) {
+  const { data, isLoading } = useQuery({
+    queryKey:  ['cajas', 'servicios', cajaId],
+    queryFn:   () => apiFetch<ServicioCaja[]>(`/cajas/${cajaId}/servicios`),
+    enabled:   cajaId > 0,
+    staleTime: 60_000,
+  })
+
+  const servicioActivo = (codigo: ServicioCajaCodigo) =>
+    data?.find(s => s.codigo === codigo)?.activo ?? true
+
+  return { servicios: data ?? [], servicioActivo, isLoading }
+}
+
+/** El supervisor habilita/inhabilita una operación en una caja concreta. */
+export function useToggleServicioCaja(cajaId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ codigo, activo }: { codigo: ServicioCajaCodigo; activo: boolean }) =>
+      apiFetch<ServicioCaja & { cajaId: number }>(`/cajas/${cajaId}/servicios/${codigo}`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ activo }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cajas'] }),
+  })
 }
 
 export interface StatusPunto {
@@ -832,6 +887,7 @@ export interface SesionConsolidado {
   cajaNombre:     string
   sucursalNombre: string
   cajeroNombre:   string | null
+  cajeroEmail:    string | null
   total:          string
   porMedio:       Record<MedioPagoConsolidado, string>
 }
@@ -850,6 +906,63 @@ export function useConsolidadoComercio(comercioId = 1) {
     queryFn:         () => apiFetch<ConsolidadoComercio>(`/cajas/consolidado-comercio?comercioId=${comercioId}`),
     staleTime:       2 * 60_000,
     refetchInterval: 5 * 60_000,
+  })
+}
+
+// ── Histórico de movimientos — supervisión ────────────────────────────────────
+
+export type CategoriaHistorico = 'recaudos' | 'facturacion' | 'anulaciones' | 'ajustes'
+
+export interface HistoricoMovimiento {
+  id:             number
+  fecha:          string
+  categoria:      CategoriaHistorico
+  tipo:           string
+  monto:          string
+  medioPago:      string | null
+  descripcion:    string | null
+  sesionId:       number
+  sesionAbierta:  boolean
+  cajaId:         number
+  cajaNombre:     string
+  sucursalId:     number
+  sucursalNombre: string
+  regionalNombre: string
+  cajero:         string | null
+  ventaId:        number | null
+  ventaEstado:    string | null
+  puedeAnular:    boolean
+}
+
+export interface HistoricoFiltros {
+  categoria?: CategoriaHistorico
+  sucursalId?: number
+  cajaId?:    number
+  desde?:     string
+  hasta?:     string
+  pagina?:    number
+  limite?:    number
+}
+
+export interface HistoricoPage {
+  items:        HistoricoMovimiento[]
+  total:        number
+  pagina:       number
+  limite:       number
+  totalPaginas: number
+}
+
+export function useHistoricoMovimientos(filtros: HistoricoFiltros) {
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(filtros)) {
+    if (v !== undefined && v !== '') params.set(k, String(v))
+  }
+  const qs = params.toString()
+
+  return useQuery({
+    queryKey:  ['cajas', 'historico-movimientos', qs] as const,
+    queryFn:   () => apiFetch<HistoricoPage>(`/cajas/historico-movimientos?${qs}`),
+    staleTime: 30_000,
   })
 }
 

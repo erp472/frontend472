@@ -49,7 +49,7 @@ export default function Login() {
         headers: { Authorization: `Bearer ${res.access_token}` },
       }, userSchema)
 
-      if (isTauri() && WEB_ONLY_ROLES.includes(resolvedUser.rol)) {
+      if (isTauri() && !import.meta.env.DEV && WEB_ONLY_ROLES.includes(resolvedUser.rol)) {
         throw new ApiError(403, 'No esta permitido el acceso a la app de escritorio')
       }
 

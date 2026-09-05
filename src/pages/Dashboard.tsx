@@ -20,6 +20,7 @@ import { type User, useSessionStore } from '@/stores/useSessionStore'
 import { useStatusPunto, useDiferenciasPendientes, useAlertasCierreAutomatico, esCajaOperativa, type CardAuxiliar, type DiferenciaPendiente, type TipoAlerta } from '@/queries/cajas.queries'
 import { useResumenesPunto, useAlertasApartados, useAnulacionesPendientes, useVentasDia } from '@/queries/ventas.queries'
 import { useAlertasStock, useOrdenesPendientes } from '@/queries/inventario.queries'
+import { useCajasPrincipalesTesoreria, useMovimientosTesoreria } from '@/queries/tesoreria.queries'
 
 const ROL_LABELS: Record<string, string> = {
   CAJERO:              'Cajero',
@@ -769,12 +770,76 @@ function Cajero({ user }: { user: User }) {
 }
 
 function Tesoreria({ user }: { user: User }) {
+  const { data: puntos = [], isLoading } = useCajasPrincipalesTesoreria()
+  const { data: movimientos = [] }       = useMovimientosTesoreria({ limite: 5 })
+
+  const totalAsignado = puntos.reduce((n, p) => n + Number(p.baseAsignada), 0)
+  const sinApertura   = puntos.filter(p => !p.tieneApertura).length
+
   return (
-    <div className="p-6 max-w-md">
-      <Header user={user} subtitle="Gestión financiera y consignaciones" />
+    <div className="p-6 max-w-2xl space-y-5">
+      <Header user={user} subtitle="Dinero del comercio hacia las regionales" />
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Card>
+          <CardContent className="pt-4 pb-4 px-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Total asignado</p>
+            {isLoading
+              ? <Skeleton className="h-7 w-24" />
+              : <p className="text-xl font-bold tabular-nums">{fmt(totalAsignado.toFixed(2))}</p>}
+            <p className="text-[11px] text-muted-foreground mt-1">en cajas principales</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4 px-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Puntos</p>
+            <p className="text-2xl font-bold tabular-nums">{puntos.length}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">cajas principales</p>
+          </CardContent>
+        </Card>
+        <Card className={sinApertura > 0 ? 'border-amber-300' : 'border-border'}>
+          <CardContent className="pt-4 pb-4 px-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Sin apertura</p>
+            <p className={cn('text-2xl font-bold tabular-nums', sinApertura > 0 ? 'text-amber-600' : 'text-muted-foreground')}>
+              {sinApertura}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1">esperan asignación inicial</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {movimientos.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <ScrollText className="size-4 text-muted-foreground" />
+              Últimos movimientos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="rounded-lg border overflow-hidden">
+              {movimientos.map((m, i) => (
+                <div key={m.id} className={cn('flex items-center justify-between gap-2 px-3 py-2 text-[11px]', i > 0 && 'border-t')}>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{m.puntoNombre}</p>
+                    <p className="text-muted-foreground truncate">{m.codigoAprobacion}</p>
+                  </div>
+                  <span className={cn(
+                    'font-semibold tabular-nums shrink-0',
+                    m.tipo === 'egreso' ? 'text-red-600' : m.tipo === 'ingreso' ? 'text-emerald-600' : '',
+                  )}>
+                    {m.tipo === 'egreso' ? '−' : m.tipo === 'ingreso' ? '+' : ''}{fmt(m.monto)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
-        <QuickCard to="/cajas"    icon={Vault}     title="Cajas"    description="Ver estado de cajas" />
-        <QuickCard to="/reportes" icon={BarChart2} title="Reportes" description="Reportes financieros" />
+        <QuickCard to="/tesoreria/cajas-principales" icon={Vault}      title="Cajas principales"       description="Apertura, ingresos y egresos por punto" />
+        <QuickCard to="/tesoreria/movimientos"       icon={ScrollText} title="Historial de movimientos" description="Todo lo girado del comercio a las regionales" />
       </div>
     </div>
   )

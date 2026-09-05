@@ -504,6 +504,22 @@ export function useAnularVenta(ventaId: number, cajaId: number) {
   })
 }
 
+/** El histórico lista ventas de muchas cajas, así que la venta y la caja llegan por
+ *  llamada en vez de fijarse al montar el hook como en `useAnularVenta`. */
+export function useAnularVentaDesdeHistorico() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ventaId, cajaId, motivo }: { ventaId: number; cajaId: number; motivo: string }) =>
+      apiFetch<Venta>(`/ventas/${ventaId}/anular?cajaId=${cajaId}`, {
+        method: 'POST',
+        body:   JSON.stringify({ motivo }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cajas'] })
+    },
+  })
+}
+
 export function useContratarApartado(cajaId: number) {
   const qc = useQueryClient()
   return useMutation({

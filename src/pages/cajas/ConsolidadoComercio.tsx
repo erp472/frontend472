@@ -3,7 +3,10 @@ import { useState } from 'react'
 import { Button }   from '@/components/ui/button'
 import { Badge }    from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useConsolidadoComercio, type MedioPagoConsolidado, type SesionConsolidado } from '@/queries/cajas.queries'
+import HistoricoMovimientos from './HistoricoMovimientos'
+import { useSessionStore } from '@/stores/useSessionStore'
 
 const COP = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 const fmt = (v: string | null | undefined) => v ? COP.format(Number(v)) : '$0'
@@ -50,8 +53,13 @@ function SesionRow({ sesion, globalTotal }: { sesion: SesionConsolidado; globalT
         </div>
         {sesion.cajeroNombre && (
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
-            <UserRound className="size-3" />
-            <span className="truncate max-w-32">{sesion.cajeroNombre}</span>
+            <UserRound className="size-3 shrink-0" />
+            <div className="min-w-0 text-left">
+              <p className="truncate max-w-40">{sesion.cajeroNombre}</p>
+              {sesion.cajeroEmail && (
+                <p className="truncate max-w-40 text-[10px]">{sesion.cajeroEmail}</p>
+              )}
+            </div>
           </div>
         )}
         <div className="text-right shrink-0 ml-2">
@@ -94,6 +102,9 @@ function SesionRow({ sesion, globalTotal }: { sesion: SesionConsolidado; globalT
 
 export default function ConsolidadoComercio() {
   const { data, isLoading, isError, refetch, isFetching } = useConsolidadoComercio()
+  // El backend recorta el consolidado a la regional del supervisor, así que el rótulo
+  // "todas las regionales" mentiría sobre lo que está viendo.
+  const esSupervisor = useSessionStore(s => s.user?.rol) === 'SUPERVISOR_REGIONAL'
 
   if (isLoading) {
     return (
@@ -140,10 +151,18 @@ export default function ConsolidadoComercio() {
         </Button>
       </div>
 
+      <Tabs defaultValue="resumen">
+        <TabsList>
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="historico">Histórico</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="resumen" className="space-y-6">
+
       {/* Total general */}
       <div className="rounded-xl border bg-card p-6 text-center space-y-1 shadow-sm">
         <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-center gap-1.5">
-          <TrendingUp className="size-3.5" /> Total recaudado (todas las regionales)
+          <TrendingUp className="size-3.5" /> Total recaudado ({esSupervisor ? 'tu regional' : 'todas las regionales'})
         </p>
         <p className="text-4xl font-bold tabular-nums">{fmt(data.total)}</p>
         {data.numRegionales === 0 && (
@@ -207,6 +226,13 @@ export default function ConsolidadoComercio() {
           {MEDIOS.length - mediosConMonto.length} medio{MEDIOS.length - mediosConMonto.length !== 1 ? 's' : ''} sin movimiento hoy
         </p>
       )}
+
+        </TabsContent>
+
+        <TabsContent value="historico">
+          <HistoricoMovimientos />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -211,7 +211,7 @@ const ESTADO_FILTROS: { value: EstadoStock | ''; label: string }[] = [
 
 // ── Tabla de stock ────────────────────────────────────────────────────────────
 
-const ROLES_WRITE = ['INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']
+const ROLES_WRITE = ['INVENTARIOS', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']
 
 function StockTable({ sucursalId, canWrite }: { sucursalId: number; canWrite: boolean }) {
   const [buscar,        setBuscar]        = useState('')

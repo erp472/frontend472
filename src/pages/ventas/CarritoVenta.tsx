@@ -82,7 +82,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAcceso } from '@/hooks/useAcceso'
 import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { useAsignarCajero, useCaja, useStatusPunto } from '@/queries/cajas.queries'
+import { useAsignarCajero, useCaja, useStatusPunto, useServiciosCaja } from '@/queries/cajas.queries'
 import {
   type Cliente,
   type TipoDocumento,
@@ -1209,6 +1209,20 @@ function TabProductos({
   const [seleccionado, setSeleccionado] = useState<ProductoSeleccionado | null>(null)
   const [cantidadStr, setCantidadStr] = useState('1')
 
+  const { servicioActivo } = useServiciosCaja(cajaId)
+  const tiposProducto = TIPOS_PRODUCTO.filter((t) => {
+    if (t.value === 'empaque') return servicioActivo('empaques')
+    if (t.value === 'estampilla' || t.value === 'filatelia') return servicioActivo('estampillas')
+    return true
+  })
+
+  // Si el supervisor apaga el tipo que el cajero tenía abierto, caer al primero visible
+  useEffect(() => {
+    if (tiposProducto.length > 0 && !tiposProducto.some((t) => t.value === tipoFiltro)) {
+      setTipoFiltro(tiposProducto[0].value)
+    }
+  }, [tiposProducto, tipoFiltro])
+
   const { data: catalogo, isLoading } = useCatalogoProductos(sucursalId, tipoFiltro)
   const agregar = useAgregarProducto(ventaId ?? 0, cajaId)
 
@@ -1335,7 +1349,7 @@ function TabProductos({
       </div>
       {/* Tipo filter */}
       <div className="flex gap-1.5 px-3 py-2 overflow-x-auto border-b shrink-0 scrollbar-none">
-        {TIPOS_PRODUCTO.map((t) => (
+        {tiposProducto.map((t) => (
           <button
             key={t.value}
             type="button"
@@ -3339,8 +3353,13 @@ function TabMasivos({
     }
   }, [crearOpen, clienteData?.id])
 
+  // Los servicios certificados cobran valorCertificacion; sin ese servicio el
+  // backend rechaza la venta, así que no se ofrecen.
+  const { servicioActivo } = useServiciosCaja(cajaId)
   const serviciosFiltrados = servicios?.filter(
-    (s: ServicioCatalogo) => s.tipo !== 'apartado_postal',
+    (s: ServicioCatalogo) =>
+      s.tipo !== 'apartado_postal' &&
+      (servicioActivo('certificaciones') || !s.codigo.endsWith('-CERT')),
   )
   const puedeCrear = servicioId > 0 && remNombre.trim().length > 0
 
@@ -4808,8 +4827,13 @@ function TabServiciosPostales({
   const pesoKg = Number(pesoGramos) / 1000
 
   const { data: servicios, isLoading: loadingServicios } = useServiciosPostales(sucursalId)
+  // Los servicios certificados cobran valorCertificacion; sin ese servicio el
+  // backend rechaza la venta, así que no se ofrecen.
+  const { servicioActivo } = useServiciosCaja(cajaId)
   const serviciosFiltrados = servicios?.filter(
-    (s: ServicioCatalogo) => s.tipo !== 'apartado_postal',
+    (s: ServicioCatalogo) =>
+      s.tipo !== 'apartado_postal' &&
+      (servicioActivo('certificaciones') || !s.codigo.endsWith('-CERT')),
   )
   const selectedService = serviciosFiltrados?.find((s: ServicioCatalogo) => s.id === servicioId)
   const esInternacional = pais !== 'CO'
@@ -6083,6 +6107,12 @@ function TabResumenPago({
 
   const confirmar = useConfirmarVenta(ventaId ?? 0, cajaId)
   const anular    = useAnularVenta(ventaId ?? 0, cajaId)
+
+  // El preporteado se paga con estampillas: sin ese servicio no es un medio válido
+  const { servicioActivo } = useServiciosCaja(cajaId)
+  const mediosPago = MEDIOS_PAGO.filter(
+    (m) => m.value !== 'estampilla' || servicioActivo('estampillas'),
+  )
   // Limpiar lista de estampillas al cambiar medio de pago
   useEffect(() => {
     setStampsList([])
@@ -6479,7 +6509,7 @@ function TabResumenPago({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MEDIOS_PAGO.map((m) => (
+              {mediosPago.map((m) => (
                 <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
               ))}
             </SelectContent>
@@ -7026,6 +7056,12 @@ function PagarDialog({
   const [preporteadoMonto, setPreporteadoMonto] = useState('')
   const [email, setEmail] = useState(clienteEmail ?? '')
   const confirmar = useConfirmarVenta(ventaId, cajaId)
+
+  const { servicioActivo } = useServiciosCaja(cajaId)
+  const mediosPago = MEDIOS_PAGO.filter(
+    (m) => m.value !== 'estampilla' || servicioActivo('estampillas'),
+  )
+
   const { data: estampillasDisponibles } = useEstampillasDisponibles(
     (medioPago === 'preporteado' || medioPago === 'mixto_preporteado') ? cajaId : null,
   )
@@ -7148,7 +7184,7 @@ function PagarDialog({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MEDIOS_PAGO.map((m) => (
+              {mediosPago.map((m) => (
                 <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
               ))}
             </SelectContent>
@@ -7359,12 +7395,16 @@ export default function CarritoVenta() {
   const cajaId = Number(cajaIdStr) || 0
 
   const { flags, flagsLoading } = useAcceso()
+  const { servicioActivo } = useServiciosCaja(cajaId)
+  const apartadoActivo = servicioActivo('apartado_postal')
   const tabs = useMemo(
     () =>
       flagsLoading
         ? []
-        : ALL_TABS.filter((t) => !t.flag || (flags?.some((f) => f.codigo === t.flag) ?? false)),
-    [flags, flagsLoading],
+        : ALL_TABS
+            .filter((t) => !t.flag || (flags?.some((f) => f.codigo === t.flag) ?? false))
+            .filter((t) => t.value !== 'apartado' || apartadoActivo),
+    [flags, flagsLoading, apartadoActivo],
   )
 
   const { data: caja } = useCaja(cajaId)

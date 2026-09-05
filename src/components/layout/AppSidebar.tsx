@@ -9,6 +9,7 @@ import {
   Building,
   Store,
   Package,
+  Boxes,
   Layers,
   Truck,
   ToggleLeft,
@@ -17,6 +18,7 @@ import {
   Vault,
   UserRound,
   Tag,
+  Tags,
   ReceiptText,
   ShoppingCart,
   BarChart2,
@@ -28,6 +30,7 @@ import {
   BookOpen,
   SlidersHorizontal,
   Archive,
+  Landmark,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -100,20 +103,35 @@ const navMain: NavGroup[] = [
       { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_sucursales' },
       { title: 'Cajas auxiliares', url: '/admin/puntos-venta', icon: ReceiptText,        roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_cajas'      },
       { title: 'Bases de caja',   url: '/admin/cajas-config', icon: SlidersHorizontal, roles: ['ADMIN_SISTEMA'] },
-      { title: 'Consolidado',     url: '/cajas/consolidado',  icon: TrendingUp,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA'],                          flag: 'modulo:tesoreria'  },
+      { title: 'Consolidado',     url: '/cajas/consolidado',  icon: TrendingUp,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'TESORERIA'],   flag: 'modulo:tesoreria'  },
       { title: 'Equipos',         url: '/admin/devices',      icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_equipos'    },
     ],
   },
   {
     label: 'Inventario',
     items: [
-      { title: 'Stock',      url: '/inventario',                 icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'INVENTARIOS'], flag: 'modulo_inventario' },
-      { title: 'Productos',  url: '/admin/productos',            icon: Package,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
-      { title: 'Estampillas', url: '/admin/estampillas',         icon: Stamp,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
-      { title: 'Filatelia',   url: '/admin/filatelia',           icon: BookOpen, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_productos'  },
-      { title: 'Productos Especiales', url: '/admin/productos-especiales', icon: Layers, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_productos' },
-      { title: 'Servicios',  url: '/admin/servicios',            icon: Truck,    roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                       flag: 'modulo_servicios'  },
-      { title: 'Apartados',  url: '/admin/apartados',            icon: MailOpen, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+      {
+        title:        'Stock',
+        url:          '/inventario',
+        icon:         Boxes,
+        activePrefix: '/inventario',
+        flag:         'modulo_inventario',
+        roles:        ['CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL'],
+      },
+      {
+        title:  'Catálogo',
+        icon:   Tags,
+        flag:   'modulo_productos',
+        roles:  ['INVENTARIOS', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL'],
+        children: [
+          { title: 'Productos',  url: '/admin/productos',            icon: Package,  flag: 'modulo_productos' },
+          { title: 'Estampillas', url: '/admin/estampillas',         icon: Stamp,    flag: 'modulo_productos' },
+          { title: 'Filatelia',  url: '/admin/filatelia',            icon: BookOpen, flag: 'modulo_productos' },
+          { title: 'Especiales', url: '/admin/productos-especiales', icon: Layers,   flag: 'modulo_productos' },
+          { title: 'Servicios',  url: '/admin/servicios',            icon: Truck,    flag: 'modulo_servicios' },
+          { title: 'Apartados',  url: '/admin/apartados',            icon: MailOpen  },
+        ],
+      },
     ],
   },
   {
@@ -125,11 +143,22 @@ const navMain: NavGroup[] = [
         activePrefix: '/cajas',
         permiso:      'caja:consultar',
         flag:         'modulo:caja',
-        roles:        ['SUPERVISOR_REGIONAL', 'TESORERIA'],
+        roles:        ['SUPERVISOR_REGIONAL'],
         children: [
           { title: 'Panel principal',   url: '/cajas',          icon: LayoutDashboard, permiso: 'caja:consultar' },
           { title: 'Alertas de cierre', url: '/cajas/cierre',  icon: Bell,            permiso: 'caja:consultar' },
           { title: 'Sacas',             url: '/cajas/sacas/0', icon: Archive,          permiso: 'caja:consultar' },
+        ],
+      },
+      {
+        title:        'Tesorería',
+        icon:         Landmark,
+        activePrefix: '/tesoreria',
+        flag:         'modulo:tesoreria',
+        roles:        ['TESORERIA', 'ADMIN_SISTEMA'],
+        children: [
+          { title: 'Cajas principales',       url: '/tesoreria/cajas-principales', icon: Vault },
+          { title: 'Historial de movimientos', url: '/tesoreria/movimientos',      icon: ScrollText },
         ],
       },
       {
@@ -164,7 +193,9 @@ const navMain: NavGroup[] = [
   {
     label: 'Reportes',
     items: [
-      { title: 'Reportes', url: '/reportes', icon: BarChart2, activePrefix: '/reportes' },
+      // Tesorería queda fuera: su navegación se limita a las cajas principales y su historial.
+      { title: 'Reportes', url: '/reportes', icon: BarChart2, activePrefix: '/reportes',
+        roles: ['USUARIO_POST', 'CAJERO', 'ADMINISTRATIVO', 'INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_NACIONAL', 'ADMIN_SISTEMA'] },
     ],
   },
   {

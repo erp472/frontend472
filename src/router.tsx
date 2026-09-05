@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Monitor, ToggleLeft, ClipboardList, Vault, Globe } from 'lucide-react'
+import { Monitor, ToggleLeft, Vault, Globe } from 'lucide-react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
 import { LabGuard } from '@/components/layout/LabGuard'
 import { isTauri } from '@/lib/tauri'
@@ -37,6 +37,8 @@ const DetalleCajaPage          = lazy(() => import('@/pages/cajas/DetalleCaja'))
 const AlertasCierrePage        = lazy(() => import('@/pages/cajas/AlertasCierre'))
 const RegistroDiferenciasPage  = lazy(() => import('@/pages/cajas/RegistroDiferencias'))
 const ConsolidadoComercioPage  = lazy(() => import('@/pages/cajas/ConsolidadoComercio'))
+const CajasPrincipalesTesoreriaPage = lazy(() => import('@/pages/tesoreria/CajasPrincipalesTesoreria'))
+const HistorialMovimientosPage      = lazy(() => import('@/pages/tesoreria/HistorialMovimientos'))
 const PuntoVentasPage       = lazy(() => import('@/pages/ventas/PuntoVentas'))
 const DashboardVentasPage   = lazy(() => import('@/pages/ventas/DashboardVentas'))
 const CarritoVentaPage      = lazy(() => import('@/pages/ventas/CarritoVenta'))
@@ -136,23 +138,6 @@ function Forbidden() {
         <div className="text-5xl font-bold text-muted-foreground/40">403</div>
         <h1 className="text-xl font-semibold">Sin permisos</h1>
         <p className="text-muted-foreground text-sm">Tu rol no tiene acceso a esta sección.</p>
-      </div>
-    </div>
-  )
-}
-
-// ── Pantalla auditoría (próximamente) ────────────────────────────────────────
-function AuditComingSoon() {
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center p-8 text-center">
-      <div className="max-w-sm space-y-4">
-        <div className="flex justify-center">
-          <ClipboardList className="h-16 w-16 text-muted-foreground/40" />
-        </div>
-        <h1 className="text-xl font-semibold">Auditoría</h1>
-        <p className="text-muted-foreground text-sm">
-          El módulo de auditoría está en desarrollo. Pronto podrás consultar el historial completo de acciones del sistema.
-        </p>
       </div>
     </div>
   )
@@ -378,7 +363,7 @@ export const router = createBrowserRouter(
 
                 // Dashboard Gerencia — consolidado por comercio
                 {
-                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA']} />,
+                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'TESORERIA']} />,
                   children: [
                     {
                       element: <FlagGuard flag="modulo:tesoreria" />,
@@ -389,9 +374,23 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Cajas — caja principal: SUPERVISOR_REGIONAL, TESORERIA
+                // Tesorería — tramo comercio → regional (asignación a cajas principales)
                 {
-                  element: <RoleGuard roles={['SUPERVISOR_REGIONAL', 'TESORERIA']} />,
+                  element: <RoleGuard roles={['TESORERIA', 'ADMIN_SISTEMA']} />,
+                  children: [
+                    {
+                      element: <FlagGuard flag="modulo:tesoreria" />,
+                      children: [
+                        { path: '/tesoreria/cajas-principales', element: lazySuspense(CajasPrincipalesTesoreriaPage) },
+                        { path: '/tesoreria/movimientos',       element: lazySuspense(HistorialMovimientosPage) },
+                      ],
+                    },
+                  ],
+                },
+
+                // Cajas — caja principal: SUPERVISOR_REGIONAL
+                {
+                  element: <RoleGuard roles={['SUPERVISOR_REGIONAL']} />,
                   children: [
                     {
                       element: <PermisoGuard permiso="caja:consultar" />,

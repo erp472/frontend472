@@ -20,7 +20,7 @@ import {
   useSaldoSesion, useMovimientos, useCerrarAuxiliar,
   useRegistrarDiferencia, useCaja, useStatusPunto,
   useCambioCustodia, useConfirmarCustodia, useMedioPagoAuxiliar, useTrasladoBoveda,
-  type Movimiento, type CambioCustodiaResult,
+  type Movimiento, type CambioCustodiaResult, type Denominacion,
 } from '@/queries/cajas.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -239,9 +239,18 @@ function TabCierre({ sesionId, saldoEsperado }: { sesionId: number; saldoEsperad
 
   const setVal = (k: string, v: string) => setCantidades(p => ({ ...p, [k]: Number(v) || 0 }))
 
+  // RF-3.01: el backend rechaza el cierre sin desglose físico. Esta pantalla ya lo
+  // captura, así que se envía tal cual en vez de recalcular el total en el servidor.
+  const denominaciones: Denominacion[] = [
+    ...BILLETES.map(b => ({ denominacion: b, tipo: 'billete' as const, cantidad: cantidades[`b${b}`] ?? 0 })),
+    ...MONEDAS.map(m  => ({ denominacion: m, tipo: 'moneda'  as const, cantidad: cantidades[`m${m}`] ?? 0 })),
+  ]
+    .filter(d => d.cantidad > 0)
+    .map(d => ({ ...d, valorTotal: d.denominacion * d.cantidad }))
+
   function handleCierre() {
     cerrar.mutate(
-      { totalArqueo: String(totalArqueo) },
+      { totalArqueo: totalArqueo.toFixed(2), denominaciones },
       {
         onSuccess: () => toast.success('Caja cerrada correctamente'),
         onError:   e => toast.error(e.message),
