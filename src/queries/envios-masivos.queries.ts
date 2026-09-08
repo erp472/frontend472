@@ -34,10 +34,18 @@ export interface ItemMasivoCalculo {
   valorTotal:       number
 }
 
+export interface ItemMasivoGuia {
+  numeroGuia:         string
+  estado:             string
+  valorCertificacion: number
+}
+
 export interface ItemMasivo {
   id:      number
   fila:    number
   envioId: number | null
+  // populated after lote is confirmed
+  guia?:   ItemMasivoGuia | null
   // null = usa el remitente del lote al confirmar
   remitente?: RemitentePayload | null
   destinatario: {

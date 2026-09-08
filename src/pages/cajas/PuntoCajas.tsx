@@ -1303,7 +1303,7 @@ export default function PuntoCajas() {
   const { data: diferenciasPendientes = [] } = useDiferenciasPendientes(id)
   const user = useSessionStore(s => s.user)
 
-  const [cajaTarget, setCajaTarget] = useState<CardAuxiliar | null>(null)
+  const [cajaTargetId, setCajaTargetId] = useState<number | null>(null)
 
   if (isLoading) {
     return (
@@ -1332,6 +1332,10 @@ export default function PuntoCajas() {
   const cajaFuerte    = data.cajas.find(c => c.tipo === 'general')
   const totalAlertas  = cajas.reduce((a, c) => a + c.alertas.length, 0) + diferenciasPendientes.length
   const totalAbiertas = cajas.filter(c => c.estado === 'abierta').length
+  // Derivar siempre del snapshot fresco del query — evita mostrar servicios/estado stale en el modal
+  const cajaTarget    = cajaTargetId != null
+    ? (cajas.find(c => c.cajaId === cajaTargetId) ?? (cajaFuerte?.cajaId === cajaTargetId ? cajaFuerte : null))
+    : null
 
   return (
     <div className="flex flex-col h-full">
@@ -1386,7 +1390,7 @@ export default function PuntoCajas() {
         <div className="flex-1 overflow-auto p-5">
           {cajas.length > 0 ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              {cajas.map(c => <CajaCard key={c.cajaId} card={c} onSelect={setCajaTarget} />)}
+              {cajas.map(c => <CajaCard key={c.cajaId} card={c} onSelect={c => setCajaTargetId(c.cajaId)} />)}
             </div>
           ) : (
             <div className="py-20 text-center text-sm text-muted-foreground">
@@ -1409,8 +1413,8 @@ export default function PuntoCajas() {
       </div>
 
       <CajaModal
-        open={!!cajaTarget}
-        onClose={() => setCajaTarget(null)}
+        open={!!cajaTargetId}
+        onClose={() => setCajaTargetId(null)}
         card={cajaTarget}
         sucursalId={id}
         cajaPadreId={data.cajaPadreId}

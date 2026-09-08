@@ -135,6 +135,41 @@ export interface Envio {
   loteMasivoId?: number | null
 }
 
+export interface EnvioDetalle {
+  idenvios:                         number
+  numero_guiaenvios:                string
+  estadoenvios:                     string
+  remitente_nombreenvios:           string | null
+  remitente_documentoenvios:        string | null
+  remitente_emailenvios:            string | null
+  remitente_telefonoenvios:         string | null
+  remitente_direccionenvios:        string | null
+  remitente_ciudadenvios:           string | null
+  remitente_departamentoenvios:     string | null
+  remitente_codigo_postalenvios:    string | null
+  destinatario_nombreenvios:        string | null
+  destinatario_documentoenvios:     string | null
+  destinatario_emailenvios:         string | null
+  destinatario_telefonoenvios:      string | null
+  destinatario_direccionenvios:     string | null
+  destinatario_ciudadenvios:        string | null
+  destinatario_departamentoenvios:  string | null
+  destinatario_codigo_postalenvios: string | null
+  destinatario_paisenvios:          string
+}
+
+export interface ActualizarDireccionEnvioPayload {
+  destinatarioNombre?:       string
+  destinatarioDocumento?:    string | null
+  destinatarioTelefono?:     string | null
+  destinatarioEmail?:        string | null
+  destinatarioDireccion?:    string | null
+  destinatarioCiudad?:       string | null
+  destinatarioDepartamento?: string | null
+  destinatarioCodigoPostal?: string | null
+  destinatarioPais?:         string
+}
+
 export interface GuiaPersona {
   nombre: string | null; documento: string | null
   telefono: string | null; email: string | null
@@ -826,4 +861,73 @@ export async function abrirReciboPdf(ventaId: number, efectivoRecibido?: number)
   // Liberar el object URL después de que el browser lo cargue
   win?.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
   if (!win) URL.revokeObjectURL(url)
+}
+
+// ── Reporte histórico ─────────────────────────────────────────────────────────
+
+export interface VentaHistorico {
+  id:           number
+  sesionCajaId: number
+  clienteId:    number | null
+  subtotal:     number
+  descuento:    number
+  iva:          number
+  total:        number
+  medioPago:    MedioPagoVenta
+  estado:       EstadoVenta
+  createdAt:    string
+  detalle:      DetalleVenta[]
+  envios:       Envio[]
+}
+
+export interface VentasHistoricoResult {
+  total:        number
+  pagina:       number
+  totalPaginas: number
+  datos:        VentaHistorico[]
+}
+
+export function useVentasHistorico(params: {
+  fechaInicio: string
+  fechaFin:    string
+  sucursalId?: number
+  cajaId?:     number
+  page?:       number
+  limit?:      number
+}) {
+  const { fechaInicio, fechaFin, sucursalId, cajaId, page = 1, limit = 20 } = params
+  const qs = new URLSearchParams({ fechaInicio, fechaFin, page: String(page), limit: String(limit) })
+  if (sucursalId) qs.set('sucursalId', String(sucursalId))
+  if (cajaId)     qs.set('cajaId',     String(cajaId))
+
+  return useQuery({
+    queryKey: ['ventas', 'historico', { fechaInicio, fechaFin, sucursalId, cajaId, page, limit }] as const,
+    queryFn:  () => apiFetch<VentasHistoricoResult>(`/ventas/reporte/historico?${qs}`),
+    enabled:  Boolean(fechaInicio && fechaFin),
+    staleTime: 2 * 60_000,
+  })
+}
+
+export function useEnvioDetalle(envioId: number | null) {
+  return useQuery({
+    queryKey: ['ventas', 'envio', envioId] as const,
+    queryFn:  () => apiFetch<EnvioDetalle>(`/ventas/envios/${envioId}`),
+    enabled:  envioId !== null && envioId > 0,
+    staleTime: 30_000,
+  })
+}
+
+export function useActualizarDireccionEnvio() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ envioId, datos }: { envioId: number; datos: ActualizarDireccionEnvioPayload }) =>
+      apiFetch<{ idenvios: number; numero_guiaenvios: string; estadoenvios: string }>(
+        `/ventas/envios/${envioId}/direccion`,
+        { method: 'PATCH', body: JSON.stringify(datos) },
+      ),
+    onSuccess: (_r, { envioId }) => {
+      qc.invalidateQueries({ queryKey: ['ventas', 'envio', envioId] })
+      qc.invalidateQueries({ queryKey: ['ventas', 'historico'] })
+    },
+  })
 }

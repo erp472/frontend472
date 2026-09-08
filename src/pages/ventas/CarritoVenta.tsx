@@ -2990,11 +2990,10 @@ function LoteDetalle({
   const enCarrito      = isConfirmado && !!lote && !lote.cobrado
   const puedeEliminar  = lote?.estado === 'borrador' || lote?.estado === 'anulado'
 
-  const handleDescargarGuia = async (envioId: number) => {
-    if (!token) { toast.error('Sin sesión'); return }
+  const handleDescargarGuia = async (envioId: number, numeroGuia?: string) => {
     setDescargando(envioId)
     try {
-      await descargarGuiaEnvioPdf(envioId, token)
+      await descargarGuiaEnvioPdf(envioId, numeroGuia)
     } catch {
       toast.error('No se pudo descargar la guía')
     } finally {
@@ -3199,6 +3198,11 @@ function LoteDetalle({
                           ? <span className="italic">↑ {item.remitente.nombre}{item.remitente.ciudad ? ` · ${item.remitente.ciudad}` : ''}</span>
                           : [item.destinatario.ciudad, item.destinatario.pais].filter(Boolean).join(', ')}
                       </p>
+                      {item.guia?.numeroGuia && (
+                        <p className="text-[10px] font-mono text-blue-600 dark:text-blue-400 mt-0.5">
+                          {item.guia.numeroGuia}
+                        </p>
+                      )}
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{item.calculo.pesoFisicoKg}kg</td>
                     <td className="px-2 py-2 text-right tabular-nums font-semibold">{fmtCop(item.calculo.valorTotal)}</td>
@@ -3221,8 +3225,8 @@ function LoteDetalle({
                           size="icon"
                           className="size-6"
                           disabled={descargando === item.envioId}
-                          onClick={() => handleDescargarGuia(item.envioId!)}
-                          title="Descargar guía PDF"
+                          onClick={() => handleDescargarGuia(item.envioId!, item.guia?.numeroGuia ?? undefined)}
+                          title={item.guia?.numeroGuia ? `Descargar guía ${item.guia.numeroGuia}` : 'Descargar guía PDF'}
                         >
                           {descargando === item.envioId
                             ? <Loader2 className="size-3 animate-spin" />
@@ -3355,10 +3359,13 @@ function TabMasivos({
 
   // Los servicios certificados cobran valorCertificacion; sin ese servicio el
   // backend rechaza la venta, así que no se ofrecen.
+  // Masivos es siempre nacional/preporteado — excluir servicios internacionales.
   const { servicioActivo } = useServiciosCaja(cajaId)
   const serviciosFiltrados = servicios?.filter(
     (s: ServicioCatalogo) =>
       s.tipo !== 'apartado_postal' &&
+      s.tipo !== 'internacional_ms' &&
+      s.tipo !== 'internacional_courier' &&
       (servicioActivo('certificaciones') || !s.codigo.endsWith('-CERT')),
   )
   const puedeCrear = servicioId > 0 && remNombre.trim().length > 0
@@ -4830,13 +4837,19 @@ function TabServiciosPostales({
   // Los servicios certificados cobran valorCertificacion; sin ese servicio el
   // backend rechaza la venta, así que no se ofrecen.
   const { servicioActivo } = useServiciosCaja(cajaId)
+  const esInternacional = pais !== 'CO'
   const serviciosFiltrados = servicios?.filter(
     (s: ServicioCatalogo) =>
       s.tipo !== 'apartado_postal' &&
-      (servicioActivo('certificaciones') || !s.codigo.endsWith('-CERT')),
+      (servicioActivo('certificaciones') || !s.codigo.endsWith('-CERT')) &&
+      (esInternacional
+        ? s.tipo === 'internacional_ms' || s.tipo === 'internacional_courier'
+        : s.tipo === 'nacional'),
   )
   const selectedService = serviciosFiltrados?.find((s: ServicioCatalogo) => s.id === servicioId)
-  const esInternacional = pais !== 'CO'
+
+  // Reset servicio when switching between national/international to avoid stale type
+  useEffect(() => { setServicioId(0) }, [esInternacional])
 
   // El borrador imprime el punto de admisión igual que la guía final.
   const { data: sucursal } = usePuntoAdmision(sucursalId)
@@ -5208,24 +5221,38 @@ function TabServiciosPostales({
                         </SelectTrigger>
                         <SelectContent>
                           {(() => {
-                            const noPrior =
-                              serviciosFiltrados?.filter((s: ServicioCatalogo) =>
-                                s.codigo.startsWith('NP-'),
-                              ) ?? []
-                            const prior =
-                              serviciosFiltrados?.filter((s: ServicioCatalogo) =>
-                                s.codigo.startsWith('P-'),
-                              ) ?? []
-                            const otros =
-                              serviciosFiltrados?.filter(
-                                (s: ServicioCatalogo) =>
-                                  !s.codigo.startsWith('NP-') && !s.codigo.startsWith('P-'),
-                              ) ?? []
                             const item = (s: ServicioCatalogo) => (
                               <SelectItem key={s.id} value={String(s.id)} className="text-xs">
                                 {s.nombre}
                               </SelectItem>
                             )
+                            if (esInternacional) {
+                              const ems = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.tipo === 'internacional_ms') ?? []
+                              const courier = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.tipo === 'internacional_courier') ?? []
+                              return (
+                                <>
+                                  {ems.length > 0 && (
+                                    <SelectGroup>
+                                      <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        Correo prioritario (EMS)
+                                      </SelectLabel>
+                                      {ems.map(item)}
+                                    </SelectGroup>
+                                  )}
+                                  {courier.length > 0 && (
+                                    <SelectGroup>
+                                      <SelectLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        Courier internacional
+                                      </SelectLabel>
+                                      {courier.map(item)}
+                                    </SelectGroup>
+                                  )}
+                                </>
+                              )
+                            }
+                            const noPrior = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.codigo.startsWith('NP-')) ?? []
+                            const prior = serviciosFiltrados?.filter((s: ServicioCatalogo) => s.codigo.startsWith('P-')) ?? []
+                            const otros = serviciosFiltrados?.filter((s: ServicioCatalogo) => !s.codigo.startsWith('NP-') && !s.codigo.startsWith('P-')) ?? []
                             return (
                               <>
                                 {noPrior.length > 0 && (
@@ -5940,10 +5967,9 @@ function TabHistorial({ cajaId, userRol }: { cajaId: number; userRol: string }) 
   }
 
   const handleDescargarPdf = async (envioId: number) => {
-    if (!token) { toast.error('Sin sesión'); return }
     setDescargandoPdf(envioId)
     try {
-      await descargarGuiaEnvioPdf(envioId, token)
+      await descargarGuiaEnvioPdf(envioId)
     } catch {
       toast.error('No se pudo descargar la guía PDF')
     } finally {

@@ -15,6 +15,8 @@ type RealtimeEvent =
   | 'inventario.ajuste'
   | 'sacas.cerrada'
   | 'envios-masivos.confirmado'
+  | 'audit.event'
+  | 'security.alert'
   | 'connection.ack'
   | string
 
@@ -81,6 +83,16 @@ function handleEvent(event: RealtimeEvent, _data: unknown) {
 
     case 'envios-masivos.confirmado':
       queryClient.invalidateQueries({ queryKey: ['envios-masivos'] })
+      break
+
+    case 'audit.event':
+      queryClient.invalidateQueries({ queryKey: ['audit', 'list'] })
+      queryClient.invalidateQueries({ queryKey: ['audit', 'stats'] })
+      break
+
+    case 'security.alert':
+      queryClient.invalidateQueries({ queryKey: ['security', 'alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['security', 'stats'] })
       break
 
     default:

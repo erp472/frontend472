@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { FileText, Printer, Clock, BarChart3 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { FileText, Printer, Clock, BarChart3, Download, ChevronLeft, ChevronRight, Pencil, Loader2 } from 'lucide-react'
 import { Button }    from '@/components/ui/button'
 import { Badge }     from '@/components/ui/badge'
 import { Skeleton }  from '@/components/ui/skeleton'
@@ -10,6 +10,9 @@ import {
   Card, CardContent, CardHeader, CardTitle,
 } from '@/components/ui/card'
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from '@/components/ui/dialog'
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import {
@@ -18,9 +21,15 @@ import {
 import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from '@/components/ui/tabs'
+import { toast } from 'sonner'
 import { useSessionStore }           from '@/stores/useSessionStore'
-import { useStatusPunto, useMovimientos, useBalancePagos, esCajaOperativa, type CardAuxiliar } from '@/queries/cajas.queries'
+import { useStatusPunto, useMovimientos, useBalancePagos, esCajaOperativa, useSesionesHistorico, type CardAuxiliar } from '@/queries/cajas.queries'
 import { useSucursales }             from '@/queries/sucursales.queries'
+import {
+  useVentasHistorico, abrirGuiaEnvioPdf,
+  useEnvioDetalle, useActualizarDireccionEnvio,
+  type ActualizarDireccionEnvioPayload,
+} from '@/queries/ventas.queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,6 +81,162 @@ function fmtFechaLarga(d: Date) {
 function hoy() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// ── EditarDireccionDialog ─────────────────────────────────────────────────────
+
+function EditarDireccionDialog({
+  envioId,
+  numeroGuia,
+  open,
+  onClose,
+}: {
+  envioId:    number
+  numeroGuia: string
+  open:       boolean
+  onClose:    () => void
+}) {
+  const { data: envio, isLoading } = useEnvioDetalle(open ? envioId : null)
+  const actualizar = useActualizarDireccionEnvio()
+
+  const [form, setForm] = useState<ActualizarDireccionEnvioPayload>({})
+
+  useEffect(() => {
+    if (!envio) return
+    setForm({
+      destinatarioNombre:       envio.destinatario_nombreenvios        ?? undefined,
+      destinatarioDocumento:    envio.destinatario_documentoenvios     ?? undefined,
+      destinatarioTelefono:     envio.destinatario_telefonoenvios      ?? undefined,
+      destinatarioEmail:        envio.destinatario_emailenvios         ?? undefined,
+      destinatarioDireccion:    envio.destinatario_direccionenvios     ?? undefined,
+      destinatarioCiudad:       envio.destinatario_ciudadenvios        ?? undefined,
+      destinatarioDepartamento: envio.destinatario_departamentoenvios  ?? undefined,
+      destinatarioCodigoPostal: envio.destinatario_codigo_postalenvios ?? undefined,
+      destinatarioPais:         envio.destinatario_paisenvios          ?? 'CO',
+    })
+  }, [envio])
+
+  const set = (k: keyof ActualizarDireccionEnvioPayload, v: string) =>
+    setForm(p => ({ ...p, [k]: v || null }))
+
+  const handleGuardar = () => {
+    if (!form.destinatarioNombre?.trim()) {
+      toast.error('El nombre del destinatario es requerido')
+      return
+    }
+    actualizar.mutate({ envioId, datos: form }, {
+      onSuccess: () => {
+        toast.success(`Dirección de ${numeroGuia} actualizada`)
+        onClose()
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : 'Error al guardar'),
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Corregir dirección — {numeroGuia}</DialogTitle>
+          <DialogDescription>
+            Modifica los datos del destinatario antes del despacho. El PDF de guía se regenerará con la nueva dirección.
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 py-1">
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">Nombre *</Label>
+              <Input
+                value={form.destinatarioNombre ?? ''}
+                onChange={e => set('destinatarioNombre', e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Documento</Label>
+              <Input
+                value={form.destinatarioDocumento ?? ''}
+                onChange={e => set('destinatarioDocumento', e.target.value)}
+                className="h-8 text-sm"
+                placeholder="CC / NIT"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Teléfono</Label>
+              <Input
+                value={form.destinatarioTelefono ?? ''}
+                onChange={e => set('destinatarioTelefono', e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">Email</Label>
+              <Input
+                type="email"
+                value={form.destinatarioEmail ?? ''}
+                onChange={e => set('destinatarioEmail', e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">Dirección</Label>
+              <Input
+                value={form.destinatarioDireccion ?? ''}
+                onChange={e => set('destinatarioDireccion', e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Ciudad</Label>
+              <Input
+                value={form.destinatarioCiudad ?? ''}
+                onChange={e => set('destinatarioCiudad', e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Departamento</Label>
+              <Input
+                value={form.destinatarioDepartamento ?? ''}
+                onChange={e => set('destinatarioDepartamento', e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Código postal</Label>
+              <Input
+                value={form.destinatarioCodigoPostal ?? ''}
+                onChange={e => set('destinatarioCodigoPostal', e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">País</Label>
+              <Input
+                maxLength={2}
+                value={form.destinatarioPais ?? 'CO'}
+                onChange={e => set('destinatarioPais', e.target.value.toUpperCase())}
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleGuardar} disabled={actualizar.isPending || isLoading}>
+            {actualizar.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Guardar cambios
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 // ── ReporteContent ────────────────────────────────────────────────────────────
@@ -519,7 +684,491 @@ function VentasSection() {
   )
 }
 
+// ── HistoricoSection ──────────────────────────────────────────────────────────
+
+const ESTADO_LABEL: Record<string, { label: string; variant: 'secondary' | 'destructive' | 'outline' }> = {
+  confirmada: { label: 'Confirmada', variant: 'secondary' },
+  anulada:    { label: 'Anulada',    variant: 'destructive' },
+}
+
+function HistoricoSection() {
+  const user    = useSessionStore(s => s.user)
+  const isAdmin      = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL' || user?.rol === 'TESORERIA'
+  const isSupervisor = user?.rol === 'SUPERVISOR_REGIONAL'
+  const userSucId    = user?.sucursal_id ?? 0
+
+  const todayStr = hoy()
+  const [fechaInicio, setFechaInicio] = useState(todayStr)
+  const [fechaFin,    setFechaFin]    = useState(todayStr)
+  const [adminSucId,  setAdminSucId]  = useState(0)
+  const [cajaId,      setCajaId]      = useState(0)
+  const [page,        setPage]        = useState(1)
+  const [descargando, setDescargando] = useState<number | null>(null)
+  const [editandoEnvio, setEditandoEnvio] = useState<{ id: number; numeroGuia: string } | null>(null)
+
+  const canEditDireccion = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL' || isSupervisor
+
+  // ADMIN, TESORERIA pueden elegir cualquier sucursal; SUPERVISOR usa la suya
+  const sucursalId = isAdmin ? (adminSucId || undefined) : (userSucId || undefined)
+  const sucursalIdParaCajas = sucursalId ?? 0
+
+  const { data: sucursales }    = useSucursales({ limite: 200 })
+  const { data: statusPunto }   = useStatusPunto(sucursalIdParaCajas, 0)
+
+  const cajasDisponibles = statusPunto?.cajas.filter(c => esCajaOperativa(c.tipo)) ?? []
+
+  const { data, isLoading, error } = useVentasHistorico({
+    fechaInicio,
+    fechaFin,
+    sucursalId,
+    cajaId: cajaId || undefined,
+    page,
+    limit: 20,
+  })
+
+  async function handleDescargarGuia(envioId: number) {
+    setDescargando(envioId)
+    try { await abrirGuiaEnvioPdf(envioId) } finally { setDescargando(null) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-1">
+          <Label className="text-xs">Fecha inicio</Label>
+          <Input
+            type="date"
+            className="w-40"
+            value={fechaInicio}
+            onChange={e => { setFechaInicio(e.target.value); setPage(1) }}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Fecha fin</Label>
+          <Input
+            type="date"
+            className="w-40"
+            value={fechaFin}
+            min={fechaInicio}
+            onChange={e => { setFechaFin(e.target.value); setPage(1) }}
+          />
+        </div>
+        {isAdmin && (
+          <div className="space-y-1">
+            <Label className="text-xs">Sucursal</Label>
+            <Select
+              value={String(adminSucId)}
+              onValueChange={v => { setAdminSucId(Number(v)); setCajaId(0); setPage(1) }}
+            >
+              <SelectTrigger className="w-60">
+                <SelectValue placeholder="Todas las sucursales" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Todas</SelectItem>
+                {sucursales?.datos?.map(s => (
+                  <SelectItem key={s.id} value={String(s.id)}>{s.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {isSupervisor && (
+          <div className="flex items-end pb-0.5">
+            <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+              Viendo tu regional
+            </Badge>
+          </div>
+        )}
+        {sucursalId && cajasDisponibles.length > 1 && (
+          <div className="space-y-1">
+            <Label className="text-xs">Caja</Label>
+            <Select
+              value={String(cajaId)}
+              onValueChange={v => { setCajaId(Number(v)); setPage(1) }}
+            >
+              <SelectTrigger className="w-52">
+                <SelectValue placeholder="Todas las cajas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Todas</SelectItem>
+                {cajasDisponibles.map(c => (
+                  <SelectItem key={c.cajaId} value={String(c.cajaId)}>
+                    {c.nombre} · {c.codigo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
+      {data && (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{data.total} venta{data.total !== 1 ? 's' : ''} encontrada{data.total !== 1 ? 's' : ''}</span>
+          {data.totalPaginas > 1 && (
+            <span>· Página {data.pagina} de {data.totalPaginas}</span>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-lg border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-16 text-xs">ID</TableHead>
+              <TableHead className="w-36 text-xs">Fecha / Hora</TableHead>
+              <TableHead className="text-xs">Estado</TableHead>
+              <TableHead className="text-xs">Medio de pago</TableHead>
+              <TableHead className="text-right text-xs">Total</TableHead>
+              <TableHead className="text-xs">Guías</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 5 }, (_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={6}><Skeleton className="h-4 w-full" /></TableCell>
+                </TableRow>
+              ))
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-10 text-center text-sm text-destructive">
+                  Error al cargar el reporte.
+                </TableCell>
+              </TableRow>
+            ) : !data || data.datos.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-14 text-center">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <BarChart3 className="size-8 opacity-30" />
+                    <p className="text-sm">Sin ventas en el rango seleccionado.</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              data.datos.map(v => {
+                const estadoInfo = ESTADO_LABEL[v.estado] ?? { label: v.estado, variant: 'outline' as const }
+                const fecha = new Date(v.createdAt)
+                const guiasFacturadas = v.envios.filter(e => e.estado === 'facturado')
+                return (
+                  <TableRow key={v.id} className={v.estado === 'anulada' ? 'bg-destructive/5' : undefined}>
+                    <TableCell className="text-xs tabular-nums text-muted-foreground">{v.id}</TableCell>
+                    <TableCell className="text-xs tabular-nums">
+                      <div>{fecha.toLocaleDateString('es-CO')}</div>
+                      <div className="text-muted-foreground">{fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={estadoInfo.variant} className="text-[10px]">
+                        {estadoInfo.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {MEDIO_LABEL[v.medioPago] ?? v.medioPago}
+                    </TableCell>
+                    <TableCell className={`text-right tabular-nums text-sm font-medium ${v.estado === 'anulada' ? 'text-destructive line-through' : ''}`}>
+                      {fmt(v.total)}
+                    </TableCell>
+                    <TableCell>
+                      {guiasFacturadas.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {guiasFacturadas.map(e => (
+                            <div key={e.id} className="flex items-center gap-0.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-[10px]"
+                                disabled={descargando === e.id}
+                                onClick={() => handleDescargarGuia(e.id)}
+                              >
+                                <Download className="size-3 mr-1" />
+                                {e.numeroGuia}
+                              </Button>
+                              {canEditDireccion && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0"
+                                  title="Corregir dirección"
+                                  onClick={() => setEditandoEnvio({ id: e.id, numeroGuia: e.numeroGuia })}
+                                >
+                                  <Pencil className="size-3" />
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {data && data.totalPaginas > 1 && (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {page} / {data.totalPaginas}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= data.totalPaginas}
+            onClick={() => setPage(p => p + 1)}
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+      )}
+
+      {editandoEnvio && (
+        <EditarDireccionDialog
+          envioId={editandoEnvio.id}
+          numeroGuia={editandoEnvio.numeroGuia}
+          open={true}
+          onClose={() => setEditandoEnvio(null)}
+        />
+      )}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
+
+// ── SesionesCajaSection ───────────────────────────────────────────────────────
+
+const SESION_ESTADO: Record<string, { label: string; variant: 'secondary' | 'outline' | 'destructive' }> = {
+  abierta:  { label: 'Abierta',  variant: 'outline' },
+  cerrada:  { label: 'Cerrada',  variant: 'secondary' },
+  forzada:  { label: 'Forzada',  variant: 'destructive' },
+}
+
+function SesionesCajaSection() {
+  const user       = useSessionStore(s => s.user)
+  const isAdmin    = user?.rol === 'ADMIN_SISTEMA' || user?.rol === 'ADMIN_NACIONAL' || user?.rol === 'TESORERIA'
+  const isSupervisor = user?.rol === 'SUPERVISOR_REGIONAL'
+
+  const todayStr = hoy()
+  const [desde,       setDesde]       = useState(todayStr)
+  const [hasta,       setHasta]       = useState(todayStr)
+  const [adminSucId,  setAdminSucId]  = useState(0)
+  const [cajaId,      setCajaId]      = useState(0)
+  const [page,        setPage]        = useState(1)
+
+  const sucursalId = isAdmin ? (adminSucId || undefined) : undefined
+  const sucursalIdParaCajas = sucursalId ?? 0
+
+  const { data: sucursales }  = useSucursales({ limite: 200 })
+  const { data: statusPunto } = useStatusPunto(sucursalIdParaCajas, 0)
+  const cajasDisponibles = statusPunto?.cajas ?? []
+
+  const { data, isLoading, error } = useSesionesHistorico({
+    sucursalId,
+    cajaId: cajaId || undefined,
+    desde,
+    hasta,
+    pagina: page,
+    limite: 50,
+  })
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-1">
+          <Label className="text-xs">Fecha inicio</Label>
+          <Input
+            type="date"
+            className="w-40"
+            value={desde}
+            onChange={e => { setDesde(e.target.value); setPage(1) }}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Fecha fin</Label>
+          <Input
+            type="date"
+            className="w-40"
+            value={hasta}
+            min={desde}
+            onChange={e => { setHasta(e.target.value); setPage(1) }}
+          />
+        </div>
+        {isAdmin && (
+          <div className="space-y-1">
+            <Label className="text-xs">Sucursal</Label>
+            <Select
+              value={String(adminSucId)}
+              onValueChange={v => { setAdminSucId(Number(v)); setCajaId(0); setPage(1) }}
+            >
+              <SelectTrigger className="w-60">
+                <SelectValue placeholder="Todas las sucursales" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Todas</SelectItem>
+                {sucursales?.datos?.map(s => (
+                  <SelectItem key={s.id} value={String(s.id)}>{s.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {sucursalId && cajasDisponibles.length > 1 && (
+          <div className="space-y-1">
+            <Label className="text-xs">Caja</Label>
+            <Select
+              value={String(cajaId)}
+              onValueChange={v => { setCajaId(Number(v)); setPage(1) }}
+            >
+              <SelectTrigger className="w-52">
+                <SelectValue placeholder="Todas las cajas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Todas</SelectItem>
+                {cajasDisponibles.map(c => (
+                  <SelectItem key={c.cajaId} value={String(c.cajaId)}>
+                    {c.nombre} · {c.codigo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {isSupervisor && (
+          <div className="flex items-end pb-0.5">
+            <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+              Viendo tu regional
+            </Badge>
+          </div>
+        )}
+      </div>
+
+      {data && (
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{data.total} sesión{data.total !== 1 ? 'es' : ''} encontrada{data.total !== 1 ? 's' : ''}</span>
+          {data.totalPaginas > 1 && (
+            <span>· Página {data.pagina} de {data.totalPaginas}</span>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-lg border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-16 text-xs">ID</TableHead>
+              <TableHead className="text-xs">Caja · Sucursal</TableHead>
+              <TableHead className="text-xs">Regional</TableHead>
+              <TableHead className="text-xs">Apertura</TableHead>
+              <TableHead className="text-xs">Cierre</TableHead>
+              <TableHead className="text-xs">Estado</TableHead>
+              <TableHead className="text-right text-xs">Monto apertura</TableHead>
+              <TableHead className="text-right text-xs">Monto cierre</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 5 }, (_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={8}><Skeleton className="h-4 w-full" /></TableCell>
+                </TableRow>
+              ))
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-10 text-center text-sm text-destructive">
+                  Error al cargar el reporte.
+                </TableCell>
+              </TableRow>
+            ) : !data || data.items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-14 text-center">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <BarChart3 className="size-8 opacity-30" />
+                    <p className="text-sm">Sin sesiones en el rango seleccionado.</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              data.items.map(s => {
+                const estadoInfo = SESION_ESTADO[s.estado] ?? { label: s.estado, variant: 'outline' as const }
+                const fechaAp = new Date(s.fechaApertura)
+                const fechaCi = s.fechaCierre ? new Date(s.fechaCierre) : null
+                return (
+                  <TableRow key={s.id} className={s.estado === 'forzada' ? 'bg-destructive/5' : undefined}>
+                    <TableCell className="text-xs tabular-nums text-muted-foreground">{s.id}</TableCell>
+                    <TableCell className="text-xs">
+                      <div className="font-medium">{s.cajaNombre}</div>
+                      <div className="text-muted-foreground">{s.sucursalNombre}</div>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{s.regionalNombre}</TableCell>
+                    <TableCell className="text-xs tabular-nums">
+                      <div>{fechaAp.toLocaleDateString('es-CO')}</div>
+                      <div className="text-muted-foreground">{fechaAp.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
+                    </TableCell>
+                    <TableCell className="text-xs tabular-nums">
+                      {fechaCi ? (
+                        <>
+                          <div>{fechaCi.toLocaleDateString('es-CO')}</div>
+                          <div className="text-muted-foreground">{fechaCi.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={estadoInfo.variant} className="text-[10px]">
+                        {estadoInfo.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-xs font-medium">{fmt(s.montoApertura)}</TableCell>
+                    <TableCell className="text-right tabular-nums text-xs font-medium">
+                      {s.montoCierre ? fmt(s.montoCierre) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {data && data.totalPaginas > 1 && (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {page} / {data.totalPaginas}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= data.totalPaginas}
+            onClick={() => setPage(p => p + 1)}
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Reportes() {
   const user    = useSessionStore(s => s.user)
@@ -528,6 +1177,16 @@ export default function Reportes() {
     || user?.rol === 'ADMIN_SISTEMA'
     || user?.rol === 'ADMIN_NACIONAL'
 
+  const canSeeHistorico = user?.rol === 'SUPERVISOR_REGIONAL'
+    || user?.rol === 'ADMIN_SISTEMA'
+    || user?.rol === 'ADMIN_NACIONAL'
+    || user?.rol === 'TESORERIA'
+
+  const canSeeSesiones = user?.rol === 'SUPERVISOR_REGIONAL'
+    || user?.rol === 'ADMIN_SISTEMA'
+    || user?.rol === 'ADMIN_NACIONAL'
+    || user?.rol === 'TESORERIA'
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6 print:p-0 print:max-w-full">
       <div className="flex items-center gap-3 print:hidden">
@@ -535,7 +1194,7 @@ export default function Reportes() {
         <div>
           <h1 className="text-xl font-semibold leading-tight">Reportes</h1>
           <p className="text-sm text-muted-foreground">
-            Historial de ventas · Balance de pagos
+            Historial de ventas · Sesiones de caja · Balance de pagos
           </p>
         </div>
       </div>
@@ -543,6 +1202,12 @@ export default function Reportes() {
       <Tabs defaultValue="ventas">
         <TabsList className="print:hidden">
           <TabsTrigger value="ventas">Ventas del día</TabsTrigger>
+          {canSeeHistorico && (
+            <TabsTrigger value="historico">Histórico</TabsTrigger>
+          )}
+          {canSeeSesiones && (
+            <TabsTrigger value="sesiones">Aperturas/Cierres</TabsTrigger>
+          )}
           {canSeeBalance && (
             <TabsTrigger value="balance">Balance de Pagos</TabsTrigger>
           )}
@@ -551,6 +1216,18 @@ export default function Reportes() {
         <TabsContent value="ventas" className="mt-4">
           <VentasSection />
         </TabsContent>
+
+        {canSeeHistorico && (
+          <TabsContent value="historico" className="mt-4">
+            <HistoricoSection />
+          </TabsContent>
+        )}
+
+        {canSeeSesiones && (
+          <TabsContent value="sesiones" className="mt-4">
+            <SesionesCajaSection />
+          </TabsContent>
+        )}
 
         {canSeeBalance && (
           <TabsContent value="balance" className="mt-4">

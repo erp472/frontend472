@@ -84,6 +84,12 @@ declare global {
 
       /** Stub de endpoints de cajas: saldo, movimientos, status */
       stubCajas(opts?: { sesionId?: number; sucursalId?: number }): Chainable<void>
+
+      /**
+       * Autentica en el Lab vía POST /lab/login e inyecta la sesión en sessionStorage.
+       * No requiere JWT del sistema principal ni simulación de Tauri.
+       */
+      labLogin(usuario?: string, contraseña?: string): Chainable<void>
     }
   }
 }
@@ -368,6 +374,23 @@ Cypress.Commands.add('stubCajas', (opts: { sesionId?: number; sucursalId?: numbe
     statusCode: 200,
     body: [],
   }).as('panelAdmin')
+})
+
+// ── Lab login ─────────────────────────────────────────────────────────────────
+
+Cypress.Commands.add('labLogin', (usuario = 'lab_admin', contraseña = 'lab472dev') => {
+  cy.request({
+    method:           'POST',
+    url:              `${Cypress.env('API_URL')}/lab/login`,
+    body:             { usuario, contraseña },
+    failOnStatusCode: false,
+  }).then((res) => {
+    if (res.status !== 200) {
+      throw new Error(`Lab login failed ${res.status}: ${JSON.stringify(res.body)}`)
+    }
+    const stored = JSON.stringify({ state: { session: res.body }, version: 0 })
+    cy.window().then((win) => win.sessionStorage.setItem('lab-session', stored))
+  })
 })
 
 export {}

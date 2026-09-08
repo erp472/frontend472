@@ -192,8 +192,9 @@ function FilateliaForm({
 }
 
 export default function FilateliaAdminPage() {
-  const rol      = useSessionStore((s) => s.user?.rol)
-  const canWrite = rol === 'ADMIN_SISTEMA' || rol === 'ADMIN_NACIONAL'
+  const rol       = useSessionStore((s) => s.user?.rol)
+  const canWrite  = rol === 'ADMIN_SISTEMA' || rol === 'ADMIN_NACIONAL' || rol === 'INVENTARIOS'
+  const canDelete = rol === 'ADMIN_SISTEMA' || rol === 'ADMIN_NACIONAL'
 
   const [buscar,       setBuscar]       = useState('')
   const [filterActivo, setFilterActivo] = useState('_all')
@@ -354,13 +355,17 @@ export default function FilateliaAdminPage() {
                             <PowerOff className="mr-2 size-3.5" />
                             {e.activo ? 'Desactivar' : 'Activar'}
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget(e)}
-                          >
-                            <Trash2 className="mr-2 size-3.5" />Eliminar
-                          </DropdownMenuItem>
+                          {canDelete && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDeleteTarget(e)}
+                              >
+                                <Trash2 className="mr-2 size-3.5" />Eliminar
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}

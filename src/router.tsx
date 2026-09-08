@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Monitor, ToggleLeft, Vault, Globe } from 'lucide-react'
 import { AdminLayout } from '@/components/layout/AdminLayout'
-import { LabGuard } from '@/components/layout/LabGuard'
+
 import { isTauri } from '@/lib/tauri'
 import { type RolUsuario, useSessionStore } from '@/stores/useSessionStore'
 import { useFeatureFlagsActivos } from '@/queries/feature-flags.queries'
@@ -11,9 +11,13 @@ import { useAcceso } from '@/hooks/useAcceso'
 // ── Lazy pages ────────────────────────────────────────────────────────────────
 const Dashboard    = lazy(() => import('@/pages/Dashboard'))
 const Login        = lazy(() => import('@/pages/Login'))
-const Lab          = lazy(() => import('@/pages/Lab'))
-const Lab2         = lazy(() => import('@/pages/Lab2'))
-const Lab3         = lazy(() => import('@/pages/Lab3'))
+// Lab module — auth independiente vía MongoDB
+const LabShell     = lazy(() => import('@/pages/lab/LabShell'))
+const LabLogin     = lazy(() => import('@/pages/lab/LabLogin'))
+const LabIndex     = lazy(() => import('@/pages/lab/index'))
+const UIGallery    = lazy(() => import('@/pages/lab/UIGallery'))
+const LabPoc       = lazy(() => import('@/pages/lab/Poc'))
+const LabMockups   = lazy(() => import('@/pages/lab/Mockups'))
 const UsersPage    = lazy(() => import('@/pages/admin/Users'))
 const PermisosPage = lazy(() => import('@/pages/admin/Permisos'))
 const FeatureFlagsPage = lazy(() => import('@/pages/admin/FeatureFlags'))
@@ -47,7 +51,7 @@ const RecaudosPage          = lazy(() => import('@/pages/ventas/RecaudosPage'))
 const ApartadosVentaPage    = lazy(() => import('@/pages/ventas/ApartadosVentaPage'))
 const GuiaViewerPage        = lazy(() => import('@/pages/ventas/GuiaViewer'))
 const EnviosMasivosPage     = lazy(() => import('@/pages/ventas/EnviosMasivosPage'))
-const GuiaDemoPage          = lazy(() => import('@/pages/GuiaDemo'))
+const LabGuia               = lazy(() => import('@/pages/lab/Guia'))
 const ReportesPage      = lazy(() => import('@/pages/Reportes'))
 const ClientesPage      = lazy(() => import('@/pages/clientes/index'))
 const TiposClientePage  = lazy(() => import('@/pages/clientes/TiposClientePage'))
@@ -298,9 +302,9 @@ export const router = createBrowserRouter(
                   ],
                 },
 
-                // Catálogo — solo ADMIN_SISTEMA y ADMIN_NACIONAL pueden administrar
+                // Catálogo — INVENTARIOS puede ver y agregar; solo admins pueden eliminar
                 {
-                  element: <RoleGuard roles={['ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />,
+                  element: <RoleGuard roles={['INVENTARIOS', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL']} />,
                   children: [
                     {
                       element: <FlagGuard flag="modulo_productos" />,
@@ -513,36 +517,26 @@ export const router = createBrowserRouter(
     },
     { path: '/unauthorized', element: <Unauthorized /> },
     { path: '/guia-viewer', element: lazySuspense(GuiaViewerPage) },
-    { path: '/guia-demo',   element: lazySuspense(GuiaDemoPage) },
-    // Workbench — solo ADMIN_SISTEMA
+    // Guía demo accesible también fuera del Lab para compatibilidad
+    { path: '/guia-demo',   element: lazySuspense(LabGuia) },
+    // Lab module — auth independiente (MongoDB), rutas antiguas redirigen
+    { path: '/lab2',        element: <Navigate to="/lab/poc"      replace /> },
+    { path: '/lab3',        element: <Navigate to="/lab/mockups"  replace /> },
+    { path: '/lab/login',   element: lazySuspense(LabLogin) },
     {
       path: '/lab',
       element: (
-        <LabGuard>
-          <Suspense fallback={<PageLoader />}>
-            <Lab />
-          </Suspense>
-        </LabGuard>
-      ),
-    },
-    {
-      path: '/lab2',
-      element: (
-        <LabGuard>
-          <Suspense fallback={<PageLoader />}>
-            <Lab2 />
-          </Suspense>
-        </LabGuard>
-      ),
-    },
-    // Mockups de pantallas — acceso directo sin guard
-    {
-      path: '/lab3',
-      element: (
         <Suspense fallback={<PageLoader />}>
-          <Lab3 />
+          <LabShell />
         </Suspense>
       ),
+      children: [
+        { index: true,         element: lazySuspense(LabIndex) },
+        { path: 'galeria',     element: lazySuspense(UIGallery) },
+        { path: 'poc',         element: lazySuspense(LabPoc) },
+        { path: 'mockups',     element: lazySuspense(LabMockups) },
+        { path: 'guia',        element: lazySuspense(LabGuia) },
+      ],
     },
     { path: '*', element: <Navigate to="/" replace /> },
   ],

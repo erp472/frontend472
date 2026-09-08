@@ -248,6 +248,7 @@ export const CAJAS_KEYS = {
   saldoFuerte:      (cajaPadreId: number) => ['cajas', 'saldo-fuerte', cajaPadreId]       as const,
   reposicionSugerida:(sesionId: number)   => ['cajas', 'reposicion-sugerida', sesionId]   as const,
   diagnostico:      (cajaPadreId: number) => ['cajas', 'diagnostico', cajaPadreId]        as const,
+  sesionesHistorico: (p: Record<string, unknown>) => ['cajas', 'sesiones-historico', p]   as const,
 }
 
 export interface SesionHistorial {
@@ -1034,5 +1035,55 @@ export function useMonedaCirculante() {
       qc.invalidateQueries({ queryKey: CAJAS_KEYS.saldo(sesionId) })
       qc.invalidateQueries({ queryKey: CAJAS_KEYS.movimientos(sesionId) })
     },
+  })
+}
+
+// ── Reporte histórico de sesiones ─────────────────────────────────────────────
+
+export interface SesionHistoricoItem {
+  id:             number
+  cajaId:         number
+  cajaNombre:     string
+  sucursalId:     number
+  sucursalNombre: string
+  regionalNombre: string
+  montoApertura:  string
+  montoCierre:    string | null
+  fechaApertura:  string
+  fechaCierre:    string | null
+  estado:         string
+  cierreForzado:  boolean
+  observaciones:  string | null
+}
+
+export interface SesionesHistoricoResult {
+  items:        SesionHistoricoItem[]
+  total:        number
+  pagina:       number
+  limite:       number
+  totalPaginas: number
+}
+
+export function useSesionesHistorico(params: {
+  sucursalId?: number
+  cajaId?:     number
+  desde?:      string
+  hasta?:      string
+  pagina?:     number
+  limite?:     number
+}) {
+  const { sucursalId, cajaId, desde, hasta, pagina = 1, limite = 50 } = params
+  const qs = new URLSearchParams()
+  if (sucursalId) qs.set('sucursalId', String(sucursalId))
+  if (cajaId)     qs.set('cajaId',     String(cajaId))
+  if (desde)      qs.set('desde',      desde)
+  if (hasta)      qs.set('hasta',      hasta)
+  qs.set('pagina', String(pagina))
+  qs.set('limite', String(limite))
+
+  return useQuery({
+    queryKey: CAJAS_KEYS.sesionesHistorico({ sucursalId, cajaId, desde, hasta, pagina, limite }),
+    queryFn:  () => apiFetch<SesionesHistoricoResult>(`/cajas/reporte/sesiones?${qs.toString()}`),
+    staleTime: 60_000,
   })
 }

@@ -402,8 +402,9 @@ function ProductoEspecialForm({
 // ── Tab: Catálogo ─────────────────────────────────────────────────────────────
 
 function TabCatalogo() {
-  const rol      = useSessionStore((s) => s.user?.rol)
-  const canWrite = rol === 'ADMIN_SISTEMA' || rol === 'ADMIN_NACIONAL'
+  const rol       = useSessionStore((s) => s.user?.rol)
+  const canWrite  = rol === 'ADMIN_SISTEMA' || rol === 'ADMIN_NACIONAL' || rol === 'INVENTARIOS'
+  const canDelete = rol === 'ADMIN_SISTEMA' || rol === 'ADMIN_NACIONAL'
 
   const [buscar,        setBuscar]        = useState('')
   const [filterActivo,  setFilterActivo]  = useState('_all')
@@ -566,13 +567,17 @@ function TabCatalogo() {
                             <PowerOff className="mr-2 size-3.5" />
                             {p.activo ? 'Desactivar' : 'Activar'}
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget(p)}
-                          >
-                            <Trash2 className="mr-2 size-3.5" />Eliminar
-                          </DropdownMenuItem>
+                          {canDelete && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDeleteTarget(p)}
+                              >
+                                <Trash2 className="mr-2 size-3.5" />Eliminar
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}

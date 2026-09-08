@@ -58,6 +58,27 @@ export const AUDIT_KEYS = {
   stats: ()             => ['audit', 'stats'] as const,
 }
 
+export interface DbCambio {
+  _id:           string
+  tabla:         string
+  operacion:     'INSERT' | 'UPDATE' | 'DELETE'
+  registro_id?:  number
+  ip?:           string
+  request_id?:   string
+  datos_antes?:  Record<string, unknown> | null
+  datos_despues?: Record<string, unknown> | null
+  timestamp:     string
+}
+
+export function useDbCambios(requestId: string | null) {
+  return useQuery<{ cambios: DbCambio[] }>({
+    queryKey: ['audit', 'db-changes', requestId],
+    queryFn:  () => apiFetch(`/audit/db-changes/${requestId}`),
+    enabled:  !!requestId,
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function buildAuditExportUrl(params: AuditParams = {}): string {
   const base = env.VITE_API_URL.replace(/\/$/, '')
   const qs = new URLSearchParams()

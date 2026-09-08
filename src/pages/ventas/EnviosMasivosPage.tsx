@@ -61,6 +61,7 @@ import {
   useLoteMasivo,
   useLotesMasivos,
 } from '@/queries/envios-masivos.queries'
+import { descargarGuiaEnvioPdf } from '@/queries/ventas.queries'
 import { useStatusPunto } from '@/queries/cajas.queries'
 import { useServicios } from '@/queries/servicios.queries'
 import { useSessionStore } from '@/stores/useSessionStore'
@@ -459,19 +460,34 @@ function ItemRow({
   item,
   loteId,
   modoIndividual,
+  isPagado,
   onDeleted,
 }: {
   item:           ItemMasivo
   loteId:         number
   modoIndividual: boolean
+  isPagado:       boolean
   onDeleted:      () => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded,    setExpanded]    = useState(false)
+  const [descargando, setDescargando] = useState(false)
   const eliminar = useEliminarItemMasivo(loteId)
 
   const handleDelete = async () => {
     await eliminar.mutateAsync(item.id)
     onDeleted()
+  }
+
+  const handleDescargarGuia = async () => {
+    if (!item.envioId) return
+    setDescargando(true)
+    try {
+      await descargarGuiaEnvioPdf(item.envioId, item.guia?.numeroGuia)
+    } catch {
+      toast.error('No se pudo descargar la guía')
+    } finally {
+      setDescargando(false)
+    }
   }
 
   const remitente = item.remitente
@@ -489,6 +505,11 @@ function ItemRow({
         <TableCell className="text-sm">
           <div className="font-medium">{item.destinatario.nombre}</div>
           <div className="text-xs text-muted-foreground">{item.destinatario.ciudad}</div>
+          {item.guia?.numeroGuia && (
+            <div className="text-xs font-mono text-blue-600 dark:text-blue-400 mt-0.5">
+              {item.guia.numeroGuia}
+            </div>
+          )}
         </TableCell>
         <TableCell className="text-sm text-right tabular-nums">
           {item.calculo.pesoFisicoKg.toFixed(2)} kg
@@ -496,8 +517,20 @@ function ItemRow({
         <TableCell className="text-sm text-right tabular-nums font-medium">
           {fmt(item.calculo.valorTotal)}
         </TableCell>
-        <TableCell className="w-16 text-right">
+        <TableCell className="w-20 text-right">
           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {isPagado && item.envioId !== null && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={handleDescargarGuia}
+                disabled={descargando}
+                title={item.guia?.numeroGuia ? `Descargar ${item.guia.numeroGuia}` : 'Descargar guía PDF'}
+              >
+                {descargando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -506,15 +539,17 @@ function ItemRow({
             >
               {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive hover:text-destructive"
-              onClick={handleDelete}
-              disabled={eliminar.isPending}
-            >
-              {eliminar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            </Button>
+            {!isPagado && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-destructive hover:text-destructive"
+                onClick={handleDelete}
+                disabled={eliminar.isPending}
+              >
+                {eliminar.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              </Button>
+            )}
           </div>
         </TableCell>
       </TableRow>
@@ -522,6 +557,13 @@ function ItemRow({
         <TableRow className="bg-muted/30">
           <TableCell colSpan={modoIndividual ? 6 : 5} className="py-3">
             <div className="grid grid-cols-2 gap-4 text-xs px-2">
+              {item.guia && (
+                <div className="col-span-2">
+                  <p className="font-semibold text-muted-foreground uppercase tracking-wide mb-1">Guía postal</p>
+                  <p className="font-mono font-semibold text-blue-600 dark:text-blue-400">{item.guia.numeroGuia}</p>
+                  <p>Estado: {item.guia.estado}</p>
+                </div>
+              )}
               {modoIndividual && remitente && (
                 <div>
                   <p className="font-semibold text-muted-foreground uppercase tracking-wide mb-1">Remitente</p>
@@ -1004,6 +1046,7 @@ function LoteEditor({
 
   const modoIndividual = lote.remitente === null
   const esBorrador     = lote.estado === 'borrador'
+  const isPagado       = lote.estado === 'confirmado' && !!lote.cobrado
   const puedeEliminar  = lote.estado === 'borrador' || lote.estado === 'anulado'
   const badgeInfo      = ESTADO_BADGE[lote.estado]
 
@@ -1153,6 +1196,7 @@ function LoteEditor({
                     item={item}
                     loteId={loteId}
                     modoIndividual={modoIndividual}
+                    isPagado={isPagado}
                     onDeleted={() => refetch()}
                   />
                 ))
