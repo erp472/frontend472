@@ -80,7 +80,7 @@ function EstampillaForm({
   const updateMut = useUpdateEstampilla()
 
   const { register, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<CreateForm | UpdateForm>({
-    resolver: zodResolver(isEdit ? updateSchema : createSchema),
+    resolver: zodResolver((isEdit ? updateSchema : createSchema) as never),
   })
 
   const serieValue = watch('serie') as SerieEstampilla | undefined

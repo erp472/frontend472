@@ -47,6 +47,7 @@ const TIPO_LABELS: Record<TipoServicio, string> = {
   internacional_ms:      'Internacional MS',
   internacional_courier: 'Internacional Courier',
   apartado_postal:       'Apartado Postal',
+  alistamiento:          'Alistamiento',
 }
 
 const TIPO_BADGE: Record<TipoServicio, 'default' | 'secondary' | 'outline'> = {
@@ -54,6 +55,7 @@ const TIPO_BADGE: Record<TipoServicio, 'default' | 'secondary' | 'outline'> = {
   internacional_ms:      'outline',
   internacional_courier: 'outline',
   apartado_postal:       'secondary',
+  alistamiento:          'default',
 }
 
 function formatPeso(kg: number | null): string {
@@ -122,7 +124,7 @@ function TarifasPanel({
   )
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<NewTarifaForm>({
-    resolver: zodResolver(newTarifaSchema),
+    resolver: zodResolver(newTarifaSchema) as never,
     defaultValues: { paisDestino: 'CO' },
   })
 
@@ -135,7 +137,7 @@ function TarifasPanel({
 
   useEffect(() => {
     if (paises.length > 0 && !paises.includes(selectedPais)) {
-      setSelectedPais(paises[0])
+      setSelectedPais(paises[0] ?? '')
     }
   }, [paises])
 
@@ -406,7 +408,7 @@ function TarifasPanel({
             <DialogTitle>Agregar tramo de tarifa</DialogTitle>
             <DialogDescription>Define un nuevo rango de peso y su tarifa.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit(onAddSubmit)} className="space-y-3 pt-2">
+          <form onSubmit={handleSubmit(onAddSubmit as never)} className="space-y-3 pt-2">
             <div className="grid grid-cols-2 gap-3">
               {isInternacional && (
                 <>
@@ -477,7 +479,7 @@ const createSchema = z.object({
   codigo:                   z.string().min(1, 'Requerido').max(50),
   nombre:                   z.string().min(2).max(200),
   descripcion:              z.string().nullable().optional(),
-  tipo:                     z.enum(['nacional', 'internacional_ms', 'internacional_courier', 'apartado_postal'] as const),
+  tipo:                     z.enum(['nacional', 'internacional_ms', 'internacional_courier', 'apartado_postal', 'alistamiento'] as const),
   requiere_estampilla:      z.boolean().default(false),
   requiere_dimensiones:     z.boolean().default(false),
   requiere_valor_declarado: z.boolean().default(false),

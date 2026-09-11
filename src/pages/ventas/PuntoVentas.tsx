@@ -14,6 +14,7 @@ import {
   ShoppingCart,
   TrendingDown,
   TrendingUp,
+  X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -1034,7 +1035,7 @@ export default function PuntoVentas() {
             <RefreshCw className={cn('size-3.5', isFetching && 'animate-spin')} />
           </Button>
         </header>
-        <EsperandoApertura card={cajaParaAbrir} onRefresh={refetch} isFetching={isFetching} />
+        <EsperandoApertura card={cajaParaAbrir ?? null} onRefresh={refetch} isFetching={isFetching} />
       </div>
     )
   }

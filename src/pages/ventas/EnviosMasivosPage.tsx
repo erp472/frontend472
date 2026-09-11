@@ -945,7 +945,7 @@ function CrearLoteDialog({
                 <SelectValue placeholder="Selecciona un servicio" />
               </SelectTrigger>
               <SelectContent>
-                {servicios?.data?.map(s => (
+                {servicios?.datos?.map(s => (
                   <SelectItem key={s.id} value={String(s.id)}>
                     {s.nombre}
                   </SelectItem>

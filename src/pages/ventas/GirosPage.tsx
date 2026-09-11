@@ -180,7 +180,7 @@ function EmitirNacionalForm({ cajaId }: { cajaId: number }) {
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<EmitirNacionalDto>({
     resolver: zodResolver(EmitirNacionalSchema),
-    defaultValues: { montoCop: undefined, beneficiario: { numeroDoc: '', nombre: '' } },
+    defaultValues: { montoCop: 0, beneficiario: { numeroDoc: '', nombre: '' } },
   })
 
   const onSubmit = async (data: EmitirNacionalDto) => {

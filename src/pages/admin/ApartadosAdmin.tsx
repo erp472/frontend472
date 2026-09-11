@@ -83,13 +83,14 @@ function ApartadoSheet({
   const crear    = useCreateApartadoAdmin()
   const actualizar = useUpdateApartadoAdmin()
   const { data: sucursalesData } = useSucursales({ limite: 200 })
-  const sucursales = sucursalesData?.data ?? []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sucursales = (sucursalesData?.datos ?? []) as any[]
 
   const { register: regC, handleSubmit: hsC, reset: resetC, setValue: svC, formState: { errors: errsC } } =
-    useForm<CreateForm>({ resolver: zodResolver(createSchema) })
+    useForm<CreateForm>({ resolver: zodResolver(createSchema) as never })
 
   const { register: regU, handleSubmit: hsU, reset: resetU, setValue: svU, formState: { errors: errsU } } =
-    useForm<UpdateForm>({ resolver: zodResolver(updateSchema) })
+    useForm<UpdateForm>({ resolver: zodResolver(updateSchema) as never })
 
   function handleClose() { resetC(); resetU(); onClose() }
 
@@ -128,7 +129,7 @@ function ApartadoSheet({
 
         <div className="mt-6">
           {!isEdit ? (
-            <form onSubmit={hsC(onSubmitCreate)} className="space-y-4">
+            <form onSubmit={hsC(onSubmitCreate as never)} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="ap-suc">Sucursal</Label>
                 <Select onValueChange={(v) => svC('sucursalId', Number(v) as any)}>
@@ -175,7 +176,7 @@ function ApartadoSheet({
               </Button>
             </form>
           ) : (
-            <form onSubmit={hsU(onSubmitUpdate)} className="space-y-4">
+            <form onSubmit={hsU(onSubmitUpdate as never)} className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Tamaño</Label>
                 <Select defaultValue={item?.tamano} onValueChange={(v) => svU('tamano', v as TamanoApartado)}>

@@ -352,20 +352,20 @@ function ProductoEspecialForm({
             <div className="space-y-1.5">
               <Label>Código *</Label>
               <Input {...register('codigo')} placeholder="SVC-XXX" />
-              {errors.codigo && <p className="text-xs text-destructive">{errors.codigo.message}</p>}
+              {errors.codigo && <p className="text-xs text-destructive">{String((errors.codigo as { message?: string }).message ?? errors.codigo)}</p>}
             </div>
           )}
 
           <div className="space-y-1.5">
             <Label>Nombre *</Label>
             <Input {...register('nombre')} placeholder="Nombre del servicio…" />
-            {errors.nombre && <p className="text-xs text-destructive">{errors.nombre.message}</p>}
+            {errors.nombre && <p className="text-xs text-destructive">{String((errors.nombre as { message?: string }).message ?? errors.nombre)}</p>}
           </div>
 
           <div className="space-y-1.5">
             <Label>Precio base (COP) *</Label>
             <Input {...register('precio')} type="number" step="1" min="1" max={PRECIO_MAX} placeholder="0" />
-            {errors.precio && <p className="text-xs text-destructive">{errors.precio.message}</p>}
+            {errors.precio && <p className="text-xs text-destructive">{String((errors.precio as { message?: string }).message ?? errors.precio)}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

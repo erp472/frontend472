@@ -241,7 +241,9 @@ function FeatureFlagForm({ flag, open, onClose }: FeatureFlagFormProps) {
       if (isEdit && flag) {
         await updateMutation.mutateAsync({
           id: flag.id,
-          data: { ...descripcion, activo: values.activo, entorno: values.entorno },
+          ...descripcion,
+          activo: values.activo,
+          entorno: values.entorno,
         })
       } else {
         const { codigo } = values as CreateForm
@@ -265,7 +267,7 @@ function FeatureFlagForm({ flag, open, onClose }: FeatureFlagFormProps) {
           </SheetDescription>
         </SheetHeader>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="px-4 pb-6 space-y-5">
+        <form onSubmit={form.handleSubmit(onSubmit as never)} className="px-4 pb-6 space-y-5">
           {serverError && (
             <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               <AlertCircle className="size-4 shrink-0" />

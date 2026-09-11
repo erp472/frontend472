@@ -12,7 +12,7 @@ export function useMe() {
 
   return useQuery<User>({
     queryKey: authKeys.me(),
-    queryFn: () => apiFetch<User>('/auth/me', {}, userSchema),
+    queryFn: () => apiFetch('/auth/me', {}, userSchema) as Promise<User>,
     enabled: !!token,
     staleTime: 5 * 60_000,
     retry: false,

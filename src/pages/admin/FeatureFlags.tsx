@@ -138,7 +138,7 @@ export default function FeatureFlags() {
                       {ff.descripcion ?? '—'}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={entornoBadge[ff.entorno]}>{ff.entorno}</Badge>
+                      <Badge variant={entornoBadge[ff.entorno as keyof typeof entornoBadge] ?? 'default'}>{ff.entorno}</Badge>
                     </TableCell>
                     <TableCell className="text-center">
                       <Switch

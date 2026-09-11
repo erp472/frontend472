@@ -93,15 +93,18 @@ import {
 import { useCiudades, useDepartamentos, usePaises } from '@/queries/geo.queries'
 import { useCreateUser, useUpdateUser, useUser } from '@/queries/users.queries'
 import {
+  type ApartadoPostal,
   type ClienteResumen,
   type CrearEnvioPayload,
   type DireccionFrecuente,
   type GuiaEnvio,
   type LoteMasivoPagado,
   type MedioPagoVenta,
+  type ProductoCatalogo,
   type ServicioCatalogo,
   type TipoProducto,
   type TipoTrayecto,
+  type Venta,
   useAgregarApartadoAlCarrito,
   useAgregarEnvioAlCarrito,
   useAgregarProducto,
@@ -234,7 +237,7 @@ function EditarClienteModal({
     try {
       const updated = await update.mutateAsync({
         nombre: nombre.trim() || undefined,
-        apellido: apellido.trim() || null,
+        apellido: apellido.trim() || undefined,
         email: email.trim() || null,
         telefono: telefono.trim() || null,
       })
@@ -2722,7 +2725,7 @@ function TablaRapidaMasiva({
         cells.forEach((cell, ci) => {
           const tc = colIdx + ci
           if (tc < COLS_MASIVA.length && COLS_MASIVA[tc].type !== 'geo')
-            (fila as Record<string, string>)[COLS_MASIVA[tc].key] = cell.trim()
+            (fila as unknown as Record<string, string>)[COLS_MASIVA[tc].key] = cell.trim()
         })
         updated[tr] = fila
       })
@@ -2758,7 +2761,7 @@ function TablaRapidaMasiva({
           destinatarioNombre:    fila.destNombre,
           destinatarioDocumento: fila.destDoc    || undefined,
           destinatarioCiudad:    fila.destCiudad || undefined,
-          destinatarioPais:      fila.destPais   || 'CO',
+          destinatarioPais:      'CO',
           destinatarioDireccion: fila.destDir    || undefined,
           destinatarioTelefono:  fila.destTel    || undefined,
           destinatarioCp:        fila.destCp     || undefined,
@@ -2893,7 +2896,7 @@ function TablaRapidaMasiva({
                       <CiudadCell
                         deptoId={col.group === 'or' ? fila.orDeptoId  : fila.destDeptoId}
                         ciudadId={col.group === 'or' ? fila.orCiudadId : fila.destCiudadId}
-                        nombre={(fila as Record<string, string>)[col.key]}
+                        nombre={(fila as unknown as Record<string, string>)[col.key]}
                         onChange={(deptoId, ciudadId, nombre) =>
                           updateGeo(fila.id, col.group as 'or' | 'dest', deptoId, ciudadId, nombre)
                         }
@@ -2905,14 +2908,14 @@ function TablaRapidaMasiva({
                         step={col.type === 'number' ? '0.001' : undefined}
                         min={col.type === 'number' ? '0.001' : undefined}
                         placeholder={col.placeholder}
-                        value={(fila as Record<string, string>)[col.key]}
+                        value={(fila as unknown as Record<string, string>)[col.key]}
                         onChange={e => update(fila.id, col.key, e.target.value)}
                         onKeyDown={e => handleKeyDown(e, rowIdx, colIdx)}
                         onPaste={e => handlePaste(e, rowIdx, colIdx)}
                         className={cn(
                           'w-full bg-transparent px-1.5 py-0.5 outline-none',
                           'focus:bg-primary/5 focus:ring-1 focus:ring-inset focus:ring-primary',
-                          col.required && fila.error && !(fila as Record<string, string>)[col.key]?.trim() && 'bg-destructive/10',
+                          col.required && fila.error && !(fila as unknown as Record<string, string>)[col.key]?.trim() && 'bg-destructive/10',
                         )}
                       />
                     )}
@@ -4968,7 +4971,7 @@ function TabServiciosPostales({
       servicioId,
       sucursalId,
       pesoFisicoKg: pesoKg,
-      medioPago,
+      medioPago: medioPago as import('@/queries/ventas.queries').MedioPagoEnvio,
       cantidadPiezas,
       remitente: {
         nombre: remitente.nombre.trim(),
@@ -6265,8 +6268,8 @@ function TabResumenPago({
     }
   }
 
-  const eliminarEnvio     = useEliminarEnvioDelCarrito(ventaId, cajaId)
-  const eliminarApartado  = useEliminarApartadoDelCarrito(ventaId)
+  const eliminarEnvio     = useEliminarEnvioDelCarrito(ventaId ?? 0, cajaId)
+  const eliminarApartado  = useEliminarApartadoDelCarrito(ventaId ?? 0)
 
   const tieneItems =
     (carrito?.detalle.length ?? 0) > 0 ||

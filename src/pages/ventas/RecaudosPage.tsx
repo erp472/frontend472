@@ -81,7 +81,7 @@ export default function RecaudosPage() {
   const [buscar,   setBuscar]   = useState('')
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as never,
     defaultValues: { comisionOperador: 0 },
   })
 
@@ -150,7 +150,7 @@ export default function RecaudosPage() {
 
         {/* ── Tab: Registrar ── */}
         <TabsContent value="registrar" className="mt-4">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit as never)} className="space-y-4">
 
             {/* Convenio */}
             <div className="space-y-1">

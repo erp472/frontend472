@@ -303,7 +303,7 @@ export default function SacasPage() {
   const crear = useCrearSaca(sucursalId)
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<CrearForm>({
-    resolver: zodResolver(crearSchema),
+    resolver: zodResolver(crearSchema) as never,
     defaultValues: { tipo: 'nacional', tipoConsolidacion: 'directa' },
   })
 
@@ -409,7 +409,7 @@ export default function SacasPage() {
               <Package className="size-4" /> Nueva saca
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit(onCrear)} className="space-y-4">
+          <form onSubmit={handleSubmit(onCrear as never)} className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Número de precinto *</Label>
               <Input

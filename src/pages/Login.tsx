@@ -45,9 +45,9 @@ export default function Login() {
       })
 
       // Resuelve el usuario pasando el token explícitamente — aún no está en el store
-      const resolvedUser = res.user ?? await apiFetch('/auth/me', {
+      const resolvedUser = (res.user ?? await apiFetch('/auth/me', {
         headers: { Authorization: `Bearer ${res.access_token}` },
-      }, userSchema)
+      }, userSchema)) as User
 
       if (isTauri() && !import.meta.env.DEV && WEB_ONLY_ROLES.includes(resolvedUser.rol)) {
         throw new ApiError(403, 'No esta permitido el acceso a la app de escritorio')

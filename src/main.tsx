@@ -48,7 +48,7 @@ async function bootstrap() {
   if (!storedToken) useSessionStore.getState().setToken(token)
 
   try {
-    const user = await apiFetch('/auth/me', {}, userSchema)
+    const user = await apiFetch('/auth/me', {}, userSchema) as import('@/stores/useSessionStore').User
     useSessionStore.getState().setUser(user)
     startBridge()
     startRealtime()

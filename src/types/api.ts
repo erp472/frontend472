@@ -594,6 +594,40 @@ export interface UpdateServicioInput {
   largo_max_cm?:             number | null | undefined
 }
 
+// ── Permisos Matrix ───────────────────────────────────────────────────────────
+
+export interface MatrixRole {
+  id:         string
+  nombre:     string
+  descripcion?: string | null
+  activo?:    boolean
+  permisoIds: string[]
+  [key: string]: unknown
+}
+
+export interface MatrixResponse {
+  roles:    MatrixRole[]
+  modulos:  ModuloEntry[]
+  permisos: PermisoEntry[]
+}
+
+// ── Feature Flags (extended) ──────────────────────────────────────────────────
+
+export type FeatureFlagEntorno = 'all' | 'dev' | 'staging' | 'prod'
+
+export interface FeatureFlagResponse {
+  id:          number
+  codigo:      string
+  descripcion: string | null
+  activo:      boolean
+  entorno:     FeatureFlagEntorno
+  plataforma:  string
+  createdAt:   string
+  updatedAt:   string
+  roles:       { id: number; nombre: string; codigo?: string }[]
+  usuarios:    { id: number; nombre: string; email: string }[]
+}
+
 // ── Registro de Diferencias de Cierre ────────────────────────────────────────
 
 export interface DiferenciaRegistro {

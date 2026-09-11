@@ -15,7 +15,7 @@ export function useSessionRefresh() {
 
     async function onFocus() {
       try {
-        const user = await apiFetch('/auth/me', {}, userSchema)
+        const user = await apiFetch('/auth/me', {}, userSchema) as import('@/stores/useSessionStore').User
         setUser(user)
       } catch {
         // Un 401 ya dispara clearSession vía registerOn401Handler; otros

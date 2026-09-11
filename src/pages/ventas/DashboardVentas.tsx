@@ -503,7 +503,7 @@ export default function DashboardVentas() {
                           ))}
                         </Pie>
                         <Tooltip
-                          formatter={(v: number) => [fmt(v), '']}
+                          formatter={(v) => [fmt(Number(v ?? 0)), '']}
                           contentStyle={{
                             fontSize: 11,
                             borderRadius: 8,
