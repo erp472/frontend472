@@ -1,8 +1,9 @@
 import { create } from 'zustand'
-import { devtools, persist } from 'zustand/middleware'
+import { devtools, persist, createJSONStorage } from 'zustand/middleware'
 import { z } from 'zod'
 
 export const RolUsuario = z.enum([
+  'USUARIO_POST',
   'CAJERO',
   'ADMINISTRATIVO',
   'TESORERIA',
@@ -19,22 +20,28 @@ export const userSchema = z.object({
   nombre: z.string(),
   email: z.string().email(),
   rol: RolUsuario,
-  sucursal_id: z.string().nullable(),
+  sucursal_id: z.number().int().nullable(),
   activo: z.boolean(),
   ultimoLogin: z.string().nullable(),
+  permisos: z.array(z.string()).default([]),
 })
 export type User = z.infer<typeof userSchema>
 
 type SessionStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
+// Vence la sesión tras 20 minutos de inactividad
+export const INACTIVITY_MS = 20 * 60 * 1000
+
 interface SessionState {
   token: string | null
   user: User | null
   status: SessionStatus
+  lastActivity: number | null
   setToken: (token: string) => void
   setUser: (user: User) => void
   setStatus: (status: SessionStatus) => void
   clearSession: () => void
+  touchActivity: () => void
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -44,15 +51,19 @@ export const useSessionStore = create<SessionState>()(
         token: null,
         user: null,
         status: 'loading',
-        setToken: (token) => set({ token }),
-        setUser: (user) => set({ user, status: 'authenticated' }),
+        lastActivity: null,
+        setToken: (token) => set({ token, lastActivity: Date.now() }),
+        setUser: (user) => set({ user, status: 'authenticated', lastActivity: Date.now() }),
         setStatus: (status) => set({ status }),
         clearSession: () =>
-          set({ token: null, user: null, status: 'unauthenticated' }),
+          set({ token: null, user: null, status: 'unauthenticated', lastActivity: null }),
+        touchActivity: () => set({ lastActivity: Date.now() }),
       }),
       {
-        name: 'session-472',
-        partialize: (s: SessionState) => ({ token: s.token, user: s.user }),
+        name: 'session',
+        storage: createJSONStorage(() => sessionStorage),
+        // Solo persistir token y lastActivity — user y status se rehidratan vía /auth/me
+        partialize: (s) => ({ token: s.token, lastActivity: s.lastActivity }),
       },
     ),
     { name: 'SessionStore' },

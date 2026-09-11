@@ -1,0 +1,55 @@
+{
+  "version": "2024-temp",
+  "nota": "Tarifario temporal para cálculo de envíos postales. Reemplazar con tarifario oficial cuando esté disponible.",
+  "zonas": [
+    {
+      "id": "bogota",
+      "label": "Bogotá",
+      "descripcion": "Envíos dentro de Bogotá D.C.",
+      "tarifa": 9000,
+      "tipo": "nacional"
+    },
+    {
+      "id": "nacional_cercano",
+      "label": "Nacional (cerca de Bogotá)",
+      "descripcion": "Municipios y ciudades principales cercanas a Bogotá",
+      "tarifa": 18000,
+      "tipo": "nacional"
+    },
+    {
+      "id": "nacional_lejano",
+      "label": "Nacional (lejos de Bogotá)",
+      "descripcion": "Municipios y ciudades distantes de Bogotá",
+      "tarifa": 25000,
+      "tipo": "nacional"
+    },
+    {
+      "id": "internacional_latam",
+      "label": "América Latina",
+      "descripcion": "Países de América Latina y el Caribe",
+      "tarifa": 89000,
+      "tipo": "internacional"
+    },
+    {
+      "id": "internacional_norteamerica",
+      "label": "Norte América",
+      "descripcion": "Estados Unidos, Canadá y México",
+      "tarifa": 123000,
+      "tipo": "internacional"
+    },
+    {
+      "id": "internacional_europa",
+      "label": "Europa",
+      "descripcion": "Países europeos",
+      "tarifa": 245000,
+      "tipo": "internacional"
+    },
+    {
+      "id": "internacional_occidente",
+      "label": "Occidente",
+      "descripcion": "Resto del mundo — Asia, África, Oceanía y demás regiones",
+      "tarifa": 250000,
+      "tipo": "internacional"
+    }
+  ]
+}

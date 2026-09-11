@@ -1,0 +1,46 @@
+{
+  "numeroGuia": "GU-2026-000001",
+  "codigoBarras": "GU2026000001",
+  "tipo": "nacional",
+  "tipoServicio": "Correo Regular No Prioritario",
+  "remitente": {
+    "nombre": "Carlos Remitente",
+    "documento": "12345678",
+    "telefono": "3001234567",
+    "email": "remitente@test.com",
+    "direccion": "Cra 7 #45-12",
+    "ciudad": "Bogotá",
+    "codigoPostal": "110111",
+    "pais": "CO"
+  },
+  "destinatario": {
+    "nombre": "María Destinataria",
+    "documento": "87654321",
+    "telefono": "3109876543",
+    "email": "destinataria@test.com",
+    "direccion": "Cll 10 #20-30",
+    "ciudad": "Medellín",
+    "codigoPostal": "050001",
+    "pais": "CO"
+  },
+  "peso": {
+    "fisicoKg": 0.5,
+    "tarificadoKg": 0.5,
+    "altoCm": null,
+    "anchoCm": null,
+    "largoCm": null,
+    "volumetricoKg": null
+  },
+  "valores": {
+    "servicio": 9000,
+    "manejo": 1500,
+    "seguro": 0,
+    "declarado": null,
+    "total": 10500
+  },
+  "estado": "ACTIVA",
+  "generadoEn": "2026-08-14T10:30:00.000Z",
+  "ordenServicio": null,
+  "fechaEntregaEstimada": "2026-08-20",
+  "centroOperativo": "Bogotá Centro"
+}

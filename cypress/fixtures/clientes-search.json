@@ -1,0 +1,33 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "tipoDocumento": "CC",
+      "numeroDocumento": "12345678",
+      "nombre": "Carlos Remitente",
+      "email": "carlos@email.com",
+      "telefono": "3001234567",
+      "direccion": "Calle 10 # 5-20",
+      "ciudad": "Bogotá",
+      "activo": true,
+      "tipoClienteId": 1,
+      "tipoCliente": { "id": 1, "nombre": "Persona Natural" }
+    },
+    {
+      "id": 2,
+      "tipoDocumento": "NIT",
+      "numeroDocumento": "900123456-1",
+      "nombre": "Empresa ABC S.A.S.",
+      "email": "contacto@empresa.com",
+      "telefono": "6012345678",
+      "direccion": "Carrera 7 # 70-10",
+      "ciudad": "Bogotá",
+      "activo": true,
+      "tipoClienteId": 2,
+      "tipoCliente": { "id": 2, "nombre": "Persona Jurídica" }
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "limit": 20
+}

@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   Search, UserPlus, MoreHorizontal, Pencil,
-  UserX, UserCheck, Loader2, AlertCircle,
+  UserX, UserCheck, Loader2, AlertCircle, MapPin,
 } from 'lucide-react'
 import { Button }    from '@/components/ui/button'
 import { Input }     from '@/components/ui/input'
@@ -35,18 +35,19 @@ import {
 } from '@/queries/users.queries'
 import { useSessionStore } from '@/stores/useSessionStore'
 import { rolLabels } from '@/components/layout/AppSidebar'
+import { GeoSelector, type GeoValue } from '@/components/GeoSelector'
 import type { UserResponse } from '@/types/api'
-import type { RolUsuario } from '@/stores/useSessionStore'
 import { ApiError } from '@/lib/api'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const ROL_VALUES = [
-  'CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS',
+  'USUARIO_POST', 'CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS',
   'SUPERVISOR_REGIONAL', 'ADMIN_NACIONAL', 'ADMIN_SISTEMA',
 ] as const
 
 const ROL_BADGE: Record<string, string> = {
+  USUARIO_POST:         'secondary',
   CAJERO:               'secondary',
   ADMINISTRATIVO:       'secondary',
   TESORERIA:            'secondary',
@@ -60,12 +61,21 @@ const ROWS_PER_PAGE = 15
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
+const geoSchema = z.object({
+  pais_id:          z.number().int().positive().nullable().optional(),
+  departamento_id:  z.number().int().positive().nullable().optional(),
+  ciudad_id:        z.number().int().positive().nullable().optional(),
+})
+
 const baseSchema = z.object({
   nombre:      z.string().min(2, 'Mínimo 2 caracteres').max(200),
   email:       z.string().email('Correo inválido'),
   rol:         z.enum(ROL_VALUES),
-  sucursal_id: z.string().uuid('UUID inválido').nullable().optional(),
-})
+  sucursal_id: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined) ? null : Number(v),
+    z.number().int().positive('Debe ser un número positivo').nullable()
+  ).optional(),
+}).merge(geoSchema)
 
 const createSchema = baseSchema.extend({
   password: z.string().min(8, 'Mínimo 8 caracteres').max(100),
@@ -81,13 +91,6 @@ type UpdateForm = z.infer<typeof updateSchema>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string | null) {
-  if (!iso) return '—'
-  return new Intl.DateTimeFormat('es-CO', {
-    dateStyle: 'medium', timeStyle: 'short',
-  }).format(new Date(iso))
-}
-
 function RolBadge({ rol }: { rol: string }) {
   return (
     <Badge variant={(ROL_BADGE[rol] ?? 'outline') as 'default' | 'secondary' | 'outline'}>
@@ -102,24 +105,35 @@ interface UserFormProps {
   user?: UserResponse | null
   open: boolean
   onClose: () => void
+  /** Restringe la sucursal a un conjunto cerrado (p. ej. las de una regional) */
+  sucursales?: { id: number; codigo: string; nombre: string }[]
 }
 
-function UserForm({ user, open, onClose }: UserFormProps) {
+export function UserForm({ user, open, onClose, sucursales }: UserFormProps) {
   const isEdit = !!user
   const createMutation = useCreateUser()
   const updateMutation = useUpdateUser()
   const isPending = createMutation.isPending || updateMutation.isPending
 
-  const form = useForm<CreateForm | UpdateForm>({
-    resolver: zodResolver(isEdit ? updateSchema : createSchema) as never,
+  const [geo, setGeo] = useState<GeoValue>({
+    paisId:         user?.pais?.id         ?? null,
+    departamentoId: user?.departamento?.id ?? null,
+    ciudadId:       user?.ciudad?.id       ?? null,
+  })
+
+  const form = useForm<any>({
+    resolver: zodResolver((isEdit ? updateSchema : createSchema) as any),
     defaultValues: {
-      nombre:      user?.nombre ?? '',
-      email:       user?.email  ?? '',
-      password:    '',
-      rol:         user?.rol    ?? 'CAJERO',
-      sucursal_id: user?.sucursal?.id ?? null,
-      ...(isEdit && { activo: user?.activo }),
-    },
+      nombre:          user?.nombre ?? '',
+      email:           user?.email  ?? '',
+      password:        '',
+      rol:             user?.rol    ?? 'CAJERO',
+      sucursal_id:     user?.sucursal?.id ?? null,
+      pais_id:         user?.pais?.id         ?? null,
+      departamento_id: user?.departamento?.id ?? null,
+      ciudad_id:       user?.ciudad?.id       ?? null,
+      ...(isEdit ? { activo: user!.activo } : {}),
+    } as any,
   })
 
   const [serverError, setServerError] = useState<string | null>(null)
@@ -127,15 +141,29 @@ function UserForm({ user, open, onClose }: UserFormProps) {
   useEffect(() => {
     if (!open) return
     setServerError(null)
+    const paisId         = user?.pais?.id         ?? null
+    const departamentoId = user?.departamento?.id ?? null
+    const ciudadId       = user?.ciudad?.id       ?? null
+    setGeo({ paisId, departamentoId, ciudadId })
     form.reset({
-      nombre:      user?.nombre ?? '',
-      email:       user?.email  ?? '',
-      password:    '',
-      rol:         user?.rol    ?? 'CAJERO',
-      sucursal_id: user?.sucursal?.id ?? null,
-      ...(isEdit && { activo: user?.activo }),
-    })
+      nombre:          user?.nombre ?? '',
+      email:           user?.email  ?? '',
+      password:        '',
+      rol:             user?.rol    ?? 'CAJERO',
+      sucursal_id:     user?.sucursal?.id ?? null,
+      pais_id:         paisId,
+      departamento_id: departamentoId,
+      ciudad_id:       ciudadId,
+      ...(isEdit ? { activo: user!.activo } : {}),
+    } as any)
   }, [open, user])
+
+  function handleGeoChange(v: GeoValue) {
+    setGeo(v)
+    form.setValue('pais_id',         v.paisId)
+    form.setValue('departamento_id', v.departamentoId)
+    form.setValue('ciudad_id',       v.ciudadId)
+  }
 
   async function onSubmit(values: CreateForm | UpdateForm) {
     setServerError(null)
@@ -143,12 +171,9 @@ function UserForm({ user, open, onClose }: UserFormProps) {
       if (isEdit && user) {
         const patch = { ...values } as UpdateForm
         if (!patch.password) delete patch.password
-        if (patch.sucursal_id === '') patch.sucursal_id = null
         await updateMutation.mutateAsync({ id: user.id, data: patch })
       } else {
-        const body = { ...values } as CreateForm
-        if (body.sucursal_id === '') body.sucursal_id = null
-        await createMutation.mutateAsync(body)
+        await createMutation.mutateAsync(values as CreateForm)
       }
       onClose()
     } catch (e) {
@@ -164,7 +189,7 @@ function UserForm({ user, open, onClose }: UserFormProps) {
           <SheetTitle>{isEdit ? 'Editar usuario' : 'Nuevo usuario'}</SheetTitle>
           <SheetDescription>
             {isEdit
-              ? 'Modifica los datos del usuario. Deja la contraseña en blanco para no cambiarla.'
+              ? 'Modifica los datos del usuario.'
               : 'Completa el formulario para crear un nuevo usuario en el sistema.'}
           </SheetDescription>
         </SheetHeader>
@@ -214,7 +239,7 @@ function UserForm({ user, open, onClose }: UserFormProps) {
               control={form.control}
               name="rol"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select value={field.value as string} onValueChange={field.onChange}>
                   <SelectTrigger id="u-rol" aria-invalid={!!form.formState.errors.rol}>
                     <SelectValue placeholder="Selecciona un rol" />
                   </SelectTrigger>
@@ -231,18 +256,52 @@ function UserForm({ user, open, onClose }: UserFormProps) {
             )}
           </div>
 
-          {/* Sucursal ID */}
+          {/* Sucursal */}
           <div className="space-y-1.5">
-            <Label htmlFor="u-suc">UUID de sucursal <span className="text-muted-foreground text-xs ml-1">(opcional)</span></Label>
-            <Input
-              id="u-suc"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              {...form.register('sucursal_id')}
-              aria-invalid={!!form.formState.errors.sucursal_id}
-            />
+            <Label htmlFor="u-suc">Sucursal <span className="text-muted-foreground text-xs ml-1">(opcional)</span></Label>
+            {sucursales ? (
+              <Controller
+                control={form.control}
+                name="sucursal_id"
+                render={({ field }) => (
+                  <Select
+                    value={field.value ? String(field.value) : '_none'}
+                    onValueChange={(v) => field.onChange(v === '_none' ? null : Number(v))}
+                  >
+                    <SelectTrigger id="u-suc">
+                      <SelectValue placeholder="Sin sucursal" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Sin sucursal</SelectItem>
+                      {sucursales.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.codigo} — {s.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            ) : (
+              <Input
+                id="u-suc"
+                type="number"
+                min={1}
+                placeholder="1"
+                {...form.register('sucursal_id')}
+                aria-invalid={!!form.formState.errors.sucursal_id}
+              />
+            )}
             {form.formState.errors.sucursal_id && (
               <p className="text-xs text-destructive">{form.formState.errors.sucursal_id.message as string}</p>
             )}
+          </div>
+
+          {/* Ubicación geográfica */}
+          <div className="space-y-2">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <MapPin className="size-3.5" />
+              Ubicación geográfica
+            </p>
+            <GeoSelector value={geo} onChange={handleGeoChange} />
           </div>
 
           {/* Activo (solo edición) */}
@@ -325,7 +384,8 @@ export default function UsersPage() {
   }
 
   const { data, isLoading, isError } = useUsers(queryParams)
-  const deleteMutation = useDeleteUser()
+  const deleteMutation  = useDeleteUser()
+  const updateMutation2 = useUpdateUser()
 
   const usuarios  = data?.datos ?? []
   const meta      = data?.meta
@@ -348,7 +408,11 @@ export default function UsersPage() {
 
   async function confirmDelete() {
     if (!deleteUser) return
-    await deleteMutation.mutateAsync(deleteUser.id)
+    if (deleteUser.activo) {
+      await deleteMutation.mutateAsync(deleteUser.id)
+    } else {
+      await updateMutation2.mutateAsync({ id: deleteUser.id, data: { activo: true } })
+    }
     setDeleteUser(null)
   }
 
@@ -431,7 +495,6 @@ export default function UsersPage() {
               <TableHead>Rol</TableHead>
               <TableHead>Sucursal</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Último ingreso</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -479,9 +542,6 @@ export default function UsersPage() {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm tabular-nums">
-                    {formatDate(u.ultimoLogin)}
-                  </TableCell>
                   <TableCell>
                     {(canEdit) && (
                       <DropdownMenu>
@@ -522,7 +582,7 @@ export default function UsersPage() {
         </Table>
 
         {/* Paginación */}
-        {meta && meta.paginas > 1 && (
+        {meta && meta.total > 0 && (
           <div className="flex items-center justify-between border-t px-4 py-3">
             <span className="text-xs text-muted-foreground tabular-nums">
               Mostrando {(page - 1) * ROWS_PER_PAGE + 1}–{Math.min(page * ROWS_PER_PAGE, meta.total)} de {meta.total}
@@ -575,9 +635,9 @@ export default function UsersPage() {
             <Button
               variant={deleteUser?.activo ? 'destructive' : 'default'}
               onClick={confirmDelete}
-              disabled={deleteMutation.isPending}
+              disabled={deleteMutation.isPending || updateMutation2.isPending}
             >
-              {deleteMutation.isPending && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              {(deleteMutation.isPending || updateMutation2.isPending) && <Loader2 className="mr-1.5 size-4 animate-spin" />}
               {deleteUser?.activo ? 'Desactivar' : 'Reactivar'}
             </Button>
           </DialogFooter>

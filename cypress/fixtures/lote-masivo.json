@@ -1,0 +1,54 @@
+{
+  "id": 1,
+  "estado": "borrador",
+  "sucursalId": 1,
+  "servicioId": 1,
+  "servicio": {
+    "idservicios": 1,
+    "nombreservicios": "Correo Regular No Prioritario",
+    "tiposervicios": "nacional"
+  },
+  "remitente": {
+    "nombre": "Empresa ABC S.A.S.",
+    "documento": "900123456",
+    "ciudad": "Bogotá",
+    "telefono": "3001234567"
+  },
+  "totales": {
+    "items": 1,
+    "pesoKg": 0.5,
+    "estampillas": 0,
+    "total": 10500
+  },
+  "observaciones": null,
+  "pdfGenerado": false,
+  "createdAt": "2026-08-21T10:00:00.000Z",
+  "updatedAt": "2026-08-21T10:00:00.000Z",
+  "items": [
+    {
+      "id": 1,
+      "fila": 1,
+      "envioId": null,
+      "remitente": null,
+      "destinatario": {
+        "nombre": "María Destinataria",
+        "documento": "87654321",
+        "email": null,
+        "telefono": "3109876543",
+        "direccion": "Cll 10 #20-30",
+        "ciudad": "Medellín",
+        "pais": "CO",
+        "codigoPostal": null
+      },
+      "calculo": {
+        "pesoFisicoKg": 0.5,
+        "pesoTarificadoKg": 0.5,
+        "valorServicio": 9000,
+        "valorEstampillas": 0,
+        "valorTotal": 10500
+      },
+      "contenido": "Documentos",
+      "observaciones": null
+    }
+  ]
+}

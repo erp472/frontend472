@@ -1,0 +1,21 @@
+[
+  { "codigo": "modulo:ventas",          "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_productos",   "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_especiales",  "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_apartado",    "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_servicios",   "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:tab_historial",   "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "ventas:certificaciones", "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "modulo_usuarios",        "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo_cajas",           "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "modulo:clientes",        "entorno": "dev", "plataforma": "tauri" },
+  { "codigo": "modulo_servicios",       "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo_productos",       "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo_equipos",         "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo_sucursales",      "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo_regionales",      "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo_comercios",       "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo_inventario",      "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "modulo:tesoreria",       "entorno": "dev", "plataforma": "web"   },
+  { "codigo": "sistema_permisos",       "entorno": "dev", "plataforma": "web"   }
+]

@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "nombre": "PC Caja 1",
+      "mac": "AA:BB:CC:DD:EE:01",
+      "sucursalId": 1,
+      "activo": true,
+      "ultimoHeartbeat": "2026-08-21T08:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "nombre": "PC Caja 2",
+      "mac": "AA:BB:CC:DD:EE:02",
+      "sucursalId": 1,
+      "activo": true,
+      "ultimoHeartbeat": "2026-08-21T07:30:00.000Z"
+    }
+  ],
+  "total": 2,
+  "page": 1,
+  "limit": 20
+}

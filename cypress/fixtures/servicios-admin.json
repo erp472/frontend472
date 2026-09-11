@@ -1,0 +1,34 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "codigoservicio": "NP-NAC-001",
+      "nombreservicios": "Correo Regular No Prioritario",
+      "tipo": "nacional",
+      "activo": true,
+      "pesoMaxKg": 20,
+      "tiempoEntregaDias": 5
+    },
+    {
+      "id": 2,
+      "codigoservicio": "P-NAC-001",
+      "nombreservicios": "Correo Prioritario Nacional",
+      "tipo": "nacional",
+      "activo": true,
+      "pesoMaxKg": 20,
+      "tiempoEntregaDias": 3
+    },
+    {
+      "id": 3,
+      "codigoservicio": "EMS-INT-001",
+      "nombreservicios": "EMS Internacional",
+      "tipo": "internacional",
+      "activo": true,
+      "pesoMaxKg": 30,
+      "tiempoEntregaDias": 10
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "limit": 20
+}

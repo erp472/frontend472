@@ -1,0 +1,24 @@
+[
+  {
+    "id": 1,
+    "codigo": "SAC-2026-001",
+    "sucursalId": 1,
+    "estado": "abierta",
+    "tipo": "ordinaria",
+    "destino": "Bogotá Centro",
+    "totalEnvios": 5,
+    "creadaEn": "2026-08-21T09:00:00.000Z",
+    "cerradaEn": null
+  },
+  {
+    "id": 2,
+    "codigo": "SAC-2026-002",
+    "sucursalId": 1,
+    "estado": "cerrada",
+    "tipo": "ordinaria",
+    "destino": "Medellín",
+    "totalEnvios": 12,
+    "creadaEn": "2026-08-20T09:00:00.000Z",
+    "cerradaEn": "2026-08-20T18:00:00.000Z"
+  }
+]

@@ -206,3 +206,36 @@ export function useRevocarPermiso() {
     },
   })
 }
+
+export function useUpdateRol() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, nombre }: { id: number; nombre: string }) =>
+      apiFetch(`/permisos/roles/${id}`, {
+        method: 'PATCH',
+        body:   JSON.stringify({ nombreroles: nombre }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: permisosKeys.matrix() }),
+  })
+}
+
+export function useDeleteRol() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch(`/permisos/roles/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: permisosKeys.matrix() }),
+  })
+}
+
+export function useCreateRol() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { codigoroles: string; nombreroles: string }) =>
+      apiFetch('/permisos/roles', {
+        method: 'POST',
+        body:   JSON.stringify(data),
+      }, RolSchema),
+    onSuccess: () => qc.invalidateQueries({ queryKey: permisosKeys.matrix() }),
+  })
+}

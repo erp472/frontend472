@@ -2,12 +2,37 @@ import {
   LayoutDashboard,
   Users,
   Monitor,
-  Building2,
-  ScrollText,
-  Settings,
   ShieldCheck,
   ChevronDown,
+  ChevronRight,
+  MapPin,
+  Building,
+  Store,
+  Package,
+  Boxes,
+  Layers,
+  Truck,
+  ToggleLeft,
+  ScrollText,
+  Settings2,
+  Vault,
+  UserRound,
+  Tag,
+  Tags,
+  ReceiptText,
+  ShoppingCart,
+  BarChart2,
+  Bell,
+  MailOpen,
+  UserCog,
+  TrendingUp,
+  Stamp,
+  BookOpen,
+  SlidersHorizontal,
+  Archive,
+  Landmark,
 } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   Sidebar,
@@ -20,76 +45,203 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { useSessionStore } from '@/stores/useSessionStore'
+import { type RolUsuario, useSessionStore } from '@/stores/useSessionStore'
+import { useAcceso } from '@/hooks/useAcceso'
+import { ProfileSheet } from './ProfileSheet'
 import { cn } from '@/lib/utils'
 
+interface NavChild {
+  title:       string
+  url:         string
+  icon:        React.ElementType
+  permiso?:    string
+  flag?:       string
+  plataforma?: 'tauri' | 'web'
+  roles?:      RolUsuario[]
+}
+
 interface NavItem {
-  title: string
-  url: string
-  icon: React.ElementType
-  roles?: string[]
+  title:         string
+  url?:          string
+  icon:          React.ElementType
+  permiso?:      string
+  flag?:         string
+  activePrefix?: string
+  plataforma?:   'tauri' | 'web'
+  roles?:        RolUsuario[]
+  children?:     NavChild[]
 }
 
 interface NavGroup {
-  label: string
-  items: NavItem[]
+  label:      string
+  plataforma?: 'web'
+  items:      NavItem[]
 }
 
 const navMain: NavGroup[] = [
   {
     label: 'Principal',
     items: [
-      { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+      { title: 'Dashboard', url: '/', icon: LayoutDashboard, roles: ['SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'TESORERIA', 'INVENTARIOS', 'ADMINISTRATIVO'] },
     ],
   },
   {
-    label: 'Gestión',
+    label:      'Administración',
+    plataforma: 'web',
     items: [
-      { title: 'Usuarios', url: '/admin/users', icon: Users, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'ADMINISTRATIVO'] },
-      { title: 'Equipos', url: '/admin/devices', icon: Monitor, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
-      { title: 'Sucursales', url: '/admin/branches', icon: Building2, roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'] },
+      { title: 'Usuarios',        url: '/admin/users',        icon: Users,       permiso: 'admin:usuarios', roles: ['ADMIN_SISTEMA'],                   flag: 'modulo_usuarios'   },
+      { title: 'Comercios',       url: '/admin/comercios',    icon: Building,    roles: ['ADMIN_SISTEMA'],                                                     flag: 'modulo_comercios'  },
+      { title: 'Regionales',      url: '/admin/regionales',   icon: MapPin,      roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_regionales' },
+      { title: 'Sucursales',      url: '/admin/branches',     icon: Store,       roles: ['ADMIN_SISTEMA'],                                                    flag: 'modulo_sucursales' },
+      { title: 'Cajas auxiliares', url: '/admin/puntos-venta', icon: ReceiptText,        roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'], flag: 'modulo_cajas'      },
+      { title: 'Bases de caja',   url: '/admin/cajas-config', icon: SlidersHorizontal, roles: ['ADMIN_SISTEMA'] },
+      { title: 'Consolidado',     url: '/cajas/consolidado',  icon: TrendingUp,  roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL', 'SUPERVISOR_REGIONAL', 'TESORERIA'],   flag: 'modulo:tesoreria'  },
+      { title: 'Equipos',         url: '/admin/devices',      icon: Monitor,     roles: ['ADMIN_SISTEMA', 'ADMIN_NACIONAL'],                                   flag: 'modulo_equipos'    },
     ],
   },
   {
-    label: 'Sistema',
+    label: 'Inventario',
     items: [
-      { title: 'Permisos',      url: '/admin/permisos',  icon: ShieldCheck, roles: ['ADMIN_SISTEMA'] },
-      { title: 'Auditoría',     url: '/admin/audit',     icon: ScrollText,  roles: ['ADMIN_SISTEMA'] },
-      { title: 'Configuraciones', url: '/admin/settings',  icon: Settings,    roles: ['ADMIN_SISTEMA'] },
+      {
+        title:        'Stock',
+        url:          '/inventario',
+        icon:         Boxes,
+        activePrefix: '/inventario',
+        flag:         'modulo_inventario',
+        roles:        ['CAJERO', 'ADMINISTRATIVO', 'TESORERIA', 'INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL'],
+      },
+      {
+        title:  'Catálogo',
+        icon:   Tags,
+        flag:   'modulo_productos',
+        roles:  ['INVENTARIOS', 'ADMIN_SISTEMA', 'ADMIN_NACIONAL'],
+        children: [
+          { title: 'Productos',  url: '/admin/productos',            icon: Package,  flag: 'modulo_productos' },
+          { title: 'Estampillas', url: '/admin/estampillas',         icon: Stamp,    flag: 'modulo_productos' },
+          { title: 'Filatelia',  url: '/admin/filatelia',            icon: BookOpen, flag: 'modulo_productos' },
+          { title: 'Especiales', url: '/admin/productos-especiales', icon: Layers,   flag: 'modulo_productos' },
+          { title: 'Servicios',  url: '/admin/servicios',            icon: Truck,    flag: 'modulo_servicios' },
+          { title: 'Apartados',  url: '/admin/apartados',            icon: MailOpen  },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'Operaciones',
+    items: [
+      {
+        title:        'Cajas',
+        icon:         Vault,
+        activePrefix: '/cajas',
+        permiso:      'caja:consultar',
+        flag:         'modulo:caja',
+        roles:        ['SUPERVISOR_REGIONAL'],
+        children: [
+          { title: 'Panel principal',   url: '/cajas',          icon: LayoutDashboard, permiso: 'caja:consultar' },
+          { title: 'Alertas de cierre', url: '/cajas/cierre',  icon: Bell,            permiso: 'caja:consultar' },
+          { title: 'Sacas',             url: '/cajas/sacas/0', icon: Archive,          permiso: 'caja:consultar' },
+        ],
+      },
+      {
+        title:        'Tesorería',
+        icon:         Landmark,
+        activePrefix: '/tesoreria',
+        flag:         'modulo:tesoreria',
+        roles:        ['TESORERIA', 'ADMIN_SISTEMA'],
+        children: [
+          { title: 'Cajas principales',       url: '/tesoreria/cajas-principales', icon: Vault },
+          { title: 'Historial de movimientos', url: '/tesoreria/movimientos',      icon: ScrollText },
+        ],
+      },
+      {
+        title:        'Ventas',
+        icon:         ShoppingCart,
+        activePrefix: '/ventas',
+        permiso:      'ventas:consultar',
+        flag:         'modulo:ventas',
+        plataforma:   'tauri',
+        roles:        ['CAJERO'],
+        children: [
+          { title: 'Punto de venta',      url: '/ventas',                icon: ShoppingCart, permiso: 'ventas:consultar' },
+          { title: 'Estadísticas del día', url: '/ventas/estadisticas', icon: BarChart2,   permiso: 'ventas:consultar' },
+          { title: 'Apartados postales',  url: '/ventas/apartados',     icon: MailOpen,    permiso: 'ventas:consultar' },
+        ],
+      },
+      {
+        title:         'Clientes',
+        icon:          UserRound,
+        activePrefix:  '/clientes',
+        permiso:       'clientes:consultar',
+        flag:          'modulo:clientes',
+        plataforma:    'web',
+        roles:         ['CAJERO', 'SUPERVISOR_REGIONAL', 'ADMIN_SISTEMA', 'ADMINISTRATIVO'],
+        children: [
+          { title: 'Directorio',         url: '/clientes',       icon: UserRound, permiso: 'clientes:consultar' },
+          { title: 'Tipos / Beneficios', url: '/clientes/tipos', icon: Tag,       permiso: 'clientes:crear'     },
+        ],
+      },
+    ],
+  },
+  {
+    label: 'Reportes',
+    items: [
+      // Tesorería queda fuera: su navegación se limita a las cajas principales y su historial.
+      { title: 'Reportes', url: '/reportes', icon: BarChart2, activePrefix: '/reportes',
+        roles: ['USUARIO_POST', 'CAJERO', 'ADMINISTRATIVO', 'INVENTARIOS', 'SUPERVISOR_REGIONAL', 'ADMIN_NACIONAL', 'ADMIN_SISTEMA'] },
+    ],
+  },
+  {
+    label:      'Sistema',
+    plataforma: 'web',
+    items: [
+      { title: 'Permisos',           url: '/admin/permisos',           icon: ShieldCheck, roles: ['ADMIN_SISTEMA'], permiso: 'admin:usuarios', flag: 'sistema_permisos' },
+      { title: 'Asignación Cajeros', url: '/admin/asignacion-cajeros', icon: UserCog,     roles: ['ADMIN_SISTEMA'] },
+      {
+        title:    'Configuración',
+        icon:     Settings2,
+        roles:    ['ADMIN_SISTEMA'],
+        children: [
+          { title: 'Aperturas', url: '/admin/feature-flags', icon: ToggleLeft, roles: ['ADMIN_SISTEMA'], permiso: 'admin:feature_flags', flag: 'sistema_aperturas' },
+          { title: 'Auditoría', url: '/admin/audit',         icon: ScrollText, roles: ['ADMIN_SISTEMA'], permiso: 'admin:auditoria',     flag: 'sistema_auditoria' },
+        ],
+      },
     ],
   },
 ]
 
 const rolLabels: Record<string, string> = {
-  CAJERO: 'Cajero',
-  ADMINISTRATIVO: 'Administrativo',
-  TESORERIA: 'Tesorería',
-  INVENTARIOS: 'Inventarios',
+  USUARIO_POST:        'Usuario Post',
+  CAJERO:              'Cajero',
+  ADMINISTRATIVO:      'Administrativo',
+  TESORERIA:           'Tesorería',
+  INVENTARIOS:         'Inventarios',
   SUPERVISOR_REGIONAL: 'Supervisor',
-  ADMIN_NACIONAL: 'Admin Nacional',
-  ADMIN_SISTEMA: 'Admin Sistema',
+  ADMIN_NACIONAL:      'Admin Nacional',
+  ADMIN_SISTEMA:       'Admin Sistema',
 }
 
 export { navMain, rolLabels }
 
 export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
   const { pathname } = useLocation()
-  const { state } = useSidebar()
-  const collapsed = state === 'collapsed'
-  const user = useSessionStore((s) => s.user)
-  const clearSession = useSessionStore((s) => s.clearSession)
+  const { state }   = useSidebar()
+  const collapsed   = state === 'collapsed'
+  const user        = useSessionStore((s) => s.user)
+  const { puede, flagActivo, isAdmin, esTauri } = useAcceso()
+
+  const [openItems,   setOpenItems]   = useState<Record<string, boolean>>({ 'Configuración': true })
+  const [profileOpen, setProfileOpen] = useState(false)
+
+  const toggleItem = (key: string) =>
+    setOpenItems((prev) => ({ ...prev, [key]: !prev[key] }))
 
   const initials = user?.nombre
     .split(' ')
@@ -125,11 +277,23 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
 
       <SidebarContent>
         {navMain.map((group) => {
-          const visibleItems = group.items.filter(
-            (item) =>
-              !item.roles ||
-              (user && item.roles.includes(user.rol)),
-          )
+          if (group.plataforma === 'web' && esTauri) return null
+
+          const visibleItems = group.items
+            .filter((item) => {
+              if (item.plataforma === 'tauri' && !esTauri) return false
+              if (item.plataforma === 'web'   &&  esTauri) return false
+              if (item.roles && !item.roles.includes(user?.rol as RolUsuario)) return false
+              if (item.permiso && !puede(item.permiso, item.flag)) return false
+              if (!item.permiso && item.flag && !isAdmin && !flagActivo(item.flag)) return false
+              return true
+            })
+            .map((item) => ({
+              ...item,
+              url:     item.url === '/cajas' ? `/cajas/principales/${user?.sucursal_id ?? 1}` : item.url,
+              flagOff: isAdmin && !!item.flag && !flagActivo(item.flag),
+            }))
+
           if (visibleItems.length === 0) return null
 
           return (
@@ -137,25 +301,86 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
               <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {visibleItems.map((item) => (
-                    <SidebarMenuItem key={item.url}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={pathname === item.url}
-                        tooltip={item.title}
-                      >
-                        <Link
-                          to={item.url}
-                          className={cn(
-                            pathname === item.url && 'font-medium',
+                  {visibleItems.map((item) => {
+                    if (item.children) {
+                      const sid = user?.sucursal_id ?? 1
+                      const rewriteUrl = (url: string) => {
+                        if (url === '/cajas') return `/cajas/principales/${sid}`
+                        if (url === '/cajas/cierre') return `/cajas/cierre/${sid}`
+                        return url
+                      }
+                      const visibleChildren = item.children
+                        .filter((c) => {
+                          if (c.plataforma === 'tauri' && !esTauri) return false
+                          if (c.plataforma === 'web'   &&  esTauri) return false
+                          if (c.roles && !c.roles.includes(user?.rol as RolUsuario)) return false
+                          if (c.permiso && !puede(c.permiso, c.flag)) return false
+                          if (!c.permiso && c.flag && !isAdmin && !flagActivo(c.flag)) return false
+                          return true
+                        })
+                        .map((c) => ({ ...c, url: rewriteUrl(c.url) }))
+                      if (visibleChildren.length === 0) return null
+                      const childActive = visibleChildren.some((c) => pathname.startsWith(c.url))
+                      const isOpen      = openItems[item.title] ?? childActive
+
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton
+                            tooltip={item.title}
+                            isActive={childActive}
+                            onClick={() => toggleItem(item.title)}
+                            className="cursor-pointer"
+                          >
+                            <item.icon />
+                            <span>{item.title}</span>
+                            {!collapsed && (
+                              isOpen
+                                ? <ChevronDown  className="ml-auto size-4" />
+                                : <ChevronRight className="ml-auto size-4" />
+                            )}
+                          </SidebarMenuButton>
+                          {isOpen && !collapsed && (
+                            <SidebarMenuSub>
+                              {visibleChildren.map((child) => {
+                                const isChildActive = pathname === child.url || pathname.startsWith(child.url + '/')
+                                return (
+                                <SidebarMenuSubItem key={child.url}>
+                                  <SidebarMenuSubButton asChild isActive={isChildActive}>
+                                    <Link to={child.url} className={cn(isChildActive && 'font-medium')}>
+                                      <child.icon />
+                                      <span>{child.title}</span>
+                                    </Link>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                                )
+                              })}
+                            </SidebarMenuSub>
                           )}
+                        </SidebarMenuItem>
+                      )
+                    }
+
+                    return (
+                      <SidebarMenuItem key={item.url}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url}
+                          tooltip={item.title}
                         >
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
+                          <Link
+                            to={item.url!}
+                            className={cn((item.activePrefix ? pathname.startsWith(item.activePrefix) : pathname === item.url) && 'font-medium')}
+                          >
+                            <item.icon />
+                            <span>{item.title}</span>
+                            {item.flagOff && !collapsed && (
+                              <ToggleLeft className="ml-auto size-3.5 text-muted-foreground/50" />
+                            )}
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -168,50 +393,31 @@ export function AppSidebar({ side = 'left' }: { side?: 'left' | 'right' }) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent"
-                >
-                  <Avatar className="size-8 rounded-lg">
-                    <AvatarFallback className="rounded-lg text-xs">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-1 flex-col leading-tight text-left">
-                    <span className="truncate text-sm font-medium">
-                      {user?.nombre ?? '—'}
-                    </span>
-                    <Badge variant="outline" className="w-fit text-[10px] px-1 py-0 mt-0.5">
-                      {user ? rolLabels[user.rol] : ''}
-                    </Badge>
-                  </div>
-                  <ChevronDown className="ml-auto size-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="end"
-                className="w-56"
-              >
-                <DropdownMenuItem disabled>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {user?.email}
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={clearSession}
-                >
-                  Cerrar sesión
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <SidebarMenuButton
+              size="lg"
+              onClick={() => setProfileOpen(true)}
+              tooltip="Mi perfil"
+            >
+              <Avatar className="size-8 rounded-lg">
+                <AvatarFallback className="rounded-lg text-xs">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-1 flex-col leading-tight text-left">
+                <span className="truncate text-sm font-medium">
+                  {user?.nombre ?? '—'}
+                </span>
+                <Badge variant="outline" className="w-fit text-[10px] px-1 py-0 mt-0.5">
+                  {user ? rolLabels[user.rol] : ''}
+                </Badge>
+              </div>
+              <ChevronDown className="ml-auto size-4 text-muted-foreground" />
+            </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <ProfileSheet open={profileOpen} onOpenChange={setProfileOpen} />
     </Sidebar>
   )
 }

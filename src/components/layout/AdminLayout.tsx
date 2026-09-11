@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/breadcrumb'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopNavBar } from '@/components/layout/TopNavBar'
+import { useFeatureFlagsActivos } from '@/queries/feature-flags.queries'
+import { useFeatureFlagsStore } from '@/stores/useFeatureFlagsStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { isTauri } from '@/lib/tauri'
 
@@ -21,9 +23,19 @@ const tricolorBar = (
   />
 )
 
+const ENTORNO = import.meta.env.DEV ? 'dev' : 'prod'
+
 export function AdminLayout() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
+  const setFlags = useFeatureFlagsStore((s) => s.setFlags)
+
+  const plataforma = isTauri() ? 'tauri' : 'web'
+  const { data: flagsActivos } = useFeatureFlagsActivos({ entorno: ENTORNO, plataforma })
+
+  useEffect(() => {
+    if (flagsActivos) setFlags(flagsActivos.map((f) => f.codigo))
+  }, [flagsActivos, setFlags])
 
   useEffect(() => {
     if (isTauri()) {
@@ -36,7 +48,10 @@ export function AdminLayout() {
       <div className="flex h-screen flex-col">
         {tricolorBar}
         <TopNavBar />
-        <main className="flex flex-1 flex-col gap-4 overflow-auto p-4">
+        {/* Las pantallas POS ocupan exactamente el alto con h-full y hacen su propio
+            scroll interno; el resto crece y necesita que sea este contenedor el que
+            desplace, o las tarjetas quedan recortadas sin manera de alcanzarlas. */}
+        <main className="flex flex-1 flex-col min-h-0 overflow-y-auto">
           <Outlet />
         </main>
       </div>
@@ -46,7 +61,7 @@ export function AdminLayout() {
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <AppSidebar />
-      <SidebarInset className="min-w-0">
+      <SidebarInset className="min-w-0 h-svh min-h-0">
         {tricolorBar}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
@@ -63,7 +78,7 @@ export function AdminLayout() {
             </BreadcrumbList>
           </Breadcrumb>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 min-w-0 overflow-x-hidden">
+        <main className="flex flex-1 flex-col gap-4 p-4 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden">
           <Outlet />
         </main>
       </SidebarInset>

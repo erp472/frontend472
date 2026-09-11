@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "nombre": "Sucursal Central Bogotá",
+    "codigo": "BOG-001",
+    "direccion": "Calle 10 # 5-60",
+    "ciudad": "Bogotá",
+    "activo": true,
+    "regionalId": 1
+  },
+  {
+    "id": 2,
+    "nombre": "Sucursal Chapinero",
+    "codigo": "BOG-002",
+    "direccion": "Carrera 7 # 50-30",
+    "ciudad": "Bogotá",
+    "activo": true,
+    "regionalId": 1
+  }
+]

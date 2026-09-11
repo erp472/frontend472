@@ -1,0 +1,28 @@
+{
+  "id": 99,
+  "estado": "borrador",
+  "sucursalId": 1,
+  "servicioId": 1,
+  "servicio": {
+    "idservicios": 1,
+    "nombreservicios": "Correo Regular No Prioritario",
+    "tiposervicios": "nacional"
+  },
+  "remitente": {
+    "nombre": "Nuevo Remitente S.A.",
+    "documento": "12345678",
+    "ciudad": "Bogotá",
+    "telefono": "3001111111"
+  },
+  "totales": {
+    "items": 0,
+    "pesoKg": 0,
+    "estampillas": 0,
+    "total": 0
+  },
+  "observaciones": null,
+  "pdfGenerado": false,
+  "createdAt": "2026-08-21T12:00:00.000Z",
+  "updatedAt": "2026-08-21T12:00:00.000Z",
+  "items": []
+}

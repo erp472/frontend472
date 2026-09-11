@@ -2,6 +2,17 @@ import secureJsonParse from 'secure-json-parse'
 import { z } from 'zod'
 import { env, assertHttps } from '@/lib/env'
 
+function extractErrorMessage(body: unknown, status: number): string {
+  const rawMsg = (body as { message?: unknown })?.message
+  if (typeof rawMsg === 'string') return rawMsg
+  if (typeof rawMsg === 'object' && rawMsg !== null) {
+    const fe = (rawMsg as { fieldErrors?: Record<string, string[]> }).fieldErrors ?? {}
+    const msgs = Object.values(fe).flat()
+    if (msgs.length) return msgs.join(', ')
+  }
+  return `HTTP ${status}`
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly body?: unknown
@@ -15,9 +26,14 @@ export class ApiError extends Error {
 }
 
 let _getToken: (() => string | null) | null = null
+let _on401: (() => void) | null = null
 
 export function registerTokenProvider(fn: () => string | null) {
   _getToken = fn
+}
+
+export function registerOn401Handler(fn: () => void) {
+  _on401 = fn
 }
 
 async function fetchWithBackoff(
@@ -47,7 +63,7 @@ export async function apiFetch<T>(
   const token = _getToken?.()
   const hasBody = init.body != null
   const headers: Record<string, string> = {
-    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+    ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),
     ...(init.headers as Record<string, string>),
   }
   if (token) headers['Authorization'] = `Bearer ${token}`
@@ -57,12 +73,16 @@ export async function apiFetch<T>(
   if (!res.ok) {
     const raw = await res.text().catch(() => '{}')
     const body = secureJsonParse(raw, undefined, { protoAction: 'remove' })
-    const msg =
-      (body as { message?: string })?.message ?? `HTTP ${res.status}`
+    const msg = extractErrorMessage(body, res.status)
+    if (res.status === 401 && token) {
+      _on401?.()
+    }
     throw new ApiError(res.status, msg, body)
   }
 
   const raw = await res.text()
+  if (!raw) return undefined as T
+
   const data = secureJsonParse(raw, undefined, { protoAction: 'remove' })
 
   if (schema) {
@@ -74,4 +94,25 @@ export async function apiFetch<T>(
   }
 
   return data as T
+}
+
+export async function apiFetchBlob(path: string): Promise<Blob> {
+  const url = `${env.VITE_API_URL}${path}`
+  assertHttps(url)
+
+  const token = _getToken?.()
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetchWithBackoff(url, { headers }, 0)
+
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '{}')
+    const body = secureJsonParse(raw, undefined, { protoAction: 'remove' })
+    const msg = extractErrorMessage(body, res.status)
+    if (res.status === 401 && token) _on401?.()
+    throw new ApiError(res.status, msg, body)
+  }
+
+  return res.blob()
 }

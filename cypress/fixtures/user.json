@@ -1,0 +1,10 @@
+{
+  "id": "usr-cajero-01",
+  "nombre": "Ana Cajera",
+  "email": "cajera@4-72.com.co",
+  "rol": "CAJERO",
+  "sucursal_id": 1,
+  "activo": true,
+  "ultimoLogin": "2026-08-14T08:00:00.000Z",
+  "permisos": ["ventas:consultar", "ventas:operar"]
+}

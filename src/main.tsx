@@ -6,69 +6,64 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { queryClient } from '@/lib/query-client'
-import { registerTokenProvider } from '@/lib/api'
+import { registerTokenProvider, registerOn401Handler } from '@/lib/api'
 import {
   useSessionStore,
   readTokenFromUrl,
   userSchema,
+  INACTIVITY_MS,
 } from '@/stores/useSessionStore'
 import { apiFetch } from '@/lib/api'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { useInactivityWatcher } from '@/hooks/useInactivityWatcher'
+import { useSessionRefresh } from '@/hooks/useSessionRefresh'
+import { startRealtime, stopRealtime } from '@/realtime/socket'
+import { startBridge, stopBridge } from '@/realtime/bridge'
 import { router } from '@/router'
 import './index.css'
 
 registerTokenProvider(() => useSessionStore.getState().token)
+registerOn401Handler(() => {
+  stopBridge()
+  stopRealtime()
+  useSessionStore.getState().clearSession()
+})
 
 async function bootstrap() {
-  // DEV-only: intenta login real para obtener JWT; si el backend no responde, usa mock
-  if (import.meta.env.DEV && !readTokenFromUrl() && !useSessionStore.getState().token) {
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/auth/login`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          email:    import.meta.env.VITE_LAB_EMAIL    ?? 'admin@4-72.com.co',
-          password: import.meta.env.VITE_LAB_PASSWORD ?? 'Admin@4-72!',
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json() as { access_token: string }
-        useSessionStore.getState().setToken(data.access_token)
-        // Deja que el flujo normal (abajo) obtenga el perfil via /auth/me
-        return bootstrap()
-      }
-    } catch { /* backend no disponible — usar mock */ }
+  const { token: storedToken, lastActivity } = useSessionStore.getState()
 
-    useSessionStore.getState().setUser({
-      id: '00000000-0000-0000-0000-000000000001',
-      nombre: 'Dev Admin',
-      email: 'dev@4-72.test',
-      rol: 'ADMIN_SISTEMA',
-      sucursal_id: null,
-      activo: true,
-      ultimoLogin: new Date().toISOString(),
-    })
+  // Si la sesión guardada ya venció por inactividad, limpiar antes de verificar
+  if (storedToken && lastActivity !== null && Date.now() - lastActivity > INACTIVITY_MS) {
+    useSessionStore.getState().clearSession()
     return
   }
 
-  const token = readTokenFromUrl() ?? useSessionStore.getState().token
+  const token = readTokenFromUrl() ?? storedToken
 
   if (!token) {
     useSessionStore.getState().setStatus('unauthenticated')
     return
   }
 
-  useSessionStore.getState().setToken(token)
+  if (!storedToken) useSessionStore.getState().setToken(token)
 
   try {
     const user = await apiFetch('/auth/me', {}, userSchema)
     useSessionStore.getState().setUser(user)
+    startBridge()
+    startRealtime()
   } catch {
     useSessionStore.getState().clearSession()
   }
 }
 
 bootstrap().catch(() => useSessionStore.getState().clearSession())
+
+function App() {
+  useInactivityWatcher()
+  useSessionRefresh()
+  return <RouterProvider router={router} />
+}
 
 const root = document.getElementById('root')
 if (!root) throw new Error('No se encontró #root en index.html')
@@ -78,7 +73,7 @@ createRoot(root).render(
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={300}>
-          <RouterProvider router={router} />
+          <App />
           <Toaster position="top-right" />
         </TooltipProvider>
         {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}

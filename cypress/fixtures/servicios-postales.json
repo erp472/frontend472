@@ -1,0 +1,50 @@
+[
+  {
+    "id": 1,
+    "codigo": "NP-NAC-001",
+    "nombre": "Correo Regular No Prioritario",
+    "tipo": "nacional",
+    "requiereEstampilla": true,
+    "requiereDimensiones": false,
+    "requiereValorDeclarado": false,
+    "pesoMaximoKg": 20,
+    "tiempoEntregaDias": 5,
+    "minimoSeguroPostal": null
+  },
+  {
+    "id": 2,
+    "codigo": "P-NAC-001",
+    "nombre": "Correo Prioritario Nacional",
+    "tipo": "nacional",
+    "requiereEstampilla": true,
+    "requiereDimensiones": false,
+    "requiereValorDeclarado": false,
+    "pesoMaximoKg": 20,
+    "tiempoEntregaDias": 3,
+    "minimoSeguroPostal": null
+  },
+  {
+    "id": 3,
+    "codigo": "EMS-INT-001",
+    "nombre": "EMS Internacional",
+    "tipo": "internacional",
+    "requiereEstampilla": false,
+    "requiereDimensiones": true,
+    "requiereValorDeclarado": true,
+    "pesoMaximoKg": 30,
+    "tiempoEntregaDias": 7,
+    "minimoSeguroPostal": 5000
+  },
+  {
+    "id": 4,
+    "codigo": "APT-001",
+    "nombre": "Apartado Postal",
+    "tipo": "apartado_postal",
+    "requiereEstampilla": false,
+    "requiereDimensiones": false,
+    "requiereValorDeclarado": false,
+    "pesoMaximoKg": null,
+    "tiempoEntregaDias": null,
+    "minimoSeguroPostal": null
+  }
+]
