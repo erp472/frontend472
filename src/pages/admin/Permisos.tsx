@@ -1,372 +1,68 @@
-import { useRef, useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, ShieldCheck, Trash2, AlertTriangle, Plus, Search, X, Pencil } from 'lucide-react'
-import { toast } from 'sonner'
+import { useState } from 'react'
 import {
-  usePermisosMatrix,
-  useAsignarPermiso,
-  useRevocarPermiso,
-  useUpdateRol,
-  useDeleteRol,
-  useCreateRol,
-} from '@/queries/permisos.queries'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+  Plus, Pencil, Trash2, Loader2, Shield,
+  ShieldCheck, AlertCircle, ChevronRight, Layers,
+  Settings2,
+} from 'lucide-react'
+import { Button }    from '@/components/ui/button'
+import { Input }     from '@/components/ui/input'
+import { Label }     from '@/components/ui/label'
+import { Badge }     from '@/components/ui/badge'
+import { Skeleton }  from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { Switch }    from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  useMatrix,
+  useRoles, useCreateRol, useUpdateRol, useDeleteRol,
+  useModulos, useCreateModulo, useUpdateModulo, useDeleteModulo,
+  useCreatePermiso, useDeletePermiso,
+  useAsignarPermiso, useRevocarPermiso,
+} from '@/queries/permisos.queries'
+import { ApiError } from '@/lib/api'
+import type { MatrixRole } from '@/types/api'
 
-// ── Tipos ─────────────────────────────────────────────────────────────────────
+// ── Inline input form ─────────────────────────────────────────────────────────
 
-type RolItem = { id: number; nombre: string; descripcion: string | null }
-
-// ── Modal crear rol ───────────────────────────────────────────────────────────
-
-interface CrearRolModalProps {
-  open: boolean
-  onClose: () => void
-  onCreated: (id: number) => void
+interface InlineFormProps {
+  label?: string
+  placeholder: string
+  initialValue?: string
+  isPending: boolean
+  error?: string | null
+  onSubmit: (value: string) => void
+  onCancel: () => void
 }
 
-function CrearRolModal({ open, onClose, onCreated }: CrearRolModalProps) {
-  const [codigo, setCodigo] = useState('')
-  const [nombre, setNombre] = useState('')
-  const createRol = useCreateRol()
-
-  useEffect(() => {
-    if (!open) return
-    setCodigo('')
-    setNombre('')
-  }, [open])
-
-  async function handleCreate() {
-    if (!codigo.trim() || !nombre.trim()) return
-    try {
-      const result = await createRol.mutateAsync({
-        codigoroles: codigo.trim().toUpperCase().replace(/\s+/g, '_'),
-        nombreroles: nombre.trim(),
-      })
-      toast.success(`Rol "${nombre}" creado`)
-      onCreated(result.id)
-      onClose()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al crear rol')
-    }
-  }
-
-  const codigoPreview = codigo.trim().toUpperCase().replace(/\s+/g, '_')
-  const canSubmit = codigo.trim().length >= 2 && nombre.trim().length >= 2
-
+function InlineForm({ label, placeholder, initialValue = '', isPending, error, onSubmit, onCancel }: InlineFormProps) {
+  const [value, setValue] = useState(initialValue)
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-[538px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-primary" />
-            Crear nuevo rol
-          </DialogTitle>
-          <DialogDescription>
-            El rol estará disponible de inmediato en el carrusel.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-1">
-          <div className="space-y-1.5">
-            <Label htmlFor="create-rol-codigo">Código del rol</Label>
-            <Input
-              id="create-rol-codigo"
-              value={codigo}
-              onChange={(e) => setCodigo(e.target.value)}
-              placeholder="Ej: SUPERVISOR_ZONAL"
-              className="font-mono uppercase"
-              maxLength={40}
-              autoFocus
-            />
-            {codigoPreview && codigoPreview !== codigo.toUpperCase() && (
-              <p className="text-xs text-muted-foreground">
-                Se guardará como: <code className="font-mono font-semibold">{codigoPreview}</code>
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="create-rol-nombre">Nombre visible</Label>
-            <Input
-              id="create-rol-nombre"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              placeholder="Ej: Supervisor Zonal"
-              maxLength={100}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={handleCreate}
-            disabled={!canSubmit || createRol.isPending}
-          >
-            {createRol.isPending ? 'Creando…' : 'Crear rol'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ── Modal editar / eliminar rol ───────────────────────────────────────────────
-
-interface RolModalProps {
-  rol: RolItem | null
-  open: boolean
-  onClose: () => void
-  onDeleted: () => void
-}
-
-function RolModal({ rol, open, onClose, onDeleted }: RolModalProps) {
-  const [nombre, setNombre] = useState('')
-  const [phase, setPhase] = useState<'edit' | 'delete'>('edit')
-  const [deleteWord, setDeleteWord] = useState('')
-
-  const updateRol = useUpdateRol()
-  const deleteRol = useDeleteRol()
-
-  useEffect(() => {
-    if (!open) return
-    setNombre(rol?.nombre ?? '')
-    setPhase('edit')
-    setDeleteWord('')
-  }, [open, rol])
-
-  async function handleSave() {
-    if (!rol || !nombre.trim()) return
-    try {
-      await updateRol.mutateAsync({ id: rol.id, nombre: nombre.trim() })
-      toast.success('Rol actualizado')
-      onClose()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al actualizar')
-    }
-  }
-
-  async function handleDelete() {
-    if (!rol || deleteWord !== 'Delete') return
-    try {
-      await deleteRol.mutateAsync(rol.id)
-      toast.success(`Rol "${rol.nombre}" eliminado`)
-      onDeleted()
-      onClose()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al eliminar')
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-[538px]">
-        {phase === 'edit' ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-primary" />
-                Editar rol
-              </DialogTitle>
-              <DialogDescription>
-                Los cambios aplican al próximo inicio de sesión de los usuarios.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-1.5 py-1">
-              <Label htmlFor="modal-rol-nombre">Nombre</Label>
-              <Input
-                id="modal-rol-nombre"
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Nombre del rol"
-              />
-              {rol?.descripcion && (
-                <p className="text-xs text-muted-foreground pt-0.5">{rol.descripcion}</p>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={!nombre.trim() || nombre.trim() === rol?.nombre || updateRol.isPending}
-              >
-                {updateRol.isPending ? 'Guardando…' : 'Guardar'}
-              </Button>
-            </DialogFooter>
-
-            <Separator />
-
-            <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2">Zona de peligro</p>
-              <Button
-                variant="destructive"
-                className="w-full"
-                onClick={() => setPhase('delete')}
-              >
-                <Trash2 className="size-4 mr-2" />
-                Eliminar rol
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="size-4" />
-                ¿Está seguro de eliminar el rol?
-              </DialogTitle>
-              <DialogDescription>
-                Esta acción eliminará permanentemente el rol{' '}
-                <strong className="text-foreground">{rol?.nombre}</strong> y todos sus permisos
-                asignados. Esta acción no se puede deshacer.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-2 py-1">
-              <p className="text-sm text-muted-foreground">
-                Escribe{' '}
-                <code className="font-mono font-semibold bg-muted text-foreground px-1.5 py-0.5 rounded text-xs">
-                  Delete
-                </code>{' '}
-                para confirmar.
-              </p>
-              <Input
-                value={deleteWord}
-                onChange={(e) => setDeleteWord(e.target.value)}
-                placeholder="Delete"
-                className="font-mono"
-                autoFocus
-              />
-            </div>
-
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPhase('edit')
-                  setDeleteWord('')
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={deleteWord !== 'Delete' || deleteRol.isPending}
-                onClick={handleDelete}
-              >
-                {deleteRol.isPending ? 'Eliminando…' : 'Eliminar rol'}
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ── Carousel de roles ─────────────────────────────────────────────────────────
-
-interface RolCarouselProps {
-  roles: RolItem[]
-  selectedId: number | null
-  onSelect: (rol: RolItem) => void
-  onEdit: (rol: RolItem) => void
-}
-
-function RolCarousel({ roles, selectedId, onSelect, onEdit }: RolCarouselProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  function scroll(dir: 'left' | 'right') {
-    scrollRef.current?.scrollBy({ left: dir === 'left' ? -220 : 220, behavior: 'smooth' })
-  }
-
-  if (roles.length === 0) {
-    return (
-      <div className="py-6 text-center text-sm text-muted-foreground border border-dashed rounded-xl">
-        No hay roles que coincidan con el filtro.
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-background/80 backdrop-blur-sm shadow-sm"
-        onClick={() => scroll('left')}
-      >
-        <ChevronLeft className="size-4" />
-      </Button>
-
-      <div
-        ref={scrollRef}
-        className="flex gap-3 overflow-x-auto scroll-smooth px-10 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {roles.map((rol) => (
-          <button
-            key={rol.id}
-            onClick={() => onSelect(rol)}
-            className={cn(
-              'group relative flex-shrink-0 rounded-xl border p-4 text-left w-44 transition-all duration-150',
-              'hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              selectedId === rol.id
-                ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20'
-                : 'border-border hover:border-muted-foreground/40 bg-card',
-            )}
-          >
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(rol) }}
-              className="absolute top-2 right-2 flex items-center justify-center size-5 rounded opacity-0 group-hover:opacity-100 hover:bg-muted text-muted-foreground hover:text-foreground transition-opacity"
-              title="Editar rol"
-              tabIndex={-1}
-            >
-              <Pencil className="size-3" />
-            </button>
-            <div className="flex items-center gap-2 mb-1.5">
-              <ShieldCheck
-                className={cn(
-                  'size-4 shrink-0',
-                  selectedId === rol.id ? 'text-primary' : 'text-muted-foreground',
-                )}
-              />
-              <span
-                className={cn(
-                  'text-sm font-medium leading-tight pr-4',
-                  selectedId === rol.id && 'text-primary',
-                )}
-              >
-                {rol.nombre}
-              </span>
-            </div>
-            {rol.descripcion && (
-              <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
-                {rol.descripcion}
-              </p>
-            )}
-          </button>
-        ))}
+    <div className="space-y-1.5">
+      {label && <Label className="text-xs text-muted-foreground">{label}</Label>}
+      <div className="flex gap-2">
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={placeholder}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); if (value.trim()) onSubmit(value.trim()) }
+            if (e.key === 'Escape') onCancel()
+          }}
+          autoFocus
+          aria-invalid={!!error}
+          className="h-8 text-sm"
+        />
+        <Button size="sm" className="h-8" onClick={() => value.trim() && onSubmit(value.trim())} disabled={isPending || !value.trim()}>
+          {isPending ? <Loader2 className="size-3.5 animate-spin" /> : 'Guardar'}
+        </Button>
+        <Button size="sm" variant="ghost" className="h-8" onClick={onCancel}>Cancelar</Button>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
@@ -375,16 +71,9 @@ function RolCarousel({ roles, selectedId, onSelect, onEdit }: RolCarouselProps) 
 
 // ── Panel de Roles ────────────────────────────────────────────────────────────
 
-interface ModuloCardProps {
-  modulo: {
-    id: string | number
-    nombre: string
-    descripcion: string | null
-    permisos: { id: number; nombre: string; descripcion: string | null }[]
-  }
-  selectedPermisoIds: Set<number>
-  disabled: boolean
-  onToggle: (permisoId: number, tienePermiso: boolean) => void
+interface RolePanelProps {
+  selectedRolId: string | null
+  onSelect: (id: string | null) => void
 }
 
 function RolePanel({ selectedRolId, onSelect }: RolePanelProps) {
@@ -628,7 +317,6 @@ function MatrixPanel({ rol }: MatrixProps) {
     </div>
   )
 }
-
 
 // ── Catálogo de Módulos ───────────────────────────────────────────────────────
 
