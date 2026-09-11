@@ -537,204 +537,42 @@ interface MatrixProps {
   rol: MatrixRole
 }
 
-  const [selectedRolId, setSelectedRolId] = useState<number | null>(null)
-  const [modalRol, setModalRol]           = useState<RolItem | null>(null)
-  const [modalOpen, setModalOpen]         = useState(false)
-  const [createOpen, setCreateOpen]       = useState(false)
-  const [filterText, setFilterText]       = useState('')
-  const [filterOpen, setFilterOpen]       = useState(false)
-  const filterInputRef                    = useRef<HTMLInputElement>(null)
+function MatrixPanel({ rol }: MatrixProps) {
+  const { data, isLoading } = useMatrix()
+  const asignarMut  = useAsignarPermiso()
+  const revocarMut  = useRevocarPermiso()
 
-  // Auto-selecciona el primer rol al cargar
-  useEffect(() => {
-    if (matrix?.roles.length && !selectedRolId) {
-      setSelectedRolId(matrix.roles[0]?.id ?? null)
-    }
-  }, [matrix, selectedRolId])
+  const assigned = new Set(rol.permisoIds)
+  const isPending = asignarMut.isPending || revocarMut.isPending
 
-  // Foco al abrir el filtro
-  useEffect(() => {
-    if (filterOpen) {
-      setTimeout(() => filterInputRef.current?.focus(), 50)
+  async function toggle(permisoId: string) {
+    if (assigned.has(permisoId)) {
+      await revocarMut.mutateAsync({ rolId: rol.id, permisoId })
     } else {
-      setFilterText('')
+      await asignarMut.mutateAsync({ rolId: rol.id, permisoId })
     }
-  }, [filterOpen])
-
-  const filteredRoles = matrix?.roles.filter((r) => {
-    if (!filterText.trim()) return true
-    const q = filterText.trim().toLowerCase()
-    return (
-      r.nombre.toLowerCase().includes(q) ||
-      r.descripcion?.toLowerCase().includes(q)
-    )
-  }) ?? []
-
-  const selectedRol        = matrix?.roles.find((r) => r.id === selectedRolId)
-  const selectedPermisoIds = new Set(selectedRol?.permisoIds ?? [])
-  const isMutating         = asignar.isPending || revocar.isPending
-
-  function handleSelectRol(rol: RolItem) {
-    setSelectedRolId(rol.id)
   }
-
-  function handleOpenModal(rol: RolItem) {
-    setModalRol(rol)
-    setModalOpen(true)
-  }
-
-  function handleModalClose() {
-    setModalOpen(false)
-  }
-
-  function handleDeleted() {
-    setSelectedRolId(null)
-  }
-
-  function handleCreated(id: number) {
-    setSelectedRolId(id)
-  }
-
-  function handleToggle(permisoId: number, tienePermiso: boolean) {
-    if (!selectedRolId) return
-    const fn = tienePermiso ? revocar : asignar
-    fn.mutate(
-      { rolId: selectedRolId, permisoId },
-      { onError: (e) => toast.error(e.message) },
-    )
-  }
-
-  function toggleFilter() {
-    setFilterOpen((prev) => !prev)
-  }
-
-  // ── Skeleton ────────────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="space-y-1">
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-4 w-80" />
-        </div>
-        <div className="flex gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-44 rounded-xl shrink-0" />
-          ))}
-        </div>
-        <div className="grid w-full gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))' }}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  if (!matrix) return null
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold">Permisos por Rol</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Haz clic en un rol para editarlo o gestionar sus permisos. Los cambios aplican en el próximo login.
+    <div className="flex flex-col h-full">
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold flex items-center gap-2">
+          <ShieldCheck className="size-4 text-primary" />
+          Permisos de <span className="text-primary">{rol.nombre}</span>
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {rol.permisoIds.length} permisos activos
         </p>
       </div>
 
-      {/* Carousel de roles */}
-      <div className="space-y-2">
-        {/* Label row con filtro y botón crear */}
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Roles ({filterText ? `${filteredRoles.length}/` : ''}{matrix.roles.length})
-            </p>
-
-            {/* Mini filtro inline */}
-            <div
-              className={cn(
-                'flex items-center overflow-hidden transition-all duration-200',
-                filterOpen ? 'w-36 opacity-100' : 'w-0 opacity-0',
-              )}
-            >
-              <div className="relative w-full">
-                <Input
-                  ref={filterInputRef}
-                  value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
-                  placeholder="Filtrar…"
-                  className="h-7 text-xs pr-6 pl-2"
-                />
-                {filterText && (
-                  <button
-                    onClick={() => setFilterText('')}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="size-3" />
-                  </button>
-                )}
+      {isLoading ? (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i}>
+              <Skeleton className="h-4 w-20 mb-2" />
+              <div className="space-y-1.5">
+                {Array.from({ length: 3 }, (_, j) => <Skeleton key={j} className="h-10 w-full rounded-lg" />)}
               </div>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('h-7 w-7', filterOpen && 'text-primary')}
-              onClick={toggleFilter}
-              title={filterOpen ? 'Cerrar filtro' : 'Filtrar roles'}
-            >
-              <Search className="size-3.5" />
-            </Button>
-          </div>
-
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4 mr-1.5" />
-            Crear rol
-          </Button>
-        </div>
-
-        <RolCarousel
-          roles={filteredRoles}
-          selectedId={selectedRolId}
-          onSelect={handleSelectRol}
-          onEdit={handleOpenModal}
-        />
-      </div>
-
-      {/* Módulos y permisos */}
-      {selectedRol ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Permisos de{' '}
-            </p>
-            <Badge variant="outline" className="text-xs font-semibold">
-              {selectedRol.nombre}
-            </Badge>
-            {isMutating && (
-              <span className="text-xs text-muted-foreground animate-pulse">Guardando…</span>
-            )}
-          </div>
-
-          {matrix.modulos.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">
-              No hay módulos definidos. Crea módulos desde la API.
-            </p>
-          ) : (
-            <div
-              className="grid w-full min-w-0 gap-4"
-              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(260px, 100%), 1fr))' }}
-            >
-              {matrix.modulos.map((modulo) => (
-                <ModuloCard
-                  key={modulo.id}
-                  modulo={modulo}
-                  selectedPermisoIds={selectedPermisoIds}
-                  disabled={isMutating}
-                  onToggle={handleToggle}
-                />
-              ))}
             </div>
           ))}
         </div>
@@ -787,24 +625,10 @@ interface MatrixProps {
           ))}
         </div>
       )}
-
-      {/* Modal editar / eliminar rol */}
-      <RolModal
-        rol={modalRol}
-        open={modalOpen}
-        onClose={handleModalClose}
-        onDeleted={handleDeleted}
-      />
-
-      {/* Modal crear rol */}
-      <CrearRolModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={handleCreated}
-      />
     </div>
   )
 }
+
 
 // ── Catálogo de Módulos ───────────────────────────────────────────────────────
 
